@@ -376,6 +376,13 @@ Regenerate GitHub-viewable CLI/API markdown docs:
 uv run python scripts/update_docs_markdown.py
 ```
 
+The CLI reference is generated from Typer's registered commands and subcommands.
+Check that both generated pages are current without changing files:
+
+```bash
+uv run python scripts/update_docs_markdown.py --check
+```
+
 Docs sources:
 
 - `mkdocs.yml`

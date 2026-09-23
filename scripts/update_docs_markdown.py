@@ -1,40 +1,13 @@
 from __future__ import annotations
 
 import ast
+import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import typer.rich_utils as rich_utils  # noqa: E402
-from sharedrive.cli import app  # noqa: E402
-from typer.testing import CliRunner  # noqa: E402
-
-ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-CLI_WIDTH = 200
-RUNNER = CliRunner()
-
-CLI_COMMANDS: list[tuple[str, list[str]]] = [
-    ("sharedrive --help", ["--help"]),
-    ("sharedrive auth --help", ["auth", "--help"]),
-    ("sharedrive auth login --help", ["auth", "login", "--help"]),
-    ("sharedrive auth login gdrive --help", ["auth", "login", "gdrive", "--help"]),
-    (
-        "sharedrive auth login microsoft --help",
-        ["auth", "login", "microsoft", "--help"],
-    ),
-    (
-        "sharedrive auth login sharepoint --help",
-        ["auth", "login", "sharepoint", "--help"],
-    ),
-    ("sharedrive checkout --help", ["checkout", "--help"]),
-    ("sharedrive set --help", ["set", "--help"]),
-    ("sharedrive add --help", ["add", "--help"]),
-    ("sharedrive update --help", ["update", "--help"]),
-]
 
 API_MODULES = [
     {"module": "sharedrive.helpers", "path": ROOT / "sharedrive" / "helpers.py"},
@@ -71,38 +44,31 @@ API_MODULES = [
 ]
 
 
-def _normalize_help_text(text: str) -> str:
-    normalized = ANSI_PATTERN.sub("", text).replace("\r\n", "\n")
-    normalized = normalized.encode("ascii", "ignore").decode()
-    lines = [line.rstrip() for line in normalized.splitlines()]
-    return "\n".join(lines).strip() + "\n"
-
-
-def _run_help(args: list[str]) -> str:
-    app.rich_markup_mode = None
-    rich_utils.FORCE_TERMINAL = False
-    rich_utils.COLOR_SYSTEM = None
-    rich_utils.MAX_WIDTH = CLI_WIDTH
-    result = RUNNER.invoke(app, args, prog_name="sharedrive", color=False)
-    if result.exit_code != 0:
-        raise RuntimeError(
-            f"Failed: {' '.join(['sharedrive', *args])}\n{result.stdout}"
-        )
-    return _normalize_help_text(result.stdout)
-
-
 def _render_cli_markdown() -> str:
-    lines = ["# CLI Reference", ""]
-    lines.append("Auto-generated from live `sharedrive --help` output.")
-    lines.append("")
-    for title, args in CLI_COMMANDS:
-        lines.append(f"## `{title}`")
-        lines.append("")
-        lines.append("```text")
-        lines.append(_run_help(args).rstrip())
-        lines.append("```")
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+    """Ask Typer to document every registered command and subcommand."""
+    command = [
+        sys.executable,
+        "-m",
+        "typer",
+        "sharedrive.cli",
+        "utils",
+        "docs",
+        "--name",
+        "sharedrive",
+        "--title",
+        "CLI Reference",
+    ]
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f"Typer CLI docs generation failed:\n{result.stderr}")
+    markdown = re.sub(r"\n{3,}", "\n\n", result.stdout)
+    markdown = re.sub(
+        r"```bash\n+(.*?)\n+```",
+        lambda match: f"```bash\n{match.group(1).strip()}\n```",
+        markdown,
+        flags=re.DOTALL,
+    )
+    return markdown.rstrip() + "\n"
 
 
 def _parse_module(path: Path) -> ast.Module:
@@ -450,12 +416,29 @@ def _render_api_markdown() -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Update CLI and API Markdown docs.")
+    parser.add_argument(
+        "--check", action="store_true", help="Fail if generated docs are out of date."
+    )
+    args = parser.parse_args()
+
     docs_dir = ROOT / "docs"
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "cli.md").write_text(_render_cli_markdown(), encoding="utf-8")
-    (docs_dir / "api.md").write_text(_render_api_markdown(), encoding="utf-8")
-    print(f"Updated {docs_dir / 'cli.md'}")
-    print(f"Updated {docs_dir / 'api.md'}")
+    generated = {
+        docs_dir / "cli.md": _render_cli_markdown(),
+        docs_dir / "api.md": _render_api_markdown(),
+    }
+    stale = False
+    for path, content in generated.items():
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
+                print(f"Out of date: {path}")
+                stale = True
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            print(f"Updated {path}")
+    if stale:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -61,6 +61,7 @@ Goal is to create a quick and efficient system like git and uv both for quick de
 ## Documentation rule
 
 - Document any non-obvious behavior in docstrings and `README.md`.
-- Update docs if any changes with: `uv run update_docs_markdown.py`
+- Update generated CLI/API docs with: `uv run python scripts/update_docs_markdown.py`.
+- Check generated docs without changing files with: `uv run python scripts/update_docs_markdown.py --check`.
 - the __all__ variable is used to explicitly declare public API for each module. When adding new functions or classes that are intended to be part of the public API, make sure to include them in the __all__ list at the end of the module. This helps with clarity and maintainability of the codebase.
 - Document design choices through doc strings. For example, the logic and source (like url and name of standard(s) or existing software like uv/git etc that provided either motivation of why property names were used)

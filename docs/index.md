@@ -109,3 +109,9 @@ To regenerate static Markdown pages that render directly on GitHub:
 ```bash
 uv run python scripts/update_docs_markdown.py
 ```
+
+To verify that both generated pages are current without changing them:
+
+```bash
+uv run python scripts/update_docs_markdown.py --check
+```

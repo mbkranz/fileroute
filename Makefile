@@ -35,6 +35,9 @@ docs-sync: ## Install documentation dependencies.
 docs-update: ## Regenerate CLI/API markdown docs.
 	$(UV) run $(PYTHON) scripts/update_docs_markdown.py
 
+docs-check: ## Check that generated CLI/API markdown docs are current.
+	$(UV) run $(PYTHON) scripts/update_docs_markdown.py --check
+
 docs-serve: ## Serve documentation locally.
 	$(UV) run mkdocs serve
 
