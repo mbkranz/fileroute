@@ -10,6 +10,7 @@ nav:
   - Google Auth Credentials: google-auth.md
   - CLI Reference: cli.md
   - Python API: api.md
+  - Next Steps: next-steps.md
 
 plugins:
   - search

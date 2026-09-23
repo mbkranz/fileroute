@@ -320,6 +320,53 @@ def test_iter_items_and_iter_files_have_distinct_contracts() -> None:
     assert nested_csv.parent is reports
 
 
+def test_cached_direct_children_infer_parent_without_native_metadata() -> None:
+    child = _Item(
+        id="file-1",
+        name="report.csv",
+        path="report.csv",
+        source_url="mock://report.csv",
+    )
+    root = _Item(
+        id="root",
+        name="root",
+        path="",
+        source_url="mock://",
+        is_directory=True,
+        children=[child],
+    )
+
+    root._cache_children(root.children)
+
+    assert child.parent_id == root.id
+    assert child.parent is root
+    assert child._traversal_parent_id == root.id
+
+
+def test_cached_direct_children_preserve_native_parent_metadata() -> None:
+    child = _Item(
+        id="file-1",
+        name="report.csv",
+        path="report.csv",
+        source_url="mock://report.csv",
+    )
+    child._parent_id = "provider-parent"
+    root = _Item(
+        id="root",
+        name="root",
+        path="",
+        source_url="mock://",
+        is_directory=True,
+        children=[child],
+    )
+
+    root._cache_children(root.children)
+
+    assert child.parent_id == "provider-parent"
+    assert child.parent is None
+    assert getattr(child, "_traversal_parent_id", None) is None
+
+
 def test_get_path_requires_directory_for_trailing_slash() -> None:
     child = _Item(
         id="file-1",

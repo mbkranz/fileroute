@@ -38,9 +38,11 @@ class _TraversalIndex:
             children, key=lambda item: (item.path, item.name, str(item.id))
         )
         self.add(parent)
-        for child in ordered:
-            self.add(child)
         parent_id = str(parent.id)
+        for child in ordered:
+            if getattr(child, "_parent_id", None) is None:
+                child._traversal_parent_id = parent_id
+            self.add(child)
         self.children_by_id[parent_id] = ordered
         return ordered
 
@@ -117,9 +119,8 @@ class ServiceItem(ABC):
         """Best-known parent identifier for this item, when available.
 
         ``_parent_id`` is provider metadata from remote APIs. When unavailable,
-        ``_traversal_parent_id`` is a traversal-time fallback inferred by
-        :meth:`_scan_descendants` (or provider overrides) while walking
-        descendants.
+        ``_traversal_parent_id`` is a runtime fallback inferred when caching
+        direct children or scanning descendants.
         """
         return getattr(self, "_parent_id", None) or getattr(
             self, "_traversal_parent_id", None
