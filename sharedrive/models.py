@@ -172,9 +172,6 @@ def adapter_from_locator(locator: str) -> str:
 ServiceId = str
 ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]
 EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]
-LocalCachePath = Annotated[str,Field(alias="_cache",validation_alias=AliasChoices("_cache", "cache"))]
-RemoteAccessUrl = Annotated[AnyUrl, Field(alias="_accessUrl", validation_alias=AliasChoices("accessURL", "accessUrl", "url"))]
-RemotePathUrl = Annotated[AnyUrl, Field(alias="path", validation_alias=AliasChoices("path", "url"))]
 def resolve_cache_path(cache: str|None, basepath: str|None):
     if cache and basepath:
         assert_safe_path(str(cache), basepath=basepath)
@@ -219,17 +216,17 @@ class DriveRemoteResource(Resource):
     `path` remains the canonical Data Package data locator. `_cache` follows
     the Data Package caching recipe as the local materialized copy location.
     """
-    path: RemotePathUrl
+    path: AnyUrl = Field(validation_alias=AliasChoices("path", "url"))
     serviceType: Optional[ServiceTypeValue] = None
     serviceId: Optional[str] = None
     entityType: Optional[EntityTypeValue] = None
-    cache: Optional[LocalCachePath] = None
+    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
    
 class DriveRemotePackage(Package):
     """Data Package package with shared-drive adapter metadata."""
 
-    accessUrl: RemoteAccessUrl = Field(alias="accessURL")
-    cache: Optional[LocalCachePath] = None
+    accessUrl: AnyUrl = Field(alias="accessURL", validation_alias=AliasChoices("accessURL", "accessUrl", "url"))
+    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
     serviceType: Optional[ServiceTypeValue] = None
     serviceId: Optional[str] = None
     entityType: Optional[EntityTypeValue] = None
@@ -338,8 +335,8 @@ class DriveRemoteCatalog(Model):
     name: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
-    cache: Optional[LocalCachePath] = None
-    accessUrl: Optional[RemoteAccessUrl] = None
+    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
+    accessUrl: Optional[AnyUrl] = Field(default=None, alias="accessURL", validation_alias=AliasChoices("accessURL", "accessUrl", "url"))
     serviceType: Optional[ServiceTypeValue] = None
     serviceId: Optional[str] = None
     entityType: Optional[EntityTypeValue] = None

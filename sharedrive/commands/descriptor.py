@@ -168,6 +168,31 @@ def _add_resource_to_descriptor(
 
 def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> None:
 
+    @app.command(
+        "upload",
+        epilog=examples_epilog(
+            "sharedrive upload config/sharedrive.yaml --dry-run",
+            "sharedrive upload config/sharedrive.yaml",
+        ),
+    )
+    def upload_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        dry_run: bool = typer.Option(False, "--dry-run", help="List files without authenticating or writing."),
+    ) -> None:
+        """Publish local descriptor caches; create or replace, never delete."""
+        from sharedrive.upload import plan_upload, upload
+
+        try:
+            files = plan_upload(prepare_descriptor_path(descriptor))
+            for file in files:
+                target = file.remote if file.direct_file else f"{file.remote.rstrip('/')}/{file.relative.as_posix()}"
+                typer.echo(f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}")
+            if not dry_run:
+                upload(files)
+        except (Error, OSError, ValueError, GraphApiError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
     @clone_app.command(
         "descriptor",
         epilog=examples_epilog(

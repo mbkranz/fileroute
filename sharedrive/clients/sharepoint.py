@@ -4,7 +4,7 @@ import json
 import mimetypes
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 
 import requests
@@ -52,6 +52,7 @@ class SharepointClient(BaseClient):
         supports_download=True,
         supports_auth_check=True,
         supports_write=True,
+        supports_upload=True,
     )
 
     def __init__(
@@ -286,7 +287,7 @@ class SharepointClient(BaseClient):
             else:
                 if not normalized_itempath.startswith("/"):
                     normalized_itempath = f"/{normalized_itempath}"
-                endpoint = f"https://graph.microsoft.com/v1.0/drives/{drive}/root:{normalized_itempath}?$select={select_query}"
+                endpoint = f"https://graph.microsoft.com/v1.0/drives/{drive}/root:{quote(normalized_itempath, safe='/')}?$select={select_query}"
 
         return self._request_json(endpoint)
 
@@ -520,6 +521,67 @@ class SharepointClient(BaseClient):
             folder_path=folder_path,
             local_file_path=local_file_path,
         )
+
+    def upload_to_folder(
+        self, folder_url: str, relative_path: Path, local_file_path: str | Path
+    ) -> "SharepointItem":
+        """Create or replace a file below an existing SharePoint folder URL.
+
+        Missing child folders are created. The destination folder itself must
+        already exist, preventing a mistaken URL from silently creating a new
+        publication location. Graph's single-request PUT limit is 250 MB.
+        """
+        local = Path(local_file_path)
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts or not relative.name:
+            raise ValueError(f"Unsafe relative upload path: {relative}")
+        if local.stat().st_size > 250_000_000:
+            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}")
+
+        destination = self._resolve_weburl(folder_url)
+        drive_id = destination["drive_id"]
+        folder_path = destination["item_path"].strip("/")
+        folder = self.get_item_metadata(drive_id, item_path=folder_path or "/")
+        if "folder" not in folder:
+            raise ValueError(f"Publication destination is not a folder: {folder_url}")
+
+        parent_id = folder["id"]
+        for part in relative.parts[:-1]:
+            folder_path = f"{folder_path}/{part}".strip("/")
+            try:
+                child = self.get_item_metadata(drive_id, item_path=folder_path)
+            except GraphApiDriveError as exc:
+                if exc.status_code != 404:
+                    raise
+                try:
+                    response = requests.post(
+                        f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{parent_id}/children",
+                        headers={**self.auth_header, "Content-Type": "application/json"},
+                        json={"name": part, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"},
+                    )
+                except requests.exceptions.RequestException as error:
+                    raise GraphApiDriveError(f"Failed to create folder {folder_path}: {error}") from error
+                if response.status_code == 409:
+                    child = self.get_item_metadata(drive_id, item_path=folder_path)
+                elif response.status_code == 201:
+                    child = response.json()
+                else:
+                    raise GraphApiDriveError(
+                        f"Failed to create folder {folder_path}: {response.status_code} {response.text}",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+            if "folder" not in child:
+                raise ValueError(f"Upload path is occupied by a file: {folder_path}")
+            parent_id = child["id"]
+
+        remote_path = f"{folder_path}/{relative.name}".strip("/")
+        payload = self._put_file(
+            f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+            f"/root:/{quote(remote_path, safe='/')}:/content",
+            local,
+        )
+        return SharepointItem._from_api_response(payload, self, path=remote_path)
 
 
 __all__ = ["SharepointClient", "SharepointItem"]

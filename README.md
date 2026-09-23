@@ -428,3 +428,27 @@ CLI interface inspiration:
 - Catalog organization is inspired by Data Package catalogs and DCAT catalog/dataset/distribution structure: https://datapackage.org/recipes/data-catalog/
 - `serviceType` follows OpenMetadata Drive Service naming: https://docs.open-metadata.org/latest/main-concepts/metadata-standard/schemas/entity/services/driveservice
 - `entityType` values such as `Directory` and `File` follow OpenMetadata drive data-asset modeling: https://docs.open-metadata.org/latest/main-concepts/metadata-standard/schemas/entity/data/directory
+# Publish a built directory to SharePoint
+
+`sharedrive upload config/sharedrive.yaml --dry-run` lists local files and
+destinations without authenticating. `sharedrive upload config/sharedrive.yaml`
+creates or replaces those files; it never deletes unrelated remote files.
+Run from the repository root: `_cache` paths are relative to the working
+directory. The remote SharePoint folder in `accessURL` must already exist;
+missing child folders are created. Files larger than 250 MB need a separate
+upload-session workflow and fail this command before transfer.
+
+```yaml
+$schema: data-package-catalog
+catalogs:
+  - name: documentation
+    accessURL: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs
+    _cache: docs/_output
+    serviceType: SharePoint
+    entityType: Directory
+```
+
+Set the `SHAREPOINT_*` and `AZURE_*` variables described in `.env-sample` for
+authenticated upload. The command also accepts a file resource with `path`
+as a remote file URL and `_cache` as a local file. Directory upload currently
+supports SharePoint; other services fail explicitly before authentication.

@@ -16,6 +16,7 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
+* `upload`: Publish local descriptor caches; create or...
 * `update`: Update descriptor-root or resource...
 * `checkout`: Activate a descriptor and optionally an...
 * `list`: List local descriptor entities, paths, and...
@@ -23,6 +24,35 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `set`: Set reusable key/value parameters for...
 * `auth`: Authentication helpers.
 * `clone`: Clone descriptor state for new local...
+
+## `sharedrive upload`
+
+Publish local descriptor caches; create or replace, never delete.
+
+**Usage**:
+
+```console
+$ sharedrive upload [OPTIONS] [DESCRIPTOR]
+```
+
+**Arguments**:
+
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+
+**Options**:
+
+* `--dry-run`: List files without authenticating or writing.
+* `--help`: Show this message and exit.
+
+**Examples**
+
+```bash
+sharedrive upload config/sharedrive.yaml --dry-run
+```
+
+```bash
+sharedrive upload config/sharedrive.yaml
+```
 
 ## `sharedrive update`
 

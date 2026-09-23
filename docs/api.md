@@ -104,8 +104,8 @@ Auto-generated from source signatures and docstrings.
 #### `DriveRemotePackage`
 - Data Package package with shared-drive adapter metadata.
 - Fields:
-  - `accessUrl: RemoteAccessUrl`
-  - `cache: Optional[LocalCachePath]`
+  - `accessUrl: AnyUrl`
+  - `cache: Optional[str]`
   - `serviceType: Optional[ServiceTypeValue]`
   - `serviceId: Optional[str]`
   - `entityType: Optional[EntityTypeValue]`
@@ -113,11 +113,11 @@ Auto-generated from source signatures and docstrings.
 #### `DriveRemoteResource`
 - Data Package resource with shared-drive adapter metadata.
 - Fields:
-  - `path: RemotePathUrl`
+  - `path: AnyUrl`
   - `serviceType: Optional[ServiceTypeValue]`
   - `serviceId: Optional[str]`
   - `entityType: Optional[EntityTypeValue]`
-  - `cache: Optional[LocalCachePath]`
+  - `cache: Optional[str]`
 
 
 ## `sharedrive.item`
@@ -375,6 +375,8 @@ Auto-generated from source signatures and docstrings.
     - Replace the content of an existing file.
   - `def upload_file(self, *, site_name: str, folder_path: str, local_file_path: str | Path, create_if_missing: bool = True) -> 'SharepointItem'`
     - Update a file, optionally creating it when it does not exist.
+  - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
+    - Create or replace a file below an existing SharePoint folder URL.
 
 #### `SharepointItem`
 - A SharePoint file or folder item backed by Microsoft Graph.
