@@ -123,8 +123,7 @@ For CLI operators:
 
 - `sharedrive auth login microsoft` validates Microsoft auth directly using the configured mode
 - `sharedrive auth login sharepoint` validates SharePoint auth using the configured mode
-- `sharedrive auth check <descriptor>` includes SharePoint in descriptor-aware preflight checks
-- `sharedrive download ... --check-auth` validates SharePoint credentials before downloading selected resources
+- The login commands above validate authentication using the configured mode.
 
 For Python API usage:
 
@@ -221,7 +220,7 @@ uv run sharedrive download resources/descriptor.yaml --dry-run
 ```
 
 Saved defaults are persisted in `.sharedrive/sharedrive_set.json`.
-Use `sharedrive checkout ...` to avoid repeating the descriptor path for `sharedrive auth check`, `sharedrive add`, `sharedrive fetch`, `sharedrive download`, and `sharedrive update`.
+Use `sharedrive checkout ...` to avoid repeating the descriptor path for `sharedrive add` and `sharedrive update`.
 `clone descriptor` preserves authored descriptor fields, including `$schema`,
 when copying YAML or converting between YAML and JSON. `update` preserves
 unmodified fields and accepts an entity name or dot-path with `--name`.

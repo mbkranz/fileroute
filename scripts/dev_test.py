@@ -12,11 +12,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run sharedrive CLI commands in-process for VS Code debugging.
 
     Examples:
-      python scripts/dev_test.py fetch --dry-run
-      python scripts/dev_test.py auth check --format json
+      python scripts/dev_test.py list --help
+      python scripts/dev_test.py auth --help
 
     In VS Code launch args, pass only the sharedrive subcommand arguments,
-    e.g. ["fetch", "--dry-run"].
+    e.g. ["list", "--help"].
     """
     args = list(argv) if argv is not None else sys.argv[1:]
     if not args:

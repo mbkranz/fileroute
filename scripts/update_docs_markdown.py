@@ -20,7 +20,6 @@ RUNNER = CliRunner()
 CLI_COMMANDS: list[tuple[str, list[str]]] = [
     ("sharedrive --help", ["--help"]),
     ("sharedrive auth --help", ["auth", "--help"]),
-    ("sharedrive auth check --help", ["auth", "check", "--help"]),
     ("sharedrive auth login --help", ["auth", "login", "--help"]),
     ("sharedrive auth login gdrive --help", ["auth", "login", "gdrive", "--help"]),
     (
@@ -34,8 +33,6 @@ CLI_COMMANDS: list[tuple[str, list[str]]] = [
     ("sharedrive checkout --help", ["checkout", "--help"]),
     ("sharedrive set --help", ["set", "--help"]),
     ("sharedrive add --help", ["add", "--help"]),
-    ("sharedrive fetch --help", ["fetch", "--help"]),
-    ("sharedrive download --help", ["download", "--help"]),
     ("sharedrive update --help", ["update", "--help"]),
 ]
 

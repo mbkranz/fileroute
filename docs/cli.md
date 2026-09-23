@@ -20,10 +20,7 @@ Commands:
   checkout  Activate a descriptor and optionally an entity within it for...
   list      List local descriptor entities, paths, and source metadata.
   add       Add a standards-aligned resource or catalog entry to a descriptor.
-  migrate   Migrate legacy sources/path descriptors to path/_cache/accessURL.
   set       Set reusable key/value parameters for sharedrive descriptor...
-  fetch     Fetch remote metadata for one selector into the descriptor.
-  download  Download resources from a selector in the descriptor.
   auth      Authentication helpers.
   clone     Clone descriptor state for new local variants.
 ```
@@ -39,48 +36,7 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  check  Validate credentials for the adapters selected by a descriptor.
   login  Interactive login commands.
-```
-
-## `sharedrive auth check --help`
-
-```text
-Usage: sharedrive auth check [OPTIONS] [DESCRIPTOR]
-
-  Validate credentials for the adapters selected by a descriptor.
-
-Arguments:
-  [DESCRIPTOR]  Descriptor file path. Defaults to the saved descriptor or the
-                first standard descriptor path.
-
-Options:
-  -i, --include TEXT    Include adapter types and/or resource names. Repeat the
-                        option or pass a comma-separated list.
-  --format [text|json]  Output format.  [default: text]
-  --env-file PATH       Path to .env file for credentials. Defaults to .env in
-                        the current directory.
-  --help                Show this message and exit.
-
-  **Examples**
-
-  ```bash
-
-  sharedrive auth check resources/descriptor.yaml
-
-  ```
-
-  ```bash
-
-  sharedrive auth check resources/descriptor.yaml --include sharepoint
-
-  ```
-
-  ```bash
-
-  sharedrive auth check resources/descriptor.yaml --format json
-
-  ```
 ```
 
 ## `sharedrive auth login --help`
@@ -290,21 +246,10 @@ Arguments:
   NAME  Resource name to store in the descriptor.  [required]
 
 Options:
-  --path TEXT          Canonical resource path, usually a remote file URL.
-  --cache TEXT         Local materialized path stored as _cache.
-  --access-url TEXT    Remote folder/container accessURL for catalogs.
-  --source TEXT        Deprecated alias for --path on file resources or
-                       --access-url on catalogs.
-  --title TEXT         Optional resource title.
-  --description TEXT   Optional resource description.
-  --service-type TEXT  Source serviceType. If omitted, infer from source.
-  --entity-type TEXT   Source entityType such as File, Directory, or Container.
-  --package            Deprecated; remote folders are catalogs. Use --catalog.
-  --catalog            Treat as a catalog with accessURL.
-  --profile TEXT       Optional metadata profile for the resource.
-  --descriptor PATH    Descriptor file path. Defaults to the saved descriptor or
-                       the first standard descriptor path.
-  --help               Show this message and exit.
+  --catalog          Treat as a catalog with accessURL.
+  --descriptor PATH  Descriptor file path. Defaults to the saved descriptor or
+                     the first standard descriptor path.
+  --help             Show this message and exit.
 
   **Examples**
 
@@ -317,96 +262,8 @@ Options:
 
   ```bash
 
-  sharedrive add my-folder --catalog --access-url
+  sharedrive add my-folder --catalog --accessURL
   https://drive.google.com/drive/folders/abc...
-
-  ```
-```
-
-## `sharedrive fetch --help`
-
-```text
-Usage: sharedrive fetch [OPTIONS] [ENTITY]
-
-  Fetch remote metadata for one selector into the descriptor.
-
-Arguments:
-  [ENTITY]  Entity or package dot-path to fetch. If omitted, uses the checked-
-            out entity.
-
-Options:
-  --descriptor PATH         Descriptor file path. Defaults to the saved
-                            descriptor or the first standard descriptor path.
-  --dry-run / --no-dry-run  Preview descriptor changes without writing them.
-                            [default: no-dry-run]
-  --format [text|json]      Output format.  [default: text]
-  --env-file PATH           Path to .env file for credentials. Defaults to .env
-                            in the current directory.
-  --help                    Show this message and exit.
-
-  **Examples**
-
-  ```bash
-
-  sharedrive fetch # get metadata for the default selector in the checked-out
-  descriptor
-
-  ```
-
-  ```bash
-
-  sharedrive fetch census-package --descriptor resources/descriptor.yaml --dry-
-  run
-
-  ```
-
-  ```bash
-
-  sharedrive fetch census-package --descriptor resources/descriptor.yaml
-
-  ```
-```
-
-## `sharedrive download --help`
-
-```text
-Usage: sharedrive download [OPTIONS] [SELECTOR]
-
-  Download resources from a selector in the descriptor.
-
-Arguments:
-  [SELECTOR]  Selector to download. If omitted, uses the checked-out entity or
-              whole descriptor.
-
-Options:
-  --descriptor PATH         Descriptor file path. Defaults to the saved
-                            descriptor or the first standard descriptor path.
-  --output-dir PATH         Base output directory for relative resource paths.
-  --dry-run / --no-dry-run  Print actions without downloading.  [default: no-
-                            dry-run]
-  --check-auth              Validate service credentials before downloading.
-  --format [text|json]      Output format.  [default: text]
-  --env-file PATH           Path to .env file for credentials. Defaults to .env
-                            in the current directory.
-  --help                    Show this message and exit.
-
-  **Examples**
-
-  ```bash
-
-  sharedrive download --dry-run
-
-  ```
-
-  ```bash
-
-  sharedrive download my-package --descriptor resources/descriptor.yaml
-
-  ```
-
-  ```bash
-
-  sharedrive download my-package --output-dir resources
 
   ```
 ```
@@ -421,7 +278,7 @@ Usage: sharedrive update [OPTIONS]
 Options:
   --descriptor PATH  Descriptor file path. Defaults to the saved descriptor or
                      the first standard descriptor path.
-  --resource TEXT    Exact resource name or dot-path to update.
+  --name TEXT        Exact entity name or dot-path to update.
   --dry-run          Show what would be updated without writing files.
   --help             Show this message and exit.
 
@@ -435,14 +292,14 @@ Options:
 
   ```bash
 
-  sharedrive update --resource file1 --title "Hello" --description "hello"
+  sharedrive update --name file1 --title "Hello" --description "hello"
 
   ```
 
   ```bash
 
-  sharedrive update --descriptor resources/descriptor.yaml --resource file1
-  --title "Hello"
+  sharedrive update --descriptor resources/descriptor.yaml --name file1 --title
+  "Hello"
 
   ```
 ```
