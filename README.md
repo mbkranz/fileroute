@@ -209,7 +209,7 @@ sharedrive auth login sharepoint --auth-mode delegated
 sharedrive add spec-workbook --path https://tenant.sharepoint.com/sites/Test/Shared%20Documents/spec.xlsx --cache background/specs/spec-workbook.xlsx
 sharedrive add census-docs --catalog --access-url https://drive.google.com/drive/folders/<id> --service-type googledrive
 sharedrive update --title "Hello" --description "hello"
-sharedrive update --resource spec-workbook --title "Hello"
+sharedrive update --name spec-workbook --title "Hello"
 ```
 
 If you are running from a repo checkout without activating an environment, prefix commands with `uv run`:
@@ -222,6 +222,11 @@ uv run sharedrive download resources/descriptor.yaml --dry-run
 
 Saved defaults are persisted in `.sharedrive/sharedrive_set.json`.
 Use `sharedrive checkout ...` to avoid repeating the descriptor path for `sharedrive auth check`, `sharedrive add`, `sharedrive fetch`, `sharedrive download`, and `sharedrive update`.
+`clone descriptor` preserves authored descriptor fields, including `$schema`,
+when copying YAML or converting between YAML and JSON. `update` preserves
+unmodified fields and accepts an entity name or dot-path with `--name`.
+For a resource with one `sources` entry, `--service-type` updates that source;
+specify the source in the descriptor directly if there are multiple sources.
 Use `sharedrive set --global --output-dir ...` to save a reusable output directory for `sharedrive download`.
 Use `sharedrive set <descriptor> --output-dir ...` to save descriptor-scoped defaults that apply when you explicitly download that descriptor.
 

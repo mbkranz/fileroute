@@ -20,12 +20,10 @@ Prefer small local `Resource`, `Package`, `Catalog`, and `CatalogReference`
 models with explicit loading, saving, traversal, reference, basepath, and path
 validation helpers where needed. Avoid rebuilding all of `dplib`.
 
-Before promoting `dev` to `main`, resolve the existing descriptor checks:
-clone currently drops `$schema`, and update tests fail in descriptor/CLI
-handling. Determine whether those failures come from `dplib` serialization or
-local command code. If a required descriptor round trip cannot be fixed within
-the current model layer, revisit the migration timing; otherwise keep the
-model replacement separate from the working release.
+The descriptor clone and update failures were fixed in PR #11 without replacing
+the model layer. Clone and update now preserve authored descriptor fields,
+including `$schema`. Keep the broader model replacement separate from the
+working release unless a new required workflow exposes a concrete blocker.
 
 Until then, avoid adding direct `dplib` imports outside `sharedrive.models`;
 `sharedrive.commands.descriptor` already imports its `Error` type, which the

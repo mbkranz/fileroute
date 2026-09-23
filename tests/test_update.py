@@ -101,6 +101,36 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
     assert document["resources"][0]["title"] == "Updated title"
     assert document["resources"][0]["description"] == "Updated description"
     assert "title" not in document["resources"][1]
+    assert document["$schema"] == "data-package-catalog"
+    assert document["resources"][0]["syncTarget"] == "path"
+
+
+def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
+    descriptor = tmp_path / "descriptor.yaml"
+    _write_descriptor(descriptor)
+    document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
+    nested = document["resources"].pop(0)
+    document["packages"] = [{"name": "archive", "resources": [nested]}]
+    descriptor.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "update",
+            "--descriptor",
+            str(descriptor),
+            "--name",
+            "archive.spec-workbook",
+            "--title",
+            "Nested",
+        ],
+        prog_name="sharedrive",
+    )
+
+    assert result.exit_code == 0
+    updated = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
+    assert updated["packages"][0]["resources"][0]["title"] == "Nested"
+    assert "title" not in updated["resources"][0]
 
 
 def test_update_resource_uses_checked_out_descriptor(
