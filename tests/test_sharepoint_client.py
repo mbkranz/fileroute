@@ -388,10 +388,17 @@ def test_sharepoint_delta_traversal_deduplicates_and_filters_subtree(
 
     monkeypatch.setattr(client, "scan_descendants", fake_scan_descendants)
 
-    assert [(item.path, item.is_directory) for item in root.iter_items()] == [
+    descendants = list(root.iter_items())
+    assert [(item.path, item.is_directory) for item in descendants] == [
         ("Approvals/final-name", True),
         ("Approvals/final-name/approval.docx", False),
     ]
+    by_path = {item.path: item for item in descendants}
+    assert by_path["Approvals/final-name"].parent is root
+    assert (
+        by_path["Approvals/final-name/approval.docx"].parent
+        is by_path["Approvals/final-name"]
+    )
     assert [item.path for item in root.iter_files()] == [
         "Approvals/final-name/approval.docx"
     ]

@@ -185,6 +185,8 @@ def test_s3_item_children_are_loaded_from_prefix_listing() -> None:
         ("archive/file.txt", False),
         ("archive/nested/", True),
     ]
+    assert all(child.parent_id == item.id for child in children)
+    assert all(child.parent is item for child in children)
     assert fake_s3.list_calls == [
         {"Bucket": "example-bucket", "Prefix": "archive/", "Delimiter": "/"}
     ]
@@ -233,12 +235,21 @@ def test_s3_recursive_traversal_pages_and_synthesizes_directories() -> None:
         is_directory=True,
     )
 
-    assert [(child.path, child.is_directory) for child in item.iter_items()] == [
+    descendants = list(item.iter_items())
+    assert [(child.path, child.is_directory) for child in descendants] == [
         ("archive/nested/", True),
         ("archive/nested/a.txt", False),
         ("archive/nested/deeper/", True),
         ("archive/nested/deeper/b.txt", False),
     ]
+    by_path = {child.path: child for child in descendants}
+    assert by_path["archive/nested/"].parent is item
+    assert by_path["archive/nested/a.txt"].parent is by_path["archive/nested/"]
+    assert by_path["archive/nested/deeper/"].parent is by_path["archive/nested/"]
+    assert (
+        by_path["archive/nested/deeper/b.txt"].parent
+        is by_path["archive/nested/deeper/"]
+    )
     assert fake_s3.list_calls == [
         {"Bucket": "example-bucket", "Prefix": "archive/"},
         {

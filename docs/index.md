@@ -14,6 +14,8 @@ Shared-drive adapters and retrieval workflows for SharePoint, Google Drive, and 
 
 The key boundary is that descriptor models are persisted metadata, while runtime items are live adapter-backed state. Action modules bridge those two worlds.
 
+See [Next Steps](next-steps.md) for the planned catalog model simplification after the working version reaches `main`.
+
 
 ## TODO
 

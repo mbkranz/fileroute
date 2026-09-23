@@ -137,6 +137,10 @@ Auto-generated from source signatures and docstrings.
     - Refresh this runtime item from its backing service.
   - `def children(self) -> list['ServiceItem']`
     - Direct child items for directories; always empty for files.
+  - `def parent_id(self) -> ServiceId | None`
+    - Best-known parent identifier for this item, when available.
+  - `def parent(self) -> 'ServiceItem' | None`
+    - Best-known parent item from the active traversal snapshot.
   - `def get_path(self, relative_path: str | Path) -> 'ServiceItem'`
     - Resolve a descendant item by traversing child names in *relative_path*.
   - `def iter_items(self, *, recursive: bool = True) -> Iterator['ServiceItem']`

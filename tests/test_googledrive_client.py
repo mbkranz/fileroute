@@ -10,7 +10,6 @@ from sharedrive.clients.googledrive import (
     GoogleBaseClient,
     GoogleDriveClient,
 )
-from sharedrive import get_client
 from sharedrive.exceptions import GoogleDriveError
 
 
@@ -230,11 +229,16 @@ def test_gdrive_item_iter_files_paths_are_relative_to_weburl_root() -> None:
         == "NIH approvals/01-proposal-process/PPI000001/PPI000001 approval.docx"
     )
     assert files[0].service_type == "GoogleDrive"
-    assert [item.name for item in root.iter_items()] == [
+    all_items = list(root.iter_items())
+    assert [item.name for item in all_items] == [
         "01-proposal-process",
         "PPI000001",
         "PPI000001 approval.docx",
     ]
+    by_name = {item.name: item for item in all_items}
+    assert by_name["01-proposal-process"].parent is root
+    assert by_name["PPI000001"].parent is by_name["01-proposal-process"]
+    assert by_name["PPI000001 approval.docx"].parent is by_name["PPI000001"]
     assert list(root.iter_files()) == files
     assert len(session.calls) == 2
 
@@ -372,13 +376,3 @@ def test_gdrive_item_from_path_trailing_slash_requires_directory() -> None:
     with pytest.raises(NotADirectoryError, match="directory"):
         client.get_from_path("My Drive", "summary.csv/")
 
-
-@pytest.mark.skip(reason="requires configured Google Drive credentials")
-def test_gdrive_item_move() -> None:
-
-    test_file_id = "1lvWns43FFPerUjFpHPFfFnPLr-B-ERAqG83AVC4bpME"
-    test_folder_id = "1tjz78WXDCkzyRb6WNlt0VvNSrK9PrByC"
-
-    client = get_client("googledrive")
-    file = client.get_from_id(test_file_id)
-    file.move(test_folder_id)

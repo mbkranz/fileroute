@@ -38,9 +38,11 @@ class _TraversalIndex:
             children, key=lambda item: (item.path, item.name, str(item.id))
         )
         self.add(parent)
-        for child in ordered:
-            self.add(child)
         parent_id = str(parent.id)
+        for child in ordered:
+            if getattr(child, "_parent_id", None) is None:
+                child._traversal_parent_id = parent_id
+            self.add(child)
         self.children_by_id[parent_id] = ordered
         return ordered
 
@@ -111,6 +113,29 @@ class ServiceItem(ABC):
     def children(self) -> list["ServiceItem"]:
         """Direct child items for directories; always empty for files."""
         raise NotImplementedError
+
+    @property
+    def parent_id(self) -> ServiceId | None:
+        """Best-known parent identifier for this item, when available.
+
+        ``_parent_id`` is provider metadata from remote APIs. When unavailable,
+        ``_traversal_parent_id`` is a runtime fallback inferred when caching
+        direct children or scanning descendants.
+        """
+        return getattr(self, "_parent_id", None) or getattr(
+            self, "_traversal_parent_id", None
+        )
+
+    @property
+    def parent(self) -> "ServiceItem" | None:
+        """Best-known parent item from the active traversal snapshot."""
+        parent_id = self.parent_id
+        if parent_id is None:
+            return None
+        index = getattr(self, "_traversal_index", None)
+        if index is None:
+            return None
+        return index.items_by_id.get(str(parent_id))
 
     def _indexed_children(self) -> list["ServiceItem"] | None:
         index = getattr(self, "_traversal_index", None)

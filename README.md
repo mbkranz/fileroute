@@ -274,7 +274,11 @@ Runtime `path` values are relative to the provider container: an S3 bucket,
 Google Drive root, or SharePoint document library. `get_path()` resolves a path
 relative to the current item. For folders, `children` exposes immediate child
 items, `iter_items()` yields files and directories, and `iter_files()` yields
-only files. Recursive traversal uses a stable in-memory snapshot until
+only files. `parent_id` exposes the best-known parent identifier: provider
+metadata where available, otherwise a relationship inferred during traversal.
+`parent` resolves that identifier only when the parent item exists in the
+current traversal snapshot. Exact `get_path()` lookup does not necessarily
+populate that snapshot. Recursive traversal uses a stable in-memory snapshot until
 `refresh()` or a successful mutation invalidates it.
 Descriptor fetch remains a catalog workflow: `sharedrive fetch ...` updates descriptor metadata, while runtime item refresh updates in-memory remote objects. In Python, use `SharedriveCatalog.fetch(..., persist=True)` when fetched metadata should be written back to the descriptor.
 
