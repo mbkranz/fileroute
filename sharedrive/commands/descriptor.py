@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
+import yaml
 from dplib.error import Error
 
 from sharedrive.commands.toolkit import (
@@ -20,10 +22,66 @@ from sharedrive.helpers import has_saved_global_descriptor, set_active_descripto
 from sharedrive.models import (
     DriveCatalog,
     DriveRemoteResource,
+    normalize_entity_type,
+    normalize_service_type,
     resolve_entity_type,
     resolve_service_type,
 )
 
+
+def _read_descriptor(path: Path) -> dict[str, Any]:
+    """Read the authored document without stripping defaults or unknown fields."""
+    content = path.read_text(encoding="utf-8")
+    document = (
+        json.loads(content)
+        if path.suffix.lower() == ".json"
+        else yaml.safe_load(content)
+    )
+    if not isinstance(document, dict):
+        raise ValueError(f"Descriptor '{path}' must contain an object.")
+    return document
+
+
+def _write_descriptor(path: Path, document: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".json":
+        content = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+    else:
+        content = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def _find_descriptor_entity(
+    document: dict[str, Any], name: str
+) -> tuple[dict[str, Any], str]:
+    """Find a unique named entity by its name or dot-path in this document."""
+    matches: list[tuple[dict[str, Any], str]] = []
+
+    def walk(parent: dict[str, Any], prefix: str = "") -> None:
+        for collection in ("resources", "packages", "catalogs"):
+            for child in parent.get(collection, []) or []:
+                if not isinstance(child, dict):
+                    continue
+                child_name = child.get("name")
+                path = f"{prefix}.{child_name}" if prefix else child_name
+                if isinstance(path, str) and (
+                    path.casefold() == name.casefold()
+                    or (
+                        isinstance(child_name, str)
+                        and child_name.casefold() == name.casefold()
+                    )
+                ):
+                    matches.append((child, path))
+                walk(child, path if isinstance(path, str) else prefix)
+
+    walk(document)
+    if not matches:
+        raise typer.BadParameter(f'Entity selector "{name}" was not found.')
+    if len(matches) > 1:
+        raise typer.BadParameter(
+            f'Entity selector "{name}" is ambiguous; use a dot-path.'
+        )
+    return matches[0]
 
 
 def _add_resource_to_descriptor(
@@ -65,17 +123,19 @@ def _add_resource_to_descriptor(
             kwargs.setdefault("cache", url)
     if "access_url" in kwargs:
         kwargs.setdefault("accessURL", kwargs.pop("access_url"))
-        
+
     url = kwargs.get("accessURL") if catalog else kwargs.get("path")
     if not url:
-        raise ValueError("A source URL must be provided via --path, --accessURL, or --source")
+        raise ValueError(
+            "A source URL must be provided via --path, --accessURL, or --source"
+        )
 
-    resolved_service_type = resolve_service_type(url, service_type=kwargs.get("serviceType"))
-    
+    resolved_service_type = resolve_service_type(
+        url, service_type=kwargs.get("serviceType")
+    )
+
     kwargs["entityType"] = resolve_entity_type(
-        url,
-        service_type=resolved_service_type,
-        entity_type=kwargs.get("entityType"),
+        url, service_type=resolved_service_type, entity_type=kwargs.get("entityType")
     )
 
     kwargs["serviceType"] = resolved_service_type
@@ -83,17 +143,21 @@ def _add_resource_to_descriptor(
 
     if catalog:
         if kwargs["entityType"] not in {"Directory", "Container"}:
-            raise ValueError("Catalog entries must use entityType Directory or Container.")
+            raise ValueError(
+                "Catalog entries must use entityType Directory or Container."
+            )
         entry = DriveCatalog.model_validate(kwargs)
         document.catalogs.append(entry)
     else:
         if kwargs["entityType"] != "File":
-            raise ValueError("Non-file drive entries should be added as catalogs with accessURL.")
-        
+            raise ValueError(
+                "Non-file drive entries should be added as catalogs with accessURL."
+            )
+
         # Backward compatibility translation of cache mapped correctly in BaseModel
         if "_cache" not in kwargs and "cache" in kwargs:
             kwargs["_cache"] = kwargs.pop("cache")
-            
+
         entry = DriveRemoteResource.model_validate(kwargs)
         document.resources.append(entry)
 
@@ -127,7 +191,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
     ) -> None:
         """Clone one descriptor file to a new local path."""
         source_descriptor = prepare_descriptor_path(descriptor)
-        if source_descriptor == target_path:
+        if source_descriptor.resolve() == target_path.resolve():
             raise typer.BadParameter("Source and target descriptor paths must differ.")
         if target_path.exists() and not force:
             raise typer.BadParameter(
@@ -138,7 +202,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(f"Would clone descriptor: {source_descriptor} -> {target_path}")
             return
 
-        DriveCatalog.from_path(str(source_descriptor)).to_path(str(target_path))
+        # Validate the source, then copy its authored fields without the model's
+        # exclude-defaults serialization dropping $schema or empty collections.
+        DriveCatalog.from_path(str(source_descriptor))
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_descriptor.suffix.lower() == target_path.suffix.lower():
+            shutil.copyfile(source_descriptor, target_path)
+        else:
+            _write_descriptor(target_path, _read_descriptor(source_descriptor))
         typer.echo(f"Cloned descriptor: {source_descriptor} -> {target_path}")
 
     @app.command(
@@ -169,37 +240,40 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
 
         descriptor_path = prepare_descriptor_path(descriptor)
 
-        descriptor_model = DriveCatalog.from_path(str(descriptor_path))
-        document = descriptor_model.to_dict()
+        document = _read_descriptor(descriptor_path)
+        DriveCatalog.from_dict(document)
         target_label = str(descriptor_path)
         target: dict[str, Any] = document
         if name is not None:
-            try:
-                descriptor_model.assert_valid_entity_paths()
-            except Error as exc:
-                raise typer.BadParameter(str(exc)) from exc
-            resolved = getattr(descriptor_model, f"get_resource")(name) if descriptor_model.get_resource(name) else descriptor_model._find(name, (DrivePackageChild, DriveCatalog, DriveCatalogReference, DriveRemoteCatalog))
-            if not resolved:
-                raise typer.BadParameter(f'Entity selector "{name}" was not found.')
-            
-            target = DriveCatalog.get_json_pointer_value(
-                document, resolved.json_pointer
-            )
-            if not isinstance(target, dict):
-                raise typer.BadParameter(
-                    f"Resolved resource '{resolved.name_path}' is not an object."
-                )
-            target_label = f"{resolved.name_path} in {descriptor_path}"
+            target, entity_path = _find_descriptor_entity(document, name)
+            target_label = f"{entity_path} in {descriptor_path}"
 
         changed_properties: list[str] = []
         for property_name, raw_value in parsed.items():
-            property_path = property_name # exact match
+            property_path = {
+                "service-type": "serviceType",
+                "entity-type": "entityType",
+                "access-url": "accessURL",
+            }.get(property_name, property_name)
             value = raw_value
-            try:
-                changed = DriveCatalog.set_property_value(target, property_path, value)
-            except ValueError as exc:
-                raise typer.BadParameter(str(exc)) from exc
-            if changed:
+            if property_path == "serviceType":
+                value = normalize_service_type(value)
+            elif property_path == "entityType":
+                value = normalize_entity_type(value)
+            field_target = target
+            if (
+                property_path == "serviceType"
+                and name is not None
+                and target.get("sources")
+            ):
+                sources = target["sources"]
+                if len(sources) != 1 or not isinstance(sources[0], dict):
+                    raise typer.BadParameter(
+                        "--service-type requires exactly one source for this entity."
+                    )
+                field_target = sources[0]
+            if field_target.get(property_path) != value:
+                field_target[property_path] = value
                 changed_properties.append(
                     f"{property_path} -> {json.dumps(value, default=str)}"
                 )
@@ -213,7 +287,8 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 typer.echo(f"Would update {target_label}: {change}")
             return
 
-        DriveCatalog.from_dict(document).to_path(str(descriptor_path))
+        DriveCatalog.from_dict(document)
+        _write_descriptor(descriptor_path, document)
         for change in changed_properties:
             typer.echo(f"Updated {target_label}: {change}")
 
@@ -315,7 +390,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
 
         Console().print(root)
 
-    
     @app.command(
         "add",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -344,14 +418,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         explicit_descriptor = descriptor is not None or has_saved_global_descriptor()
 
         parsed = parse_set_args(list(ctx.args))
-        
+
         try:
-            resource = _add_resource_to_descriptor(
+            _add_resource_to_descriptor(
                 descriptor=descriptor_path,
                 name=name,
                 catalog=catalog,
                 create_if_missing=not explicit_descriptor,
-                **parsed
+                **parsed,
             )
         except (
             FileNotFoundError,
@@ -362,5 +436,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
+
 
 __all__ = ["register_descriptor_commands"]

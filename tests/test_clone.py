@@ -47,7 +47,13 @@ def test_clone_descriptor_writes_target_yaml(tmp_path: Path) -> None:
 
     result = RUNNER.invoke(
         app,
-        ["clone", "descriptor", str(target_descriptor), "--descriptor", str(source_descriptor)],
+        [
+            "clone",
+            "descriptor",
+            str(target_descriptor),
+            "--descriptor",
+            str(source_descriptor),
+        ],
         prog_name="sharedrive",
     )
 
@@ -65,13 +71,21 @@ def test_clone_descriptor_uses_target_suffix_format(tmp_path: Path) -> None:
 
     result = RUNNER.invoke(
         app,
-        ["clone", "descriptor", str(target_descriptor), "--descriptor", str(source_descriptor)],
+        [
+            "clone",
+            "descriptor",
+            str(target_descriptor),
+            "--descriptor",
+            str(source_descriptor),
+        ],
         prog_name="sharedrive",
     )
 
     assert result.exit_code == 0
     payload = json.loads(target_descriptor.read_text(encoding="utf-8"))
+    assert payload["$schema"] == "data-package-catalog"
     assert payload["resources"][0]["name"] == "source-export"
+    assert payload["resources"][0]["syncTarget"] == "path"
 
 
 def test_clone_descriptor_dry_run_does_not_write(tmp_path: Path) -> None:
@@ -101,11 +115,20 @@ def test_clone_descriptor_rejects_existing_target_without_force(tmp_path: Path) 
     source_descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(source_descriptor)
     target_descriptor = tmp_path / "descriptor-copy.yaml"
-    target_descriptor.write_text("$schema: data-package-catalog\nresources: []\npackages: []\ncatalogs: []\n", encoding="utf-8")
+    target_descriptor.write_text(
+        "$schema: data-package-catalog\nresources: []\npackages: []\ncatalogs: []\n",
+        encoding="utf-8",
+    )
 
     result = RUNNER.invoke(
         app,
-        ["clone", "descriptor", str(target_descriptor), "--descriptor", str(source_descriptor)],
+        [
+            "clone",
+            "descriptor",
+            str(target_descriptor),
+            "--descriptor",
+            str(source_descriptor),
+        ],
         prog_name="sharedrive",
     )
 
@@ -117,7 +140,10 @@ def test_clone_descriptor_force_overwrites_existing_target(tmp_path: Path) -> No
     source_descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(source_descriptor)
     target_descriptor = tmp_path / "descriptor-copy.yaml"
-    target_descriptor.write_text("$schema: data-package-catalog\nresources: []\npackages: []\ncatalogs: []\n", encoding="utf-8")
+    target_descriptor.write_text(
+        "$schema: data-package-catalog\nresources: []\npackages: []\ncatalogs: []\n",
+        encoding="utf-8",
+    )
 
     result = RUNNER.invoke(
         app,
@@ -133,4 +159,9 @@ def test_clone_descriptor_force_overwrites_existing_target(tmp_path: Path) -> No
     )
 
     assert result.exit_code == 0
-    assert yaml.safe_load(target_descriptor.read_text(encoding="utf-8"))["resources"][0]["name"] == "source-export"
+    assert (
+        yaml.safe_load(target_descriptor.read_text(encoding="utf-8"))["resources"][0][
+            "name"
+        ]
+        == "source-export"
+    )

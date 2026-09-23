@@ -9,10 +9,6 @@ import typer
 from dotenv import load_dotenv
 
 from sharedrive.helpers import resolve_descriptor_path as resolve_descriptor_path_helper
-from sharedrive.models import (
-    normalize_entity_type,
-    normalize_service_type,
-)
 
 
 class OutputFormat(str, Enum):
@@ -140,9 +136,6 @@ def parse_set_args(args: list[str]) -> dict[str, Any]:
         idx += 1
 
     return parsed
-
-
-
 
 
 def exit_if_descriptor_missing(descriptor_path: Path) -> None:
