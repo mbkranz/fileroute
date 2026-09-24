@@ -183,7 +183,6 @@ Auto-generated from source signatures and docstrings.
 - Shared Google client base: auth lifecycle and HTTP transport helpers.
 - Fields:
   - `auth_methods: ClassVar[list[str]]`
-  - `capabilities: ClassVar[AdapterCapabilities]`
 - Methods:
   - `def refresh(self) -> None`
   - `def build_default(cls) -> 'GoogleBaseClient'`
@@ -339,7 +338,7 @@ Auto-generated from source signatures and docstrings.
 - SharePoint / OneDrive client backed by the Microsoft Graph API.
 - Fields:
   - `auth_methods: ClassVar[list[str]]`
-  - `capabilities: ClassVar[AdapterCapabilities]`
+  - `capabilities: ClassVar[ClientCapabilities]`
 - Methods:
   - `def build_default(cls) -> 'SharepointClient'`
     - Construct from environment variables / settings.

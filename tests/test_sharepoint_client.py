@@ -63,8 +63,8 @@ def test_sharepoint_item_move_is_explicitly_unsupported() -> None:
         item.move("new-parent")
 
 
-def test_sharepoint_client_reports_write_capability() -> None:
-    assert SharepointClient.capabilities.supports_write
+def test_sharepoint_client_reports_upload_capability() -> None:
+    assert SharepointClient.capabilities.supports_upload
 
 
 def test_download_content_requires_identifiers_or_download_url() -> None:

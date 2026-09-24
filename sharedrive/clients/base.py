@@ -10,11 +10,8 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class AdapterCapabilities:
-    supports_fetch: bool = True
+class ClientCapabilities:
     supports_download: bool = True
-    supports_auth_check: bool = True
-    supports_write: bool = False
     supports_upload: bool = False
 
 
@@ -24,7 +21,7 @@ class BaseClient(ABC):
     Concrete providers define:
 
     - ``auth_methods``: supported auth-mode identifiers.
-    - ``capabilities``: supported adapter operations.
+    - ``capabilities``: supported transfer operations.
 
     Implementations must provide:
 
@@ -34,7 +31,7 @@ class BaseClient(ABC):
     """
 
     auth_methods: ClassVar[list[str]] = []
-    capabilities: ClassVar[AdapterCapabilities] = AdapterCapabilities()
+    capabilities: ClassVar[ClientCapabilities] = ClientCapabilities()
 
     @classmethod
     @abstractmethod
@@ -54,7 +51,9 @@ class BaseClient(ABC):
         self, folder_url: str, relative_path: Path, local_file_path: str | Path
     ) -> ServiceItem:
         """Create or replace a file relative to a remote directory URL."""
-        raise NotImplementedError(f"Directory uploads are not supported by {type(self).__name__}")
+        raise NotImplementedError(
+            f"Directory uploads are not supported by {type(self).__name__}"
+        )
 
 
-__all__ = ["AdapterCapabilities", "BaseClient"]
+__all__ = ["ClientCapabilities", "BaseClient"]

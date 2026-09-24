@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import requests
 
-from sharedrive.clients.base import AdapterCapabilities, BaseClient
+from sharedrive.clients.base import ClientCapabilities, BaseClient
 from sharedrive.exceptions import GraphApiDriveError, GraphApiSiteError
 from sharedrive.item import ServiceItem
 
@@ -44,12 +44,8 @@ class SharepointClient(BaseClient):
     """
 
     auth_methods: ClassVar[list[str]] = ["app_only", "delegated"]
-    capabilities: ClassVar[AdapterCapabilities] = AdapterCapabilities(
-        supports_fetch=True,
-        supports_download=True,
-        supports_auth_check=True,
-        supports_write=True,
-        supports_upload=True,
+    capabilities: ClassVar[ClientCapabilities] = ClientCapabilities(
+        supports_download=True, supports_upload=True
     )
 
     def __init__(

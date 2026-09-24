@@ -8,7 +8,7 @@ from sharedrive.cli import app
 from sharedrive.descriptor import load, save
 
 
-AUTHORED = '''# Catalog introduction
+AUTHORED = """# Catalog introduction
 title: "Original" # title comment
 custom: {owner: 'team'}
 catalogs:
@@ -19,7 +19,7 @@ resources:
     sources:
       - path: "https://drive.google.com/file/d/123"
         extension: {code: 'abc'}
-'''
+"""
 
 
 def _assert_authored(text: str) -> None:
@@ -58,3 +58,15 @@ def test_resolve_update_and_add_keep_authored_yaml(tmp_path: Path) -> None:
     assert 'title: "New title"' in path.read_text()
     assert load(path).resources[0].sources[0].service_type.value == "GoogleDrive"
     assert load(path).resources[1].path == "second.csv"
+
+
+def test_save_preserves_unchanged_yaml_anchor(tmp_path: Path) -> None:
+    path = tmp_path / "descriptor.yaml"
+    path.write_text(
+        "sources: &inputs\n  - path: 'guide.qmd'\n"
+        "resources:\n  - path: guide.docx\n    sources: *inputs\n"
+    )
+    save(load(path), path)
+    content = path.read_text()
+    assert "&inputs" in content and "*inputs" in content
+    assert load(path).resources[0].sources[0].path == "guide.qmd"

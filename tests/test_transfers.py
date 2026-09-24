@@ -343,5 +343,3 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
             tmp_path / "local.docx",
         )
     ]
-
-

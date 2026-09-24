@@ -29,6 +29,14 @@ def _yaml() -> YAML:
     return parser
 
 
+def _container(value: object) -> object:
+    if isinstance(value, dict):
+        return CommentedMap()
+    if isinstance(value, list):
+        return CommentedSeq()
+    return None
+
+
 def _synchronize(authored: object, canonical: object) -> object:
     """Update matching YAML nodes in place so their comments and styles survive."""
     if isinstance(authored, dict) and isinstance(canonical, dict):
@@ -39,17 +47,21 @@ def _synchronize(authored: object, canonical: object) -> object:
             if key in authored:
                 authored[key] = _synchronize(authored[key], value)
             else:
-                authored[key] = _synchronize(CommentedMap() if isinstance(value, dict) else CommentedSeq() if isinstance(value, list) else None, value)
+                authored[key] = _synchronize(_container(value), value)
         return authored
     if isinstance(authored, list) and isinstance(canonical, list):
         for index, value in enumerate(canonical):
             if index < len(authored):
                 authored[index] = _synchronize(authored[index], value)
             else:
-                authored.append(_synchronize(CommentedMap() if isinstance(value, dict) else CommentedSeq() if isinstance(value, list) else None, value))
-        del authored[len(canonical):]
+                authored.append(_synchronize(_container(value), value))
+        del authored[len(canonical) :]
         return authored
-    if authored == canonical and type(authored) is not bool:
+    if authored == canonical and (
+        type(authored) is type(canonical)
+        or isinstance(authored, ScalarString)
+        and isinstance(canonical, str)
+    ):
         return authored
     if isinstance(authored, ScalarString) and isinstance(canonical, str):
         return type(authored)(canonical)
@@ -120,7 +132,11 @@ def save(catalog: Catalog, path: Path | str) -> None:
         content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     else:
         parser = _yaml()
-        authored = parser.load(path.read_text(encoding="utf-8")) if path.exists() else CommentedMap()
+        authored = (
+            parser.load(path.read_text(encoding="utf-8"))
+            if path.exists()
+            else CommentedMap()
+        )
         if not isinstance(authored, dict):
             raise ValueError(f"Invalid descriptor '{path}': expected a YAML mapping")
         output = StringIO()

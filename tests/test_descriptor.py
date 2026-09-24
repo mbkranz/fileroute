@@ -91,8 +91,6 @@ def test_lookup_enforces_kind_and_ambiguity():
         list(walk(catalog))
 
 
-
-
 def test_list_cli(tmp_path):
     path = tmp_path / "catalog.yaml"
     save(Catalog(resources=[Resource(name="file", path="out.csv")]), path)
