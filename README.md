@@ -235,7 +235,7 @@ sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.svg
 ```
 
 The descriptor argument follows the same saved/default selection behavior as
-`pull`, `push`, and `resolve`, so after `sharedrive checkout` you can simply run
+`pull`, `push`, and `resolve`, so after `sharedrive activate` you can simply run
 `sharedrive diagram`. The default output is `sharedrive-diagram.svg` in the
 current working directory. See [Descriptor diagrams](docs/diagram.md) for the
 Python `DescriptorGraph` API and repository-integration guidance.
@@ -246,7 +246,7 @@ Python `DescriptorGraph` API and repository-integration guidance.
 sharedrive add export --path downloads/source.csv --source s3://my-bucket/source.csv
 sharedrive add documentation --catalog --path docs/_output --target https://contoso.sharepoint.com/sites/dev/Docs
 sharedrive list config/sharedrive.yaml --format json
-sharedrive checkout config/sharedrive.yaml
+sharedrive activate config/sharedrive.yaml
 sharedrive update --name documentation --title "Published documentation"
 sharedrive resolve config/sharedrive.yaml
 sharedrive resolve config/sharedrive.yaml --write
@@ -257,7 +257,7 @@ sharedrive push config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml
 ```
 
-`checkout` saves the active descriptor in `.sharedrive/descriptor`.
+`activate` saves the active descriptor in `.sharedrive/descriptor`.
 The optional descriptor argument also accepts an explicit override. `update`
 selects an exact name or dot-path and reports ambiguous names; `clone descriptor`
 copies a single authored document. For a resource with one source,
@@ -383,7 +383,7 @@ a snapshot until refresh or mutation invalidates it.
 Use the four models above and the functions in `descriptor`, `diagram`, and
 `transfer`. Model I/O and traversal methods, `upload.py`, `download.py`,
 `helpers.py`, and the provider registry have been removed. The CLI has no
-`upload` alias or `set` command. Run `checkout` again to select a descriptor
+`upload` alias or `set` command. Run `activate` again to select a descriptor
 using the new single-path selection file; obsolete saved workflow defaults are
 no longer read.
 
