@@ -46,3 +46,8 @@ uv run python scripts/update_docs_markdown.py --check
 uv sync --extra docs
 uv run mkdocs serve
 ```
+
+## Package releases
+
+See the [release workflow and retry instructions](https://github.com/mbkranz/sharedrive#package-releases).
+Use `poe release-check` to validate and `poe build` to build locally.

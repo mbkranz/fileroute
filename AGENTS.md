@@ -50,11 +50,16 @@ commands.
 
 ## Release model
 
-- `.github/workflows/publish-to-pypi.yml` owns package version bumps, tags, builds, and PyPI publication.
+- `.github/workflows/publish-to-pypi.yml` coordinates prepare, publish, and stable GitHub Release jobs. `scripts/release.py` owns local version/build/tag preparation through `poe release`.
 - A push to `dev` creates or advances the next patch development series (`X.Y.Z.devN`) using `uv version`.
 - A push to `main` promotes a development version to stable; a direct stable-version push to `main` advances the patch version.
 - The workflow commits the `pyproject.toml` and `uv.lock` version change as `chore(release): vX.Y.Z...` and tags that release commit.
 - Do not manually edit the project version for normal releases. Run `poe release-check` before merging when validating release readiness locally.
+
+- Save distributions before atomically pushing the release branch and tag. Never force-push release refs.
+- On retries, identify the release by its source SHA and branch before calculating a new version; publish the saved artifact from the original run without rebuilding.
+- Keep release helpers outside the installed package and retain the Trusted Publisher workflow filename.
+- See README's Package releases section for task usage, setup, and artifact-expiry recovery.
 
 ## Development guardrails
 
