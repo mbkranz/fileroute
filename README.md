@@ -409,3 +409,49 @@ Provider tests use mocks; they do not prove live tenant permissions or transfers
 Field naming references: [Data Resource](https://datapackage.org/standard/data-resource/),
 [DCAT](https://www.w3.org/TR/vocab-dcat-3/), and
 [OpenMetadata Drive Service](https://docs.open-metadata.org/latest/main-concepts/metadata-standard/schemas/entity/services/driveservice).
+
+## Package releases
+
+Install the repository task runner with `uv tool install poethepoet==0.48.0`,
+then run `poe release-check` for validation and `poe build` for a local wheel
+and source distribution. One-off usage is
+`uvx --from poethepoet==0.48.0 poe release-check`.
+
+The `publish-to-pypi.yml` workflow has three jobs: **prepare**, **publish**, and
+**release**. Pushes to `dev` start or increment a patch development version
+(`1.0.0 → 1.0.1.dev1 → 1.0.1.dev2`). Pushes to `main` promote a prerelease to
+stable, or increment the patch when the source already has a stable version.
+After a stable tag exists, `dev` starts the next patch series. Normal releases
+should not edit the version manually. Merge updated `main` back into `dev`
+when needed to keep the branches' version baselines aligned.
+
+`poe release --branch dev --source <full-commit-sha>` runs `scripts/release.py`
+in a clean checkout of that source. It uses `uv version --no-sync` to update
+`pyproject.toml` and `uv.lock`, invokes `poe build`, and creates a local release
+commit and annotated tag. This is the CI preparation command: it changes the
+local checkout but does not push or publish. The workflow first saves the built
+distributions, then atomically pushes the release commit and tag. Both branches
+share one release concurrency group; a stale run fails rather than overwriting
+newer work. Rapid pushes may supersede pending runs; the latest source should
+be released. Workflow pushes use `GITHUB_TOKEN` and do not recursively trigger
+another push workflow.
+
+PyPI publication uses the `pypi` GitHub environment and Trusted Publishing bound
+to this repository and **`publish-to-pypi.yml`**. No long-lived PyPI token is
+needed. Only stable `main` versions get a GitHub Release, after PyPI succeeds.
+The branch rules must permit the workflow's version commit; rejected pushes
+leave both remote refs unchanged.
+
+For a failed publish, use **Re-run failed jobs** on the original Actions run.
+The publish job downloads the saved wheel and source distribution without
+rebuilding. Identical PyPI uploads can be retried, including a partially
+completed upload. A full rerun recognizes the tagged source/branch before
+calculating a version and reuses its original artifact. Existing GitHub Releases
+are left intact. If preparation failed before the atomic push, a fresh attempt
+can rebuild and replace that run's unpublished artifact. If the original
+artifact has expired or been deleted after the push, stop and recover those
+exact files; the workflow deliberately does not rebuild a published version.
+
+`poe release-test` exercises the release helper with temporary local Git remotes
+and real uv version changes; distribution builds are mocked. No test publishes
+packages or contacts cloud providers.
