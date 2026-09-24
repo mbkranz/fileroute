@@ -63,6 +63,43 @@ Auto-generated from source signatures and docstrings.
   - `def entity_type(self) -> str`
 
 
+## `sharedrive.diagram`
+
+### Functions
+
+- `def build_graph(catalog: Catalog) -> DescriptorGraph`
+  - Project descriptor sources, artifacts, inherited targets, and nesting.
+- `def load_graph(path: Path | str) -> DescriptorGraph`
+  - Load references, resolve provider metadata offline, and build a graph.
+- `def render_svg(graph: DescriptorGraph, output: Path | str) -> Path`
+  - Render a compact left-to-right SVG with no optional runtime dependency.
+
+### Classes
+
+#### `DescriptorGraph`
+- Provider-independent graph derived from one resolved descriptor.
+- Fields:
+  - `nodes: tuple[DiagramNode, ...]`
+  - `edges: tuple[DiagramEdge, ...]`
+
+#### `DiagramEdge`
+- A semantic relationship between two descriptor nodes.
+- Fields:
+  - `source: str`
+  - `target: str`
+  - `kind: str`
+
+#### `DiagramNode`
+- One artifact, source, target, or unresolved catalog reference.
+- Fields:
+  - `key: str`
+  - `label: str`
+  - `kind: str`
+  - `path: str | None`
+  - `service_type: ServiceType | None`
+  - `entity_type: str | None`
+
+
 ## `sharedrive.models`
 
 ### Constants

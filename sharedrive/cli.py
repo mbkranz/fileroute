@@ -3,7 +3,11 @@ from __future__ import annotations
 from dotenv import find_dotenv, load_dotenv
 import typer
 
-from sharedrive.commands import register_auth_commands, register_descriptor_commands
+from sharedrive.commands import (
+    register_auth_commands,
+    register_descriptor_commands,
+    register_diagram_command,
+)
 
 load_dotenv(find_dotenv(usecwd=True))
 
@@ -24,6 +28,7 @@ app.add_typer(clone_app, name="clone")
 auth_app.add_typer(auth_login_app, name="login")
 
 register_descriptor_commands(app, clone_app)
+register_diagram_command(app)
 register_auth_commands(auth_app, auth_login_app)
 
 
