@@ -1,21 +1,30 @@
 site_name: fileroute
 site_description: Shared-drive adapters and retrieval workflows for SharePoint, Google Drive, and S3.
 repo_name: fileroute
+repo_url: https://github.com/mbkranz/fileroute
+site_url: https://mbkranz.github.io/fileroute/
 
 theme:
   name: material
 
 nav:
   - Home: index.md
+  - Descriptors: descriptors.md
+  - Use cases: use-cases.md
+  - Transfers: transfers.md
   - Descriptor Diagrams: diagram.md
   - Google Auth Credentials: google-auth.md
   - CLI Reference: cli.md
   - Python API: api.md
-  - Next Steps: next-steps.md
+  - Contributing and Releases: contributing.md
 
 plugins:
   - search
 
 markdown_extensions:
   - admonition
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format

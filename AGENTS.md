@@ -82,8 +82,8 @@ commands.
 ## Documentation rule
 
 - Document any non-obvious behavior in docstrings and `README.md`.
-- Update generated CLI/API docs with: `poe docs-update`.
-- Check generated docs without changing files with: `poe docs-check`.
-- Build all documentation with: `poe docs`.
+- Update generated CLI/API docs and use-case YAML/Mermaid blocks with: `poe docs-update`.
+- Check generated docs and saved examples without changing files with: `poe docs-check`.
+- Build documentation strictly with: `poe docs-build` (or update and build with `poe docs`).
 - the __all__ variable is used to explicitly declare public API for each module. When adding new functions or classes that are intended to be part of the public API, make sure to include them in the __all__ list at the end of the module. This helps with clarity and maintainability of the codebase.
 - Document design choices through doc strings. For example, the logic and source (like url and name of standard(s) or existing software like uv/git etc that provided either motivation of why property names were used)

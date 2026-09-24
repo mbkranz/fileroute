@@ -1,66 +1,45 @@
-# fileroute
+# Fileroute
 
-Fileroute catalogs local artifacts, their sources, and their publication
-destinations across SharePoint, Google Drive, and S3. Pull supports all three
-providers; push currently publishes to SharePoint targets only.
+Describe local artifacts, their upstream sources, and their publication
+destinations in one versioned YAML or JSON descriptor. Fileroute can inspect
+that descriptor offline, draw a workflow diagram, pull remote inputs, and push
+to supported targets.
 
-Descriptors use `Catalog`, `Resource`, `Location`, and `CatalogReference`:
-`path` identifies the artifact, `sources` records upstream inputs, and `targets`
-identifies publication destinations. `pull` reads sources; `push`
-writes targets. Both support offline `--dry-run` planning. `diagram` turns the
-same resolved descriptor relationships into SVG, an offline HTML inspector, or a
-Markdown file dictionary without
-contacting a remote service.
+**Today:** pull from SharePoint, Google Drive, or S3; push to SharePoint.
+Google Drive and S3 targets are valid metadata but not executable uploads.
+Fileroute does not render source documents or stream between providers.
 
-```bash
-fileroute resolve config/retrieval.yaml --write
-fileroute pull config/retrieval.yaml --dry-run
-fileroute push config/publication.yaml --dry-run
-fileroute diagram config/publication.yaml
-fileroute list config/publication.yaml --format json
+## Start with a descriptor
+
+Install it in a project with `uv add fileroute`, or run the CLI without adding
+a dependency using `uvx fileroute`. The project installation is appropriate
+when Python code also imports Fileroute or automation must use a locked version.
+
+```yaml
+resources:
+  - name: report
+    path: artifacts/report.csv
+    sources:
+      - path: s3://my-bucket/exports/report.csv
 ```
 
-See the [README](https://github.com/mbkranz/fileroute#readme) for descriptor
-examples, [project and standalone usage](https://github.com/mbkranz/fileroute#choose-how-to-run-it),
-[multi-destination use cases](https://github.com/mbkranz/fileroute#common-use-cases),
-target inheritance, path rules, and URL resolution. See
-[Descriptor diagrams](diagram.md) for the CLI and reusable semantic graph API.
-
-## Architecture
-
-- `models.py`: four declarative Pydantic models and `ServiceType`.
-- `descriptor.py`: load, save, walk, find, and offline URL/provider resolution.
-- `diagram.py`: provider-neutral descriptor graph plus dependency-free SVG rendering.
-- `diagram_reports.py`: offline HTML inspector and Markdown dictionary.
-- `transfer.py`: plan pull/push, then dispatch through the resolved provider enum.
-- `item.py`: live provider-backed items and runtime hierarchy snapshots.
-- `clients/` and `auth/`: provider API and credential behavior.
-- `commands/`: CLI input, saved descriptor selection, editing, and diagram invocation.
-
-The descriptor layer has no `dplib` dependency. Provider/runtime traversal is
-separate because it represents live remote state rather than authored metadata.
-Diagram generation also remains offline: it expands local `$ref` descriptors and
-resolves known provider URLs in memory but does not authenticate or transfer data.
-
-## Documentation
-
-- [Descriptor diagrams](diagram.md)
-- [CLI reference](cli.md)
-- [Python API](api.md)
-- [Google authentication](google-auth.md)
-- [Next steps](next-steps.md)
+Save this as `config/fileroute.yaml` and preview the transfer:
 
 ```bash
-poe docs-update
-poe docs-check
-poe docs-build
-poe docs-serve
+uvx fileroute pull config/fileroute.yaml --dry-run
+uvx fileroute diagram config/fileroute.yaml
 ```
 
-Install Poe with `uv tool install poethepoet==0.48.0`, or run a task using
-`uvx --from poethepoet==0.48.0 poe <task>`.
+These commands do not authenticate. Run `pull` without `--dry-run` when
+credentials are configured and you want to download the file. See
+[Descriptors](descriptors.md) for paths and references, [Use cases](use-cases.md)
+for multi-destination examples, and [Transfers](transfers.md) for the exact
+execution rules. The [README](https://github.com/mbkranz/fileroute#readme)
+also gives a quick start for GitHub visitors.
 
-## Package releases
+## Go further
 
-See the [release workflow and retry instructions](https://github.com/mbkranz/fileroute#package-releases).
-Use `poe release-check` to validate and `poe build` to build locally.
+- [Descriptor diagrams](diagram.md): SVG, Mermaid, HTML, Markdown, and graph API.
+- [Google authentication](google-auth.md): local and automated credentials.
+- [CLI reference](cli.md) and [Python API](api.md): generated from the code.
+- [Contributing and releases](contributing.md): development, migration, CI.

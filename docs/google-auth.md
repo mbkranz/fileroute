@@ -53,10 +53,9 @@ uv run fileroute auth login gdrive \
   --oauth-token-path .google/oauth-token.json
 ```
 
-For standalone use, substitute `uvx --from
-git+https://github.com/mbkranz/fileroute.git@dev fileroute` for
-`uv run fileroute`. See the README's [usage options](https://github.com/mbkranz/fileroute#choose-how-to-run-it)
-for the difference between the project environment and a separate tool environment.
+For standalone use, substitute `uvx fileroute` for `uv run fileroute`.
+See the [README](https://github.com/mbkranz/fileroute#readme) for the
+difference between the project environment and a separate tool environment.
 
 ## Programmatic and CI setup (service account)
 
