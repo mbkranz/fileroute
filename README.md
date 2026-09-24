@@ -4,11 +4,11 @@ Sharedrive describes where project artifacts come from, where they live locally,
 and where they should be published. A small YAML or JSON catalog connects local
 files with SharePoint, Google Drive, and S3 URLs, so a document or data export
 can keep its provenance and multiple destinations in one place. The CLI can
-preview changes without credentials, pull remote inputs, and push supported
-outputs; the same descriptor and transfer planners are available from Python.
-Use it inside a project for repeatable, versioned workflows, or run it as a
-standalone tool to inspect and retrieve individual files. Python 3.11 or newer
-is required.
+preview changes without credentials, visualize descriptor workflows as SVG,
+pull remote inputs, and push supported outputs; the same descriptor, graph, and
+transfer APIs are available from Python. Use it inside a project for repeatable,
+versioned workflows, or run it as a standalone tool to inspect and retrieve
+individual files. Python 3.11 or newer is required.
 
 ## Choose how to run it
 
@@ -19,6 +19,7 @@ the command. This is the better fit for automation and Python API imports.
 
 ```bash
 uv add git+https://github.com/mbkranz/sharedrive.git@dev
+uv run sharedrive diagram config/sharedrive.yaml
 uv run sharedrive pull config/sharedrive.yaml --dry-run
 uv run sharedrive push config/sharedrive.yaml --dry-run
 ```
@@ -36,13 +37,15 @@ that project's Python code. Use this for ad hoc CLI operations:
 
 ```bash
 uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive list config/sharedrive.yaml
+uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive diagram config/sharedrive.yaml
 uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive pull config/sharedrive.yaml --dry-run
 ```
 
 Once the intended Sharedrive distribution is available from your package index,
-the shorter form is `uvx sharedrive list config/sharedrive.yaml` (or
-`uvx sharedrive --help`). For a fixed tool version, pin the package version or
-Git commit. See uv's [tool guide](https://docs.astral.sh/uv/concepts/tools/).
+the shorter forms include `uvx sharedrive diagram config/sharedrive.yaml` and
+`uvx sharedrive list config/sharedrive.yaml` (or `uvx sharedrive --help`). For a
+fixed tool version, pin the package version or Git commit. See uv's
+[tool guide](https://docs.astral.sh/uv/concepts/tools/).
 
 To develop this repository itself:
 
@@ -53,8 +56,8 @@ uv run sharedrive --help
 
 Configure credentials using `.env-sample`. SharePoint uses the `AZURE_*` and
 `SHAREPOINT_*` settings; Google supports ADC, service accounts, and user OAuth;
-S3 uses the standard AWS credential chain. Descriptor loading and dry runs do
-not authenticate.
+S3 uses the standard AWS credential chain. Descriptor loading, diagramming, and
+dry runs do not authenticate.
 
 ```bash
 sharedrive auth login gdrive
@@ -62,7 +65,8 @@ sharedrive auth login microsoft --auth-mode delegated
 sharedrive auth login sharepoint --auth-mode delegated
 ```
 
-See [Google authentication](docs/google-auth.md) and the generated
+See [descriptor diagrams](docs/diagram.md),
+[Google authentication](docs/google-auth.md), and the generated
 [CLI](docs/cli.md) and [Python API](docs/api.md) references.
 
 ## Descriptor model
@@ -214,9 +218,27 @@ can be pulled; only SharePoint targets can be pushed. A descriptor with a Google
 Drive or S3 target is valid metadata, but `push` **and `push --dry-run` fail at
 planning** until upload support is implemented. If you need the SharePoint
 destination now, put it in a separate descriptor (or remove the unsupported
-targets) for that run. `resolve` can still infer providers and preview the
-descriptor without authentication. Source and target URLs above are examples;
-replace them with your own accessible files and sites.
+targets) for that run. `resolve` and `diagram` can still resolve those providers
+and inspect the descriptor without authentication. Source and target URLs above
+are examples; replace them with your own accessible files and sites.
+
+## Visualize file workflows
+
+`diagram` renders descriptor intent rather than executing a transfer. It expands
+local `$ref` catalogs, resolves known provider URLs in memory, applies catalog
+target inheritance, and draws sources → artifacts → targets as a standalone SVG.
+It does not require Graphviz or another rendering dependency.
+
+```bash
+sharedrive diagram config/sharedrive.yaml
+sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.svg
+```
+
+The descriptor argument follows the same saved/default selection behavior as
+`pull`, `push`, and `resolve`, so after `sharedrive checkout` you can simply run
+`sharedrive diagram`. The default output is `sharedrive-diagram.svg` in the
+current working directory. See [Descriptor diagrams](docs/diagram.md) for the
+Python `DescriptorGraph` API and repository-integration guidance.
 
 ## Commands
 
@@ -228,6 +250,7 @@ sharedrive checkout config/sharedrive.yaml
 sharedrive update --name documentation --title "Published documentation"
 sharedrive resolve config/sharedrive.yaml
 sharedrive resolve config/sharedrive.yaml --write
+sharedrive diagram config/sharedrive.yaml
 sharedrive migrate old.yaml new.yaml --direction push
 sharedrive pull config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml --dry-run
@@ -312,6 +335,7 @@ before writing any files. Pull replaces existing local files at planned paths.
 from pathlib import Path
 from sharedrive import Catalog, Resource, Location
 from sharedrive.descriptor import save
+from sharedrive.diagram import load_graph, render_svg
 from sharedrive.transfer import plan_push, push
 
 catalog = Catalog(resources=[Resource(
@@ -320,6 +344,8 @@ catalog = Catalog(resources=[Resource(
     targets=[Location(path="https://contoso.sharepoint.com/sites/dev/Docs/guide.docx")],
 )])
 save(catalog, "config/sharedrive.yaml")
+graph = load_graph("config/sharedrive.yaml")
+render_svg(graph, "sharedrive-diagram.svg")
 plan = plan_push(Path("config/sharedrive.yaml"), root=Path.cwd())
 # Inspect plan before transfer.
 push(plan)
@@ -330,6 +356,7 @@ The core has one module per responsibility:
 - `models.py`: declarative `Catalog`, `Resource`, `Location`, `CatalogReference`
   and `ServiceType` validation.
 - `descriptor.py`: `load`, `save`, `walk`, `find`, and offline `resolve`.
+- `diagram.py`: semantic descriptor graphs and dependency-free SVG rendering.
 - `migration.py`: explicit one-way conversion of legacy descriptors.
 - `transfer.py`: `plan_pull` / `plan_push`, then `pull` / `push` execution.
 - `item.py`: runtime `ServiceItem` hierarchy.
@@ -353,12 +380,12 @@ a snapshot until refresh or mutation invalidates it.
 
 ## Breaking API changes
 
-Use the four models above and the functions in `descriptor` and `transfer`.
-Model I/O and traversal methods, `upload.py`, `download.py`, `helpers.py`, the
-provider registry have been removed. The CLI has no `upload` alias or `set`
-command. Run `checkout` again to select
-a descriptor using the new single-path selection file; obsolete saved workflow
-defaults are no longer read.
+Use the four models above and the functions in `descriptor`, `diagram`, and
+`transfer`. Model I/O and traversal methods, `upload.py`, `download.py`,
+`helpers.py`, and the provider registry have been removed. The CLI has no
+`upload` alias or `set` command. Run `checkout` again to select a descriptor
+using the new single-path selection file; obsolete saved workflow defaults are
+no longer read.
 
 Legacy `Drive*` classes, packages, `_cache`, and artifact-level provider fields
 are unsupported. Update authored descriptors to `path`, `sources`, `targets`,

@@ -24,6 +24,7 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `checkout`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
 * `add`: Add a standards-aligned resource or...
+* `diagram`: Render descriptor sources, artifacts, and...
 * `auth`: Authentication helpers.
 * `clone`: Clone descriptor state for new local...
 
@@ -231,6 +232,25 @@ sharedrive add my-resource --path downloads/file.csv --source https://drive.goog
 ```bash
 sharedrive add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
 ```
+
+## `sharedrive diagram`
+
+Render descriptor sources, artifacts, and targets as an SVG workflow.
+
+**Usage**:
+
+```console
+$ sharedrive diagram [OPTIONS] [DESCRIPTOR]
+```
+
+**Arguments**:
+
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+
+**Options**:
+
+* `-o, --output PATH`: SVG file to write.  [default: sharedrive-diagram.svg]
+* `--help`: Show this message and exit.
 
 ## `sharedrive auth`
 
