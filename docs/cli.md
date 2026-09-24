@@ -235,7 +235,7 @@ fileroute add my-folder --catalog --path docs/_output --target https://tenant.sh
 
 ## `fileroute diagram`
 
-Render descriptor sources, artifacts, and targets as SVG, HTML, or Markdown.
+Render descriptor sources, artifacts, and targets as SVG, HTML, Markdown, or Mermaid.
 
 **Usage**:
 
@@ -249,7 +249,7 @@ $ fileroute diagram [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
-* `-o, --output PATH`: Output .svg, .html, or .md file (Markdown also writes a companion SVG).  [default: fileroute-diagram.svg]
+* `-o, --output PATH`: Output .svg, .html, .md, or .mmd file (Markdown also writes a companion SVG).  [default: fileroute-diagram.svg]
 * `--detail [summary|full]`: Metadata exported in HTML/Markdown; SVG remains compact.  [default: summary]
 * `--help`: Show this message and exit.
 

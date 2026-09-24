@@ -17,7 +17,7 @@ class Detail(StrEnum):
 def register_diagram_command(app: typer.Typer) -> None:
     @app.command(
         "diagram",
-        help="Render descriptor sources, artifacts, and targets as SVG, HTML, or Markdown.",
+        help="Render descriptor sources, artifacts, and targets as SVG, HTML, Markdown, or Mermaid.",
     )
     def diagram_command(
         descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
@@ -25,7 +25,7 @@ def register_diagram_command(app: typer.Typer) -> None:
             Path("fileroute-diagram.svg"),
             "--output",
             "-o",
-            help="Output .svg, .html, or .md file (Markdown also writes a companion SVG).",
+            help="Output .svg, .html, .md, or .mmd file (Markdown also writes a companion SVG).",
         ),
         detail: Detail = typer.Option(
             Detail.summary,
@@ -34,12 +34,13 @@ def register_diagram_command(app: typer.Typer) -> None:
     ) -> None:
         """Render the resolved descriptor workflow without authenticating."""
 
-        from fileroute.diagram import load_graph, render_svg
+        from fileroute.diagram import load_graph, render_mermaid, render_svg
         from fileroute.diagram_reports import render_html, render_markdown
 
         try:
             renderers = {
                 ".svg": render_svg,
+                ".mmd": render_mermaid,
                 ".html": render_html,
                 ".htm": render_html,
                 ".md": render_markdown,
@@ -48,13 +49,13 @@ def register_diagram_command(app: typer.Typer) -> None:
             renderer = renderers.get(output.suffix.lower())
             if renderer is None:
                 raise ValueError(
-                    "Output must end in .svg, .html, .htm, .md, or .markdown."
+                    "Output must end in .svg, .html, .htm, .md, .markdown, or .mmd."
                 )
             path = prepare_descriptor_path(descriptor)
             graph = load_graph(path)
             destination = (
                 renderer(graph, output)
-                if renderer is render_svg
+                if renderer in {render_svg, render_mermaid}
                 else renderer(graph, output, detail=detail.value)
             )
         except (OSError, ValueError) as exc:

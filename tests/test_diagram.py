@@ -1,7 +1,7 @@
 from typer.testing import CliRunner
 
 from fileroute.cli import app
-from fileroute.diagram import build_graph, load_graph, render_svg
+from fileroute.diagram import build_graph, load_graph, render_mermaid, render_svg
 from fileroute.models import Catalog, Location, Resource, ServiceType
 
 
@@ -75,6 +75,36 @@ def test_load_graph_resolves_providers_and_references(tmp_path):
         for node in graph.nodes
     )
     assert all(node.kind != "reference" for node in graph.nodes)
+
+
+def test_mermaid_shows_distinct_destinations_and_local_provenance(tmp_path):
+    graph = build_graph(
+        Catalog(
+            resources=[
+                Resource(
+                    name="guide",
+                    path="output/guide.docx",
+                    sources=[Location(path="docs/guide.qmd")],
+                    targets=[
+                        Location(
+                            path="https://tenant.sharepoint.com/sites/docs/Shared%20Documents/guide.docx",
+                            service_type=ServiceType.SHAREPOINT,
+                        ),
+                        Location(
+                            path="s3://bucket/guide.docx", service_type=ServiceType.S3
+                        ),
+                    ],
+                )
+            ]
+        )
+    )
+    content = render_mermaid(graph, tmp_path / "guide.mmd").read_text()
+    assert 'n1["docs/guide.qmd"]' in content
+    assert 'n2["SharePoint: docs/guide.docx"]' in content
+    assert 'n3["S3: bucket/guide.docx"]' in content
+    assert "n1 --> n0" in content
+    assert "n0 --> n2" in content and "n0 --> n3" in content
+    assert "catalog:root" not in content
 
 
 def test_render_svg_and_cli_default_output(tmp_path, monkeypatch):

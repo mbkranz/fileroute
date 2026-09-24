@@ -8,6 +8,7 @@ import json
 from typing import Any, TypedDict
 from html import escape
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from fileroute.descriptor import load, resolve
 from fileroute.models import Catalog, CatalogReference, Location, Resource, ServiceType
@@ -230,6 +231,54 @@ def render_svg(graph: DescriptorGraph, output: Path | str) -> Path:
     return output
 
 
+def render_mermaid(graph: DescriptorGraph, output: Path | str) -> Path:
+    """Write Mermaid flowchart source from the same resolved descriptor graph."""
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # A bare root catalog is a container, not an artifact in the workflow.
+    omitted = {
+        node.key
+        for node in graph.nodes
+        if node.key == "catalog:root"
+        and not node.path
+        and not node.metadata.get("name")
+        and not node.metadata.get("title")
+        and not any(
+            edge.kind != "contains"
+            and (edge.source == node.key or edge.target == node.key)
+            for edge in graph.edges
+        )
+    }
+    nodes = [node for node in graph.nodes if node.key not in omitted]
+    ids = {node.key: f"n{index}" for index, node in enumerate(nodes)}
+
+    def label(node: DiagramNode) -> str:
+        if node.kind in {"source", "target"} and node.path:
+            if node.service_type is ServiceType.SHAREPOINT:
+                parts = urlsplit(node.path).path.strip("/").split("/")
+                site = parts[1] if len(parts) > 1 else "SharePoint"
+                return f"SharePoint: {site}/{unquote(parts[-1])}"
+            if node.service_type is ServiceType.GOOGLE_DRIVE:
+                parts = urlsplit(node.path).path.strip("/").split("/")
+                return f"Google Drive: {parts[-2] if len(parts) > 1 and parts[-1] == 'view' else parts[-1]}"
+            if node.service_type is ServiceType.S3:
+                return f"S3: {node.path.removeprefix('s3://')}"
+            return node.path
+        return node.path or node.label
+
+    lines = ["flowchart LR"]
+    for node in nodes:
+        lines.append(
+            f"    {ids[node.key]}[{json.dumps(label(node), ensure_ascii=False)}]"
+        )
+    for edge in graph.edges:
+        if edge.source in ids and edge.target in ids:
+            lines.append(f"    {ids[edge.source]} --> {ids[edge.target]}")
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output
+
+
 def _svg(graph: DescriptorGraph, *, interactive: bool = False) -> str:
     """Shared SVG markup for standalone and inline HTML output."""
     source_keys = {edge.source for edge in graph.edges if edge.kind == "source"}
@@ -332,4 +381,5 @@ __all__ = [
     "build_graph",
     "load_graph",
     "render_svg",
+    "render_mermaid",
 ]

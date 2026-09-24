@@ -1,0 +1,10 @@
+flowchart LR
+    n0["docs/_output/guide.docx"]
+    n1["docs/guide.qmd"]
+    n2["SharePoint: docs/guide.docx"]
+    n3["Google Drive: GOOGLE_FILE_ID"]
+    n4["S3: example-docs/guide.docx"]
+    n1 --> n0
+    n0 --> n2
+    n0 --> n3
+    n0 --> n4

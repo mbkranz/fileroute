@@ -164,7 +164,7 @@ def test_markdown_companion_and_dictionary_links(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "suffix", [".html", ".md", ".svg", ".HTML", ".htm", ".markdown"]
+    "suffix", [".html", ".md", ".svg", ".HTML", ".htm", ".markdown", ".mmd"]
 )
 def test_cli_formats(tmp_path, suffix):
     descriptor = tmp_path / "fileroute.yaml"

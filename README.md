@@ -5,7 +5,7 @@ and where they should be published. A small YAML or JSON catalog connects local
 files with SharePoint, Google Drive, and S3 URLs, so a document or data export
 can keep its provenance and multiple destinations in one place. The CLI can
 preview changes without credentials, visualize descriptor workflows as SVG, HTML,
-or Markdown, pull remote inputs, and push supported outputs; the same descriptor, graph, and
+Markdown, or Mermaid, pull remote inputs, and push supported outputs; the same descriptor, graph, and
 transfer APIs are available from Python. Use it inside a project for repeatable,
 versioned workflows, or run it as a standalone tool to inspect and retrieve
 individual files. Python 3.11 or newer is required.
@@ -18,14 +18,14 @@ the project's environment and resolves its declared dependencies before running
 the command. This is the better fit for automation and Python API imports.
 
 ```bash
-uv add git+https://github.com/mbkranz/fileroute.git@dev
+uv add fileroute
 uv run fileroute diagram config/fileroute.yaml
 uv run fileroute pull config/fileroute.yaml --dry-run
 uv run fileroute push config/fileroute.yaml --dry-run
 ```
 
-Use a commit SHA instead of `dev` in the Git dependency for a fixed revision,
-or `uv add ./path/to/fileroute` when developing against a local checkout. See
+Use `uv add 'fileroute==X.Y.Z'` to select a fixed PyPI version, or
+`uv add ./path/to/fileroute` when developing against a local checkout. See
 uv's [project command guide](https://docs.astral.sh/uv/concepts/projects/run/)
 and [dependency guide](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
@@ -36,15 +36,13 @@ does not add Fileroute to the project's dependencies or make it importable by
 that project's Python code. Use this for ad hoc CLI operations:
 
 ```bash
-uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute list config/fileroute.yaml
-uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute diagram config/fileroute.yaml
-uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute pull config/fileroute.yaml --dry-run
+uvx fileroute list config/fileroute.yaml
+uvx fileroute diagram config/fileroute.yaml
+uvx fileroute pull config/fileroute.yaml --dry-run
 ```
 
-Once the intended Fileroute distribution is available from your package index,
-the shorter forms include `uvx fileroute diagram config/fileroute.yaml` and
-`uvx fileroute list config/fileroute.yaml` (or `uvx fileroute --help`). For a
-fixed tool version, pin the package version or Git commit. See uv's
+For a fixed tool version, use `uvx --from 'fileroute==X.Y.Z' fileroute --help`.
+See uv's
 [tool guide](https://docs.astral.sh/uv/concepts/tools/).
 
 To develop this repository itself:
@@ -143,7 +141,8 @@ artifact came from; its `targets` list every intended publication destination.
 One resource can have multiple targets. `pull` downloads **one remote source**
 to `path`, and `push` uploads the file at `path` to **all targets**. Run them as
 separate steps; Fileroute does not stream directly between cloud providers or
-convert source formats. These examples can be saved as `config/fileroute.yaml`.
+convert source formats. Each example is saved under `examples/use-cases/`; copy
+one to `config/fileroute.yaml` to adapt it to your project.
 
 ### One SharePoint source and two SharePoint targets
 
@@ -159,6 +158,25 @@ resources:
       - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/monthly-report.csv
       - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv
 ```
+
+Generate the Mermaid source from the saved example:
+
+```bash
+uvx fileroute diagram examples/use-cases/sharepoint-two-targets.yaml --output examples/use-cases/sharepoint-two-targets.mmd
+```
+
+<!-- diagram:sharepoint-two-targets:start -->
+```mermaid
+flowchart LR
+    n0["artifacts/monthly-report.csv"]
+    n1["SharePoint: data/monthly-report.csv"]
+    n2["SharePoint: reports/monthly-report.csv"]
+    n3["SharePoint: archive/monthly-report.csv"]
+    n1 --> n0
+    n0 --> n2
+    n0 --> n3
+```
+<!-- diagram:sharepoint-two-targets:end -->
 
 For this supported combination, run `fileroute pull config/fileroute.yaml`
 and then `fileroute push config/fileroute.yaml`, with `--dry-run` on either
@@ -178,6 +196,23 @@ resources:
       - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
 ```
 
+Generate the Mermaid source from the saved example:
+
+```bash
+uvx fileroute diagram examples/use-cases/sharepoint-google-drive.yaml --output examples/use-cases/sharepoint-google-drive.mmd
+```
+
+<!-- diagram:sharepoint-google-drive:start -->
+```mermaid
+flowchart LR
+    n0["artifacts/partner-report.csv"]
+    n1["SharePoint: data/partner-report.csv"]
+    n2["Google Drive: GOOGLE_FILE_ID"]
+    n1 --> n0
+    n0 --> n2
+```
+<!-- diagram:sharepoint-google-drive:end -->
+
 ### SharePoint source, SharePoint and Google Drive targets
 
 Use the same local copy for a supported SharePoint publication and a planned
@@ -194,6 +229,25 @@ resources:
       - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
 ```
 
+Generate the Mermaid source from the saved example:
+
+```bash
+uvx fileroute diagram examples/use-cases/sharepoint-mixed-targets.yaml --output examples/use-cases/sharepoint-mixed-targets.mmd
+```
+
+<!-- diagram:sharepoint-mixed-targets:start -->
+```mermaid
+flowchart LR
+    n0["artifacts/partner-report.csv"]
+    n1["SharePoint: data/partner-report.csv"]
+    n2["SharePoint: reports/partner-report.csv"]
+    n3["Google Drive: GOOGLE_FILE_ID"]
+    n1 --> n0
+    n0 --> n2
+    n0 --> n3
+```
+<!-- diagram:sharepoint-mixed-targets:end -->
+
 ### Local authoring source with SharePoint, Google Drive, and S3 targets
 
 Keep the input document as provenance while publishing its rendered output:
@@ -209,6 +263,27 @@ resources:
       - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
       - path: s3://example-docs/guide.docx
 ```
+
+Generate the Mermaid source from the saved example:
+
+```bash
+uvx fileroute diagram examples/use-cases/local-three-targets.yaml --output examples/use-cases/local-three-targets.mmd
+```
+
+<!-- diagram:local-three-targets:start -->
+```mermaid
+flowchart LR
+    n0["docs/_output/guide.docx"]
+    n1["docs/guide.qmd"]
+    n2["SharePoint: docs/guide.docx"]
+    n3["Google Drive: GOOGLE_FILE_ID"]
+    n4["S3: example-docs/guide.docx"]
+    n1 --> n0
+    n0 --> n2
+    n0 --> n3
+    n0 --> n4
+```
+<!-- diagram:local-three-targets:end -->
 
 Render `docs/guide.qmd` to `docs/_output/guide.docx` with Quarto before
 publishing. A local source is provenance; `pull` does not render or copy it.
@@ -232,10 +307,12 @@ It does not require Graphviz or another rendering dependency.
 ```bash
 fileroute diagram config/fileroute.yaml
 fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.svg
+fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.mmd
 fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.html
 fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.md --detail full
 ```
 
+Mermaid (`.mmd`) writes editable `flowchart LR` source for a fenced `mermaid` block in GitHub Markdown. The README embeds generated blocks directly; run `uv run python scripts/update_readme_diagrams.py` after changing an example descriptor.
 HTML provides a searchable offline file dictionary linked to diagram nodes; Markdown
 writes an anchored dictionary and companion SVG. `--detail summary` exports curated
 metadata; `--detail full` includes custom fields and service IDs. Inherited targets
