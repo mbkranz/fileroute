@@ -21,8 +21,8 @@ Descriptors and diagrams may include unsupported publication targets. However,
 `push --dry-run` also fails planning if **any** target is unsupported; it
 does not partially publish to the supported targets. To publish just the
 SharePoint copy now, use a separate descriptor or remove the other targets.
-`resolve`, `diagram`, and dry runs do not authenticate or inspect remote
-permissions.
+Offline `resolve`, `diagram`, and dry runs do not authenticate or inspect remote
+permissions. `resolve --online` reads provider metadata to verify locations.
 
 ## Push
 
@@ -45,6 +45,9 @@ SharePoint execution creates missing child folders and creates/replaces files;
 it never deletes remote files. Files above Microsoft Graph's 250 MB
 single-request limit fail planning. A dry run cannot verify remote folders,
 access, or permissions.
+For a folder target enriched by `resolve --online --write`, push uses its
+`driveId` and `serviceId` directly. An exact file target uses its parent folder
+path, because the saved file ID does not identify the upload folder.
 
 ## Pull
 
@@ -58,5 +61,8 @@ Pull dry runs plan remote directories as units. Execution enumerates the
 remote files and checks their paths before writing; it replaces existing
 local files at planned paths. Use separate retrieval and publication
 catalogs when their source semantics differ.
+Pull prefers a saved `serviceId`, then a provider-scoped `remotePath`, then a
+URL. Online resolution therefore makes subsequent pulls more precise without
+requiring IDs when authoring a descriptor.
 
 See [Use cases](use-cases.md) for runnable and metadata-only examples.

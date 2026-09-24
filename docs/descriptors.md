@@ -12,6 +12,11 @@ local descriptor. The same metadata drives planning and diagrams.
 | `targets` | Downstream publication destinations |
 | `serviceType` | Optional location provider: `GoogleDrive`, `SharePoint`, `S3` |
 | `serviceId` | Optional provider-native identifier on a location |
+| `site`, `siteId` | SharePoint site name and Graph ID |
+| `drive`, `driveId` | SharePoint library or Google shared drive name and ID |
+| `bucket` | S3 bucket name |
+| `remotePath` | Path within the provider namespace; filled by offline resolution |
+| `entityType` | `File` or `Directory` after online resolution (can also guide upload targets) |
 | `$ref` | Another local catalog document |
 
 For example, a rendered Word document can record its Quarto source without
@@ -50,7 +55,7 @@ for later commands.
 | Add a resource or catalog | [`add`](cli.md#fileroute-add) |
 | Inspect local entries | [`list`](cli.md#fileroute-list) |
 | Edit an entry | [`update`](cli.md#fileroute-update) |
-| Infer provider metadata | [`resolve`](cli.md#fileroute-resolve) |
+| Resolve remote locations | [`resolve`](cli.md#fileroute-resolve) |
 | Copy a descriptor | [`clone descriptor`](cli.md#fileroute-clone-descriptor) |
 | Convert legacy metadata | [`migrate`](cli.md#fileroute-migrate) |
 
@@ -82,22 +87,43 @@ whitespace preservation is not guaranteed. The format is inspired by Data
 Package and DCAT, not a full implementation of either standard. `$schema`
 is an optional profile label, not a network-fetched schema.
 
-## URL resolution
+## Location resolution
 
-`fileroute resolve config/fileroute.yaml` previews canonical JSON offline;
-add `--write` to persist inferred metadata in that document. It recognizes
-`s3://`, Google Drive/Docs, and SharePoint URLs as providers while preserving
-the original, clickable URL. For example:
+`fileroute resolve config/fileroute.yaml` previews normalized JSON offline;
+add `--write` to persist it. It parses `s3://`, Google Drive/Docs, and
+SharePoint URLs while preserving the original clickable URL. For example:
 
 ```yaml
 path: https://contoso.sharepoint.com/sites/dev/Docs/guide.docx
 serviceType: SharePoint
+site: dev
+drive: Docs
+remotePath: guide.docx
 ```
 
-Conflicting explicit providers are errors. Unrecognized remote target URLs
-need an explicit `serviceType`; local provenance and ordinary web citations
-can be provider-less sources. Resolution does not follow redirects, fetch IDs,
-or check permissions.
+Google Drive URLs containing an item ID also yield `serviceId` offline. A bare
+remote path needs a provider and namespace; Fileroute never searches all
+accessible sites or drives to guess one:
+
+```yaml
+# SharePoint: site and drive, or siteId and driveId
+path: Reports/a.docx
+serviceType: SharePoint
+site: PPSC
+drive: Shared Documents
+```
+
+For Google Drive use `drive: PPSC Shared Drive` (or `driveId`); for S3 use
+`bucket: ppsc-data`. Offline resolution fills `remotePath` and rejects
+conflicting metadata. Unrecognized remote targets need explicit `serviceType`;
+local provenance and ordinary web citations may be provider-less sources.
+
+Run `fileroute resolve config/fileroute.yaml --online` to verify existence and
+populate `serviceId`, `entityType`, and available provider IDs; add `--write`
+to persist them. Online resolution uses configured provider credentials and
+only reads metadata. Paths and URLs remain authored locators, and IDs remain
+optional. An S3 directory prefix should end in `/` to distinguish it from an
+object key.
 
 Write-back changes only the selected document and retains `$ref` entries.
 Resolve referenced descriptors separately to persist their own inferred

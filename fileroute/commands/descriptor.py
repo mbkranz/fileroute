@@ -128,12 +128,15 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         write: bool = typer.Option(
             False, "--write", help="Save resolved metadata back to this descriptor."
         ),
+        online: bool = typer.Option(
+            False, "--online", help="Verify and enrich remote locations using provider credentials."
+        ),
     ) -> None:
-        """Preview inferred provider metadata, preserving URLs; no network access."""
+        """Resolve locators offline by default; --online verifies IDs and types."""
         try:
             path = prepare_descriptor_path(descriptor)
             # Editing one document never rewrites or expands referenced files.
-            catalog = resolve(load(path))
+            catalog = resolve(load(path), online=online)
             if write:
                 save(catalog, path)
                 typer.echo(f"Resolved descriptor: {path}")
@@ -141,7 +144,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 echo_json(
                     catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
                 )
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, GoogleApiError, GraphApiError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 

@@ -23,6 +23,7 @@ Auto-generated from source signatures and docstrings.
   - `remote: str`
   - `service_type: ServiceType`
   - `directory: bool`
+  - `location: Location | None`
 
 #### `PushEntry`
 - Fields:
@@ -31,6 +32,7 @@ Auto-generated from source signatures and docstrings.
   - `relative: Path`
   - `service_type: ServiceType`
   - `direct_file: bool`
+  - `location: Location | None`
 - Methods:
   - `def destination(self) -> str`
 
@@ -47,8 +49,8 @@ Auto-generated from source signatures and docstrings.
   - Walk typed metadata only; no file I/O. Reject duplicate named paths.
 - `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
   - Find one entity by name/dot-path, optionally restricting its model kind.
-- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None) -> Catalog`
-  - Return resolved metadata without mutating input, URLs, files, or references.
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
+  - Return resolved metadata without mutating the input or authored paths.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
 
@@ -153,6 +155,12 @@ Auto-generated from source signatures and docstrings.
   - `service_type: ServiceTypeField | None`
   - `service_id: str | None`
   - `entity_type: EntityTypeValue | None`
+  - `remote_path: str | None`
+  - `site: str | None`
+  - `site_id: str | None`
+  - `drive: str | None`
+  - `drive_id: str | None`
+  - `bucket: str | None`
 
 #### `CatalogReference`
 - Reference to another local descriptor; descriptor.load owns resolution.
@@ -208,6 +216,11 @@ Auto-generated from source signatures and docstrings.
   - `def build_default(cls) -> 'S3Client'`
   - `def check_auth(cls) -> None`
   - `def get_from_weburl(self, url: str) -> 'S3Item'`
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_id(self, item_id: str) -> 'S3Item'`
+  - `def get_from_location(self, location: Location) -> 'S3Item'`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_path(self, *, bucket: str, key: str = '') -> 'S3Item'`
   - `def resolve_descendant(self, *, bucket: str, parent_key: str, name: str) -> 'S3Item'`
   - `def list_children(self, *, bucket: str, prefix: str) -> tuple[list[dict[str, Any]], list[str]]`
@@ -261,6 +274,10 @@ Auto-generated from source signatures and docstrings.
   - `def create_folder(self, parent_folder_id: str, name: str) -> GDriveItem`
   - `def get_from_weburl(self, url: str) -> GDriveItem`
     - Resolve a Google Drive file or folder URL.
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_location(self, location: Location) -> GDriveItem`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_id(self, file_id: str) -> GDriveItem`
     - Resolve a Google Drive item ID.
   - `def get_from_path(self, drive_name: str, path: str = '') -> GDriveItem`
@@ -406,6 +423,11 @@ Auto-generated from source signatures and docstrings.
   - `def scan_descendants(self, *, drive_id: str) -> list[dict[str, Any]]`
   - `def resolve_descendant(self, *, drive_id: str, parent_path: str, name: str) -> dict[str, Any]`
   - `def get_from_weburl(self, url: str) -> 'SharepointItem'`
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_id(self, item_id: str, *, drive_id: str, path: str = '') -> 'SharepointItem'`
+  - `def get_from_location(self, location: Location) -> 'SharepointItem'`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_path(self, *, site_name: str, item_path: str = '/', library_name: str | None = None) -> 'SharepointItem'`
   - `def download_content(self, drive_id = None, item_id = None, download_url = None)`
     - takes in the components needed to download content --
@@ -417,6 +439,8 @@ Auto-generated from source signatures and docstrings.
     - Update a file, optionally creating it when it does not exist.
   - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
     - Create or replace a file below an existing SharePoint folder URL.
+  - `def upload_to_location(self, location: Location, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
+    - Upload beneath a verified folder ID or a scoped provider path.
 
 #### `SharepointItem`
 - A SharePoint file or folder item backed by Microsoft Graph.

@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 from enum import Enum
 from typing import Any, ClassVar, Dict, Literal, Optional, Union, cast
 import requests
@@ -11,7 +12,8 @@ from fileroute.item import ServiceItem
 from fileroute.auth.google import GoogleAuth
 from fileroute.clients.base import BaseClient
 from fileroute.exceptions import GoogleApiError, GoogleDriveError
-from fileroute.models import ServiceType
+from fileroute.models import Location, ServiceType
+from fileroute.resolution import ResolvedLocation, relative_path
 import pydantic
 from pydantic import BeforeValidator, Field
 from typing import Annotated
@@ -619,6 +621,52 @@ class GoogleDriveClient(GoogleBaseClient):
     def get_from_weburl(self, url: str) -> GDriveItem:
         """Resolve a Google Drive file or folder URL."""
         return self.get_from_id(self._extract_id_from_url(str(url)))
+
+    @classmethod
+    def recognizes_url(cls, url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.scheme in {"http", "https"} and (
+            parsed.hostname or ""
+        ).lower() in {"drive.google.com", "docs.google.com"}
+
+    @classmethod
+    def parse_location(cls, location: Location) -> ResolvedLocation:
+        parsed = urlparse(location.path)
+        context = {key: value for key in ("drive", "drive_id")
+                   if (value := getattr(location, key)) is not None}
+        if cls.recognizes_url(location.path):
+            item_id = cls._extract_id_from_url(location.path)
+            return ResolvedLocation(ServiceType.GOOGLE_DRIVE, service_id=item_id,
+                                    context=context)
+        if parsed.scheme:
+            if parsed.scheme not in {"http", "https"}:
+                raise ValueError(f"Google Drive requires a URL or scoped path: {location.path}")
+            return ResolvedLocation(ServiceType.GOOGLE_DRIVE, context=context)
+        if not (location.drive or location.drive_id or location.service_id):
+            raise ValueError(f"Google Drive path requires drive or driveId: {location.path}")
+        return ResolvedLocation(ServiceType.GOOGLE_DRIVE, relative_path(location.path),
+                                context=context)
+
+    def get_from_location(self, location: Location) -> GDriveItem:
+        if location.service_id:
+            return self.get_from_id(location.service_id)
+        if location.drive_id:
+            root = GDriveItem(client=self, path="", id=location.drive_id,
+                              name=location.drive or "", mime_type=FOLDER_MIME,
+                              drive_id=location.drive_id, container_id=location.drive_id)
+            return root.get_path(location.remote_path or "")
+        if location.drive:
+            return self.get_from_path(location.drive, location.remote_path or "")
+        return self.get_from_weburl(location.path)
+
+    def resolve_location(self, location: Location) -> ResolvedLocation:
+        item = self.get_from_location(location)
+        context = {key: value for key in ("drive", "drive_id")
+                   if (value := getattr(location, key)) is not None}
+        if item._drive_id:
+            context["drive_id"] = item._drive_id
+        return ResolvedLocation(ServiceType.GOOGLE_DRIVE, location.remote_path,
+                                item.id, "Directory" if item.is_directory else "File", context)
 
     def get_from_id(self, file_id: str) -> GDriveItem:
         """Resolve a Google Drive item ID."""
