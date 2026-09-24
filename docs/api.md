@@ -2,81 +2,65 @@
 
 Auto-generated from source signatures and docstrings.
 
-## `sharedrive.upload`
+## `sharedrive.transfer`
 
 ### Functions
 
-- `def plan_upload(descriptor: Path, *, root: Path | None = None) -> tuple[UploadFile, ...]`
+- `def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]`
+  - Plan remote sources to local paths, offline.
+- `def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
-- `def upload(files: tuple[UploadFile, ...]) -> None`
+- `def pull(entries: tuple[PullEntry, ...]) -> None`
+  - Resolve remote items, check their paths, then download planned files.
+- `def push(files: tuple[PushEntry, ...]) -> None`
   - Transfer a prepared plan; remote files outside it are never deleted.
 
 ### Classes
 
-#### `UploadFile`
+#### `PullEntry`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `service_type: ServiceType`
+  - `directory: bool`
+
+#### `PushEntry`
 - Fields:
   - `local: Path`
   - `remote: str`
   - `relative: Path`
-  - `service: str`
+  - `service_type: ServiceType`
   - `direct_file: bool`
 - Methods:
   - `def destination(self) -> str`
 
 
-## `sharedrive.download`
+## `sharedrive.descriptor`
 
 ### Functions
 
-- `def plan_download(descriptor: Path, *, root: Path | None = None) -> tuple[Download, ...]`
-  - Plan remote sources to local paths, offline.
-- `def download(entries: tuple[Download, ...]) -> None`
-  - Resolve remote items, check their paths, then download planned files.
+- `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
+  - Load YAML/JSON; optionally expand $ref relative to each containing file.
+- `def save(catalog: Catalog, path: Path | str) -> None`
+  - Atomically save canonical metadata, including authored defaults/extensions.
+- `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
+  - Walk typed metadata only; no file I/O. Reject duplicate named paths.
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
+  - Find one entity by name/dot-path, optionally restricting its model kind.
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None) -> Catalog`
+  - Return resolved metadata without mutating input, URLs, files, or references.
+- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
+  - Resolve a local artifact inside root; never accept URLs or escapes.
 
 ### Classes
 
-#### `Download`
+#### `EntityPath`
 - Fields:
-  - `local: Path`
-  - `remote: str`
-  - `service: str`
-  - `directory: bool`
-
-
-## `sharedrive.migration`
-
-### Functions
-
-- `def migrate_descriptor(path: Path, *, direction: Literal['pull', 'push'] = 'pull') -> Catalog`
-  - Read a legacy descriptor and return canonical models, inlining references.
-
-
-## `sharedrive.helpers`
-
-### Constants
-
-- `DESCRIPTOR_DEFAULTS_FILE = Path('.sharedrive/sharedrive_set.json')`
-
-### Functions
-
-- `def descriptor_scope_key(descriptor: Path | str) -> str`
-  - Return the stable key used for descriptor-scoped defaults.
-- `def get_saved_params_for_descriptor(descriptor: Path | str | None = None) -> dict[str, Any]`
-  - Return merged global and descriptor-scoped saved params.
-- `def has_saved_global_descriptor() -> bool`
-  - Return whether the global defaults include a descriptor path.
-- `def load_descriptor_defaults_store() -> dict[str, Any]`
-  - Load persisted descriptor defaults for global and descriptor scopes.
-- `def resolve_default_descriptor() -> Path`
-  - Return the first existing default descriptor path.
-- `def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path`
-  - Resolve descriptor path from explicit input, saved defaults, or standard locations.
-- `def save_params_for_scope(parsed: dict[str, Any], descriptor: Path | str | None, *, global_scope: bool) -> str`
-  - Save reusable CLI params to the global or descriptor-specific scope.
-- `def save_descriptor_defaults_store(data: dict[str, Any]) -> None`
-  - Persist descriptor defaults store to disk.
-- `def set_active_descriptor(descriptor_path: Path) -> Path`
-  - Persist the active descriptor.
+  - `name_path: str`
+  - `model: Catalog | Resource | CatalogReference`
+  - `json_pointer: str`
+- Methods:
+  - `def entity_type(self) -> str`
 
 
 ## `sharedrive.models`
@@ -84,32 +68,16 @@ Auto-generated from source signatures and docstrings.
 ### Constants
 
 - `CATALOG_PROFILE = 'sharedrive-catalog'`
-- `ServiceId = str`
-- `ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]`
 - `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
 
 ### Functions
 
-- `def walk_entities(root: Any, prefix: str = '', pointer: str = '') -> Iterator[EntityPath]`
-  - One structural walker for models and authored mappings; no I/O.
-- `def read_descriptor(path: Path) -> dict[str, Any]`
-  - Read JSON/YAML without discarding authored extension metadata.
-- `def write_descriptor(path: Path, document: dict[str, Any]) -> None`
-  - Write JSON/YAML, preserving fields but not YAML comments/formatting.
-- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
-  - Resolve a local artifact inside root; never accept URLs or escapes.
-- `def normalize_service_type(value: str | None) -> str | None`
-  - Normalize OpenMetadata-style drive/storage service names.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
-- `def infer_service_type(locator: str) -> str`
-  - Infer a supported serviceType from a remote locator.
-- `def resolve_service_type(locator: str, service_type: str | None = None) -> str`
-  - Return a supported canonical serviceType, inferring it when omitted.
-- `def adapter_from_service_type(service_type: str | None) -> str | None`
-  - Map supported serviceType values to registry adapter names.
 
 ### Classes
+
+#### `ServiceType`
 
 #### `Catalog`
 - Nested groups of resources and catalogs.
@@ -117,15 +85,8 @@ Auto-generated from source signatures and docstrings.
   - `profile: str`
   - `resources: list[Resource]`
   - `catalogs: list[Catalog | CatalogReference]`
-  - `_origin: Path | None`
 - Methods:
   - `def identify_references(cls, children: Any) -> Any`
-  - `def from_path(cls, path: str | Path) -> Self`
-  - `def iter_entity_paths(self, *, include_self: bool = False, traverse_references: bool = True, _seen: frozenset[Path] = frozenset()) -> Iterator[EntityPath]`
-  - `def assert_valid_entity_paths(self) -> None`
-  - `def get_resource(self, name: str) -> Resource`
-  - `def get_catalog(self, name: str) -> Catalog`
-  - `def dereference(self, _seen: frozenset[Path] = frozenset()) -> Self`
 
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
@@ -137,41 +98,15 @@ Auto-generated from source signatures and docstrings.
 - Upstream input or downstream destination, with optional provider metadata.
 - Fields:
   - `path: str`
-  - `serviceType: ServiceTypeValue | None`
-  - `serviceId: str | None`
-  - `entityType: EntityTypeValue | None`
+  - `service_type: ServiceTypeField | None`
+  - `service_id: str | None`
+  - `entity_type: EntityTypeValue | None`
 
 #### `CatalogReference`
-- Lazy reference to another local descriptor; resolved beside its document.
+- Reference to another local descriptor; descriptor.load owns resolution.
 - Fields:
   - `name: str | None`
   - `path: str`
-  - `_basepath: Path`
-- Methods:
-  - `def load(self) -> Catalog`
-
-#### `EntityPath`
-- Fields:
-  - `name_path: str`
-  - `model: Entity | CatalogReference`
-  - `json_pointer: str`
-  - `entity_type: str`
-
-#### `GDriveApiFile`
-- Fields:
-  - `kind: Annotated[GDriveKind, Literal['file']]`
-  - `id: Optional[str]`
-  - `name: Optional[str]`
-  - `mimeType: Optional[str]`
-  - `parents: GDriveParents`
-  - `webViewLink: Optional[str]`
-  - `driveId: Optional[str]`
-
-#### `GDriveApiDrive`
-- Fields:
-  - `kind: Annotated[GDriveKind, Literal['drive']]`
-  - `id: Optional[str]`
-  - `name: Optional[str]`
 
 
 ## `sharedrive.item`
@@ -181,17 +116,17 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceItem`
 - Base interface for files and directories in a remote service.
 - Methods:
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def refresh(self, *, include_children: bool = True) -> 'ServiceItem'`
     - Refresh this runtime item from its backing service.
   - `def children(self) -> list['ServiceItem']`
     - Direct child items for directories; always empty for files.
-  - `def parent_id(self) -> ServiceId | None`
+  - `def parent_id(self) -> str | None`
     - Best-known parent identifier for this item, when available.
   - `def parent(self) -> 'ServiceItem' | None`
     - Best-known parent item from the active traversal snapshot.
@@ -207,7 +142,7 @@ Auto-generated from source signatures and docstrings.
     - Export local artifact paths and remote provenance as owned models.
 
 
-## `sharedrive.clients.aws`
+## `sharedrive.clients.s3`
 
 ### Functions
 
@@ -232,7 +167,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['S3Item']`
@@ -288,12 +223,12 @@ Auto-generated from source signatures and docstrings.
   - `def mime_type(self) -> Optional[str]`
   - `def children(self) -> list['ServiceItem']`
     - Direct children of this directory; empty list for files.
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def refresh(self, *, include_children: bool = True) -> 'GDriveItem'`
     - Re-fetch raw metadata (and optionally children) from the API.
   - `def export(self, target_mime_type: Optional[str] = None, output_path: Optional[str] = None) -> Union[bytes, str]`
@@ -439,7 +374,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['SharepointItem']`

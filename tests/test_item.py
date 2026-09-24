@@ -84,9 +84,9 @@ def test_file_to_catalog_uses_artifact_path_and_remote_source() -> None:
     assert resource.name == "reports/Report.CSV"
     assert resource.path == "reports/Report.CSV"
     assert resource.sources[0].path == "https://drive.google.com/file/d/file-1"
-    assert resource.sources[0].serviceId == "file-1"
-    assert resource.sources[0].serviceType == "GoogleDrive"
-    assert resource.entityType == "File"
+    assert resource.sources[0].service_id == "file-1"
+    assert resource.sources[0].service_type == "GoogleDrive"
+    assert resource.entity_type == "File"
     assert resource.format == "csv"
 
 
@@ -144,9 +144,9 @@ def test_directory_to_catalog_preserves_child_resources_and_catalogs() -> None:
     assert isinstance(catalog, Catalog)
     assert catalog.name == ""
     assert catalog.sources[0].path == "s3://example-bucket"
-    assert catalog.sources[0].serviceId == "root-folder"
-    assert catalog.sources[0].serviceType == "S3"
-    assert catalog.entityType == "Directory"
+    assert catalog.sources[0].service_id == "root-folder"
+    assert catalog.sources[0].service_type == "S3"
+    assert catalog.entity_type == "Directory"
     assert [resource.name for resource in catalog.resources] == ["summary.csv"]
     assert [child.name for child in catalog.catalogs] == ["archive"]
     assert [resource.name for resource in catalog.catalogs[0].resources] == [

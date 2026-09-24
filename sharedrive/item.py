@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterator
 
 from sharedrive.exceptions import AmbiguousPathError
-from sharedrive.models import Catalog, Resource, Location, ServiceId, ServiceTypeValue
+from sharedrive.models import Catalog, Resource, Location, ServiceType
 
 
 def _index_path(path: str | Path) -> str:
@@ -66,7 +66,7 @@ class ServiceItem(ABC):
 
     @property
     @abstractmethod
-    def id(self) -> ServiceId:
+    def id(self) -> str:
         raise NotImplementedError
 
     @property
@@ -81,7 +81,7 @@ class ServiceItem(ABC):
 
     @property
     @abstractmethod
-    def service_type(self) -> ServiceTypeValue:
+    def service_type(self) -> ServiceType:
         raise NotImplementedError
 
     @property
@@ -110,7 +110,7 @@ class ServiceItem(ABC):
         raise NotImplementedError
 
     @property
-    def parent_id(self) -> ServiceId | None:
+    def parent_id(self) -> str | None:
         """Best-known parent identifier for this item, when available.
 
         ``_parent_id`` is provider metadata from remote APIs. When unavailable,

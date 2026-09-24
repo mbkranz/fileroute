@@ -16,46 +16,15 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
-* `upload`: Publish artifact paths to targets; alias...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
-* `migrate`: Write canonical path/sources/targets to a...
+* `resolve`: Preview inferred provider metadata,...
 * `update`: Update descriptor-root or resource...
 * `checkout`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
 * `add`: Add a standards-aligned resource or...
-* `set`: Set reusable key/value parameters for...
 * `auth`: Authentication helpers.
 * `clone`: Clone descriptor state for new local...
-
-## `sharedrive upload`
-
-Publish artifact paths to targets; alias of push.
-
-**Usage**:
-
-```console
-$ sharedrive upload [OPTIONS] [DESCRIPTOR]
-```
-
-**Arguments**:
-
-* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-
-**Options**:
-
-* `--dry-run`: List files without authenticating or writing.
-* `--help`: Show this message and exit.
-
-**Examples**
-
-```bash
-sharedrive upload config/sharedrive.yaml --dry-run
-```
-
-```bash
-sharedrive upload config/sharedrive.yaml
-```
 
 ## `sharedrive push`
 
@@ -95,24 +64,23 @@ $ sharedrive pull [OPTIONS] [DESCRIPTOR]
 * `--dry-run`: Plan without authenticating or writing.
 * `--help`: Show this message and exit.
 
-## `sharedrive migrate`
+## `sharedrive resolve`
 
-Write canonical path/sources/targets to a new file; keep the original.
+Preview inferred provider metadata, preserving URLs; no network access.
 
 **Usage**:
 
 ```console
-$ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
+$ sharedrive resolve [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
 
-* `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New canonical descriptor to write.  [required]
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
 
 **Options**:
 
-* `--direction TEXT`: Interpret legacy URLs as pull sources or push targets.  [default: pull]
+* `--write`: Save resolved metadata back to this descriptor.
 * `--help`: Show this message and exit.
 
 ## `sharedrive update`
@@ -231,41 +199,6 @@ sharedrive add my-resource --path downloads/file.csv --source https://drive.goog
 
 ```bash
 sharedrive add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
-```
-
-## `sharedrive set`
-
-Set reusable key/value parameters for sharedrive descriptor workflows.
-
-**Usage**:
-
-```console
-$ sharedrive set [OPTIONS] [DESCRIPTOR_SCOPE]
-```
-
-**Arguments**:
-
-* `[DESCRIPTOR_SCOPE]`: Descriptor path to save defaults for.
-
-**Options**:
-
-* `--global`: Save params as global defaults for all descriptors.
-* `--descriptor TEXT`: Default descriptor path to save.
-* `--output-dir TEXT`: Default output directory to save.
-* `--help`: Show this message and exit.
-
-**Examples**
-
-```bash
-sharedrive set --global --descriptor resources/descriptor.yaml
-```
-
-```bash
-sharedrive set --global --output-dir resources
-```
-
-```bash
-sharedrive set resources/descriptor.yaml --output-dir exports
 ```
 
 ## `sharedrive auth`

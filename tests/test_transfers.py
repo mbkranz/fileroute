@@ -6,16 +6,17 @@ import pytest
 from typer.testing import CliRunner
 
 from sharedrive.cli import app
+from sharedrive.descriptor import save
 from sharedrive.models import Catalog, Resource, Location
-from sharedrive.upload import plan_upload
-from sharedrive.download import plan_download, download
+from sharedrive.transfer import plan_push
+from sharedrive.transfer import plan_pull, pull
 
 REMOTE = "https://tenant.sharepoint.com/sites/dev/Docs"
 
 
 def descriptor(tmp_path, **kwargs):
     path = tmp_path / "config/catalog.yaml"
-    Catalog(**kwargs).to_path(path)
+    save(Catalog(**kwargs), path)
     return path
 
 
@@ -45,7 +46,7 @@ def test_targets_inherit_override_and_opt_out(tmp_path):
             )
         ],
     )
-    plan = plan_upload(path, root=tmp_path)
+    plan = plan_push(path, root=tmp_path)
     assert [entry.destination for entry in plan] == [
         REMOTE + "/one.docx",
         REMOTE + "/renamed.docx",
@@ -67,7 +68,7 @@ def test_multiple_targets_and_folder_target(tmp_path):
             )
         ],
     )
-    assert [entry.destination for entry in plan_upload(path, root=tmp_path)] == [
+    assert [entry.destination for entry in plan_push(path, root=tmp_path)] == [
         REMOTE + "/guide.docx",
         REMOTE + "/copy.docx",
     ]
@@ -79,7 +80,7 @@ def test_push_never_uses_provenance_as_destination(tmp_path):
         resources=[Resource(path="file", sources=[Location(path=REMOTE + "/source")])],
     )
     with pytest.raises(ValueError, match="targets"):
-        plan_upload(path, root=tmp_path)
+        plan_push(path, root=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -109,26 +110,31 @@ def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
             stream.truncate(250_000_001)
     path = descriptor(tmp_path, resources=resources)
     monkeypatch.setattr(
-        "sharedrive.upload.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     with pytest.raises(ValueError):
-        plan_upload(path, root=tmp_path)
+        plan_push(path, root=tmp_path)
 
 
 def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
     (tmp_path / "out").mkdir()
     (tmp_path / "out/guide #1.docx").write_text("doc")
     child = tmp_path / "child.yaml"
-    Catalog(
-        path="out",
-        targets=[Location(path=REMOTE)],
-        resources=[Resource(path="out/guide #1.docx")],
-    ).to_path(child)
+    save(
+        Catalog(
+            path="out",
+            targets=[Location(path=REMOTE)],
+            resources=[Resource(path="out/guide #1.docx")],
+        ),
+        child,
+    )
     path = tmp_path / "root.yaml"
     path.write_text("catalogs:\n - $ref: child.yaml\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.upload.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["push", str(path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -151,9 +157,9 @@ def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
         is_directory=False, download=lambda target: calls.append(target)
     )
     client = SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item)
-    monkeypatch.setattr("sharedrive.download.get_client", lambda _: client)
-    entries = plan_download(path, root=tmp_path)
-    download(entries)
+    monkeypatch.setattr("sharedrive.clients.s3.S3Client.build_default", lambda: client)
+    entries = plan_pull(path, root=tmp_path)
+    pull(entries)
     assert calls == ["s3://bucket/source.csv", tmp_path / "download/file.csv"]
 
 
@@ -171,7 +177,7 @@ def test_pull_refuses_multiple_sources(tmp_path):
         ],
     )
     with pytest.raises(ValueError, match="exactly one source"):
-        plan_download(path, root=tmp_path)
+        plan_pull(path, root=tmp_path)
 
 
 def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
@@ -181,7 +187,8 @@ def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.download.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.s3.S3Client.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["pull", str(path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -207,9 +214,46 @@ def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monke
         path="root", is_directory=True, iter_files=lambda: iter(children)
     )
     monkeypatch.setattr(
-        "sharedrive.download.get_client",
-        lambda _: SimpleNamespace(get_from_weburl=lambda url: item),
+        "sharedrive.clients.s3.S3Client.build_default",
+        lambda: SimpleNamespace(get_from_weburl=lambda url: item),
     )
     with pytest.raises(ValueError, match="outside"):
-        download(plan_download(path, root=tmp_path))
+        pull(plan_pull(path, root=tmp_path))
     assert calls == []
+
+
+def test_directional_planning_ignores_opposite_location_errors(tmp_path):
+    (tmp_path / "file").write_text("data")
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="file",
+                sources=[Location(path="s3://bucket/file")],
+                targets=[Location(path="not-a-remote-target")],
+            )
+        ],
+    )
+    assert plan_pull(path, root=tmp_path)[0].remote == "s3://bucket/file"
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="file",
+                sources=[Location(path="s3://bucket/file", service_type="SharePoint")],
+                targets=[Location(path=REMOTE + "/file")],
+            )
+        ],
+    )
+    assert plan_push(path, root=tmp_path)[0].destination == REMOTE + "/file"
+
+
+def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
+    from sharedrive.descriptor import load, resolve, save
+
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out/guide.docx").write_text("doc")
+    path = descriptor(tmp_path, path="out", targets=[Location(path=REMOTE)])
+    before = plan_push(path, root=tmp_path)
+    save(resolve(load(path)), path)
+    assert plan_push(path, root=tmp_path) == before

@@ -11,8 +11,34 @@ from sharedrive.item import ServiceItem
 from sharedrive.auth.google import GoogleAuth
 from sharedrive.clients.base import AdapterCapabilities, BaseClient
 from sharedrive.exceptions import GoogleApiError, GoogleDriveError
-from sharedrive.models import GDriveApiDrive, ServiceId, ServiceTypeValue, GDriveApiFile
-from sharedrive.registry import provider
+from sharedrive.models import ServiceType
+import pydantic
+from pydantic import BeforeValidator, Field
+from typing import Annotated
+
+
+GDriveKind = Annotated[
+    Literal["drive", "file"], BeforeValidator(lambda v: v.replace("drive#", ""))
+]
+GDriveParents = Annotated[list[str], Field(default_factory=list)]
+
+
+class GDriveApiFile(pydantic.BaseModel, validate_assignment=True):
+    model_config = pydantic.ConfigDict()
+
+    kind: Annotated[GDriveKind, Literal["file"]] = "file"
+    id: Optional[str] = None
+    name: Optional[str] = None
+    mimeType: Optional[str] = None
+    parents: GDriveParents
+    webViewLink: Optional[str] = None
+    driveId: Optional[str] = None
+
+
+class GDriveApiDrive(pydantic.BaseModel, validate_assignment=True):
+    kind: Annotated[GDriveKind, Literal["drive"]] = "drive"
+    id: Optional[str] = None
+    name: Optional[str] = None
 
 
 class GoogleBaseClient(BaseClient):
@@ -183,7 +209,6 @@ ALT_EXPORTS = {
 }
 
 
-@provider("googledrive")
 class GoogleDriveClient(GoogleBaseClient):
     """Google Drive client (ID-first) with read/write and full export coverage.
 
@@ -202,9 +227,7 @@ class GoogleDriveClient(GoogleBaseClient):
     production code.
 
     The class is registered as the ``"googledrive"`` provider via the
-    :func:`~sharedrive.registry.provider` decorator; use
-    :func:`~sharedrive.registry.build_service_registry` to obtain a
-    :class:`~sharedrive.registry.ServiceAdapter` for it.
+    Selected by ServiceType through sharedrive.clients.get_provider.
 
 
     NOTE: may need to bring over resourceKey for handling google drive items that you are not explicitly a member of.
@@ -697,14 +720,14 @@ class GDriveItem(ServiceItem):
         self,
         client: GoogleDriveClient | None = None,
         path: str = "",
-        id: ServiceId | None = None,
+        id: str | None = None,
         name: str | None = None,
         source_url: str | None = None,
-        parent_id: ServiceId | None = None,
+        parent_id: str | None = None,
         mime_type: str | None = None,
         kind: Optional[str] = None,
-        container_id: ServiceId | None = None,
-        drive_id: ServiceId | None = None,
+        container_id: str | None = None,
+        drive_id: str | None = None,
     ):
         self.kind = kind
         self._client = client
@@ -724,8 +747,8 @@ class GDriveItem(ServiceItem):
         client: "GoogleDriveClient",
         *,
         path: str | None = None,
-        container_id: ServiceId | None = None,
-        drive_id: ServiceId | None = None,
+        container_id: str | None = None,
+        drive_id: str | None = None,
     ) -> "GDriveItem":
         api_metadata_dict = api_metadata.model_dump()
         if isinstance(api_metadata, GDriveApiDrive):
@@ -835,7 +858,7 @@ class GDriveItem(ServiceItem):
         return descendants
 
     @property
-    def id(self) -> ServiceId:
+    def id(self) -> str:
         if self._id is None:
             raise ValueError("Cannot access ID of an item that has no ID")
         return self._id
@@ -857,8 +880,8 @@ class GDriveItem(ServiceItem):
         return self._mime_type == FOLDER_MIME
 
     @property
-    def service_type(self) -> ServiceTypeValue:
-        return "GoogleDrive"
+    def service_type(self) -> ServiceType:
+        return ServiceType.GOOGLE_DRIVE
 
     def refresh(self, *, include_children: bool = True) -> "GDriveItem":
         """Re-fetch raw metadata (and optionally children) from the API."""

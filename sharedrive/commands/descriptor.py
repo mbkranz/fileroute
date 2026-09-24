@@ -16,35 +16,9 @@ from sharedrive.commands.toolkit import (
     prepare_descriptor_path,
 )
 from sharedrive.exceptions import GoogleApiError, GraphApiError
-from sharedrive.helpers import has_saved_global_descriptor, set_active_descriptor
-from sharedrive.models import (
-    Catalog,
-    Resource,
-    read_descriptor,
-    write_descriptor,
-    walk_entities,
-    normalize_entity_type,
-    normalize_service_type,
-)
-
-
-def _find_descriptor_entity(
-    document: dict[str, Any], name: str
-) -> tuple[dict[str, Any], str]:
-    """Find a unique named entity by its name or dot-path in this document."""
-    matches = [
-        (row.model, row.name_path)
-        for row in walk_entities(document)
-        if name.casefold()
-        in {row.name_path.casefold(), str(row.model.get("name", "")).casefold()}
-    ]
-    if not matches:
-        raise typer.BadParameter(f'Entity selector "{name}" was not found.')
-    if len(matches) > 1:
-        raise typer.BadParameter(
-            f'Entity selector "{name}" is ambiguous; use a dot-path.'
-        )
-    return matches[0]
+from sharedrive.commands.config import active_descriptor, set_active_descriptor
+from sharedrive.descriptor import load, save, walk, find, resolve
+from sharedrive.models import Catalog, Resource, normalize_entity_type, Location
 
 
 def _add_resource_to_descriptor(
@@ -61,7 +35,7 @@ def _add_resource_to_descriptor(
         raise ValueError("name must be a non-empty string")
 
     if descriptor_path.exists():
-        document = Catalog.from_path(str(descriptor_path))
+        document = load(str(descriptor_path))
     elif create_if_missing:
         document = Catalog()
     else:
@@ -82,14 +56,14 @@ def _add_resource_to_descriptor(
     kwargs["name"] = entity_name
     if catalog:
         entry = Catalog.model_validate(kwargs)
-        document.catalogs.append(entry)
+        document.catalogs = [*document.catalogs, entry]
     else:
         entry = Resource.model_validate(kwargs)
-        document.resources.append(entry)
+        document.resources = [*document.resources, entry]
 
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
-    document.to_path(str(descriptor_path))
-    return entry.to_dict()
+    save(document, descriptor_path)
+    return entry.model_dump(mode="json", by_alias=True, exclude_unset=True)
 
 
 def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> None:
@@ -98,31 +72,24 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         "push",
         help="Publish artifact paths to targets; create or replace, never delete.",
     )
-    @app.command(
-        "upload",
-        epilog=examples_epilog(
-            "sharedrive upload config/sharedrive.yaml --dry-run",
-            "sharedrive upload config/sharedrive.yaml",
-        ),
-    )
-    def upload_command(
+    def push_command(
         descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="List files without authenticating or writing."
         ),
     ) -> None:
-        """Publish artifact paths to targets; alias of push."""
-        from sharedrive.upload import plan_upload, upload
+        """Publish artifact paths to targets; create or replace files."""
+        from sharedrive.transfer import plan_push, push
 
         try:
-            files = plan_upload(prepare_descriptor_path(descriptor))
+            files = plan_push(prepare_descriptor_path(descriptor))
             for file in files:
                 target = file.destination
                 typer.echo(
                     f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}"
                 )
             if not dry_run:
-                upload(files)
+                push(files)
         except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -135,16 +102,16 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ),
     ) -> None:
         """Materialize a single remote source into each artifact's path."""
-        from sharedrive.download import plan_download, download
+        from sharedrive.transfer import plan_pull, pull
 
         try:
-            entries = plan_download(prepare_descriptor_path(descriptor))
+            entries = plan_pull(prepare_descriptor_path(descriptor))
             for entry in entries:
                 typer.echo(
                     f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"
                 )
             if not dry_run:
-                download(entries)
+                pull(entries)
         except (
             OSError,
             ValueError,
@@ -155,30 +122,28 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
-    @app.command("migrate")
-    def migrate_command(
-        descriptor: Path = typer.Argument(..., help="Legacy descriptor to read."),
-        output: Path = typer.Argument(..., help="New canonical descriptor to write."),
-        direction: str = typer.Option(
-            "pull",
-            "--direction",
-            help="Interpret legacy URLs as pull sources or push targets.",
+    @app.command("resolve")
+    def resolve_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        write: bool = typer.Option(
+            False, "--write", help="Save resolved metadata back to this descriptor."
         ),
     ) -> None:
-        """Write canonical path/sources/targets to a new file; keep the original."""
-        if direction not in {"pull", "push"}:
-            raise typer.BadParameter("--direction must be pull or push")
-        if output.exists() or output.resolve() == descriptor.resolve():
-            raise typer.BadParameter(
-                "Choose a new output file; migrate does not overwrite files"
-            )
+        """Preview inferred provider metadata, preserving URLs; no network access."""
         try:
-            from sharedrive.migration import migrate_descriptor
-
-            migrate_descriptor(descriptor, direction=direction).to_path(output)
+            path = prepare_descriptor_path(descriptor)
+            # Editing one document never rewrites or expands referenced files.
+            catalog = resolve(load(path))
+            if write:
+                save(catalog, path)
+                typer.echo(f"Resolved descriptor: {path}")
+            else:
+                echo_json(
+                    catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
+                )
         except (OSError, ValueError) as exc:
-            raise typer.BadParameter(str(exc)) from exc
-        typer.echo(f"Migrated {descriptor} -> {output}")
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
 
     @clone_app.command(
         "descriptor",
@@ -216,12 +181,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
 
         # Validate the source, then copy its authored fields without the model's
         # exclude-defaults serialization dropping $schema or empty collections.
-        Catalog.from_path(str(source_descriptor))
+        load(str(source_descriptor))
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if source_descriptor.suffix.lower() == target_path.suffix.lower():
             shutil.copyfile(source_descriptor, target_path)
         else:
-            write_descriptor(target_path, read_descriptor(source_descriptor))
+            save(load(source_descriptor), target_path)
         typer.echo(f"Cloned descriptor: {source_descriptor} -> {target_path}")
 
     @app.command(
@@ -252,39 +217,44 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
 
         descriptor_path = prepare_descriptor_path(descriptor)
 
-        document = read_descriptor(descriptor_path)
-        Catalog.from_dict(document)
+        document = load(descriptor_path)
         target_label = str(descriptor_path)
-        target: dict[str, Any] = document
+        target = document
         if name is not None:
-            target, entity_path = _find_descriptor_entity(document, name)
-            target_label = f"{entity_path} in {descriptor_path}"
+            try:
+                target = find(document, name)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            target_label = f"{name} in {descriptor_path}"
 
         changed_properties: list[str] = []
         for property_name, raw_value in parsed.items():
             property_path = {
-                "service-type": "serviceType",
-                "entity-type": "entityType",
+                "service-type": "service_type",
+                "serviceType": "service_type",
+                "entity-type": "entity_type",
+                "entityType": "entity_type",
+                "$schema": "profile",
             }.get(property_name, property_name)
             value = raw_value
-            if property_path == "serviceType":
-                value = normalize_service_type(value)
-            elif property_path == "entityType":
+            if property_path == "service_type":
+                value = Location(path="metadata", service_type=value).service_type
+            elif property_path == "entity_type":
                 value = normalize_entity_type(value)
             field_target = target
             if (
-                property_path == "serviceType"
+                property_path == "service_type"
                 and name is not None
-                and target.get("sources")
+                and getattr(target, "sources", None)
             ):
-                sources = target["sources"]
-                if len(sources) != 1 or not isinstance(sources[0], dict):
+                sources = target.sources
+                if len(sources) != 1:
                     raise typer.BadParameter(
                         "--service-type requires exactly one source for this entity."
                     )
                 field_target = sources[0]
-            if field_target.get(property_path) != value:
-                field_target[property_path] = value
+            if getattr(field_target, property_path, None) != value:
+                setattr(field_target, property_path, value)
                 changed_properties.append(
                     f"{property_path} -> {json.dumps(value, default=str)}"
                 )
@@ -293,13 +263,15 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo("No changes needed.")
             return
 
+        document = Catalog.model_validate(
+            document.model_dump(exclude_unset=True, warnings=False)
+        )
         if dry_run:
             for change in changed_properties:
                 typer.echo(f"Would update {target_label}: {change}")
             return
 
-        Catalog.from_dict(document)
-        write_descriptor(descriptor_path, document)
+        save(document, descriptor_path)
         for change in changed_properties:
             typer.echo(f"Updated {target_label}: {change}")
 
@@ -339,9 +311,8 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         descriptor_path = prepare_descriptor_path(descriptor)
 
         try:
-            model = Catalog.from_path(str(descriptor_path))
-            model.assert_valid_entity_paths()
-            references = list(model.iter_entity_paths(include_self=False))
+            model = load(descriptor_path, resolve_references=True)
+            references = list(walk(model))
         except (OSError, ValueError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -349,7 +320,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         if output_format == OutputFormat.JSON:
             echo_json({
                 "descriptor": descriptor_path.as_posix(),
-                "entities": [reference.model.to_dict() for reference in references],
+                "entities": [
+                    reference.model.model_dump(
+                        mode="json", by_alias=True, exclude_unset=True
+                    )
+                    for reference in references
+                ],
             })
             return
 
@@ -371,7 +347,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             nodes[reference.name_path] = node
             details = []
             resource_path = getattr(item, "path", None)
-            entity_type = getattr(item, "entityType", None)
+            entity_type = getattr(item, "entity_type", None)
             if resource_path:
                 details.append(f"path={resource_path}")
             for field in ("sources", "targets"):
@@ -407,9 +383,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         """Add a standards-aligned resource or catalog entry to a descriptor."""
         descriptor_path = prepare_descriptor_path(
             descriptor,
-            require_exists=descriptor is not None or has_saved_global_descriptor(),
+            require_exists=descriptor is not None or (active_descriptor() is not None),
         )
-        explicit_descriptor = descriptor is not None or has_saved_global_descriptor()
+        explicit_descriptor = descriptor is not None or (
+            active_descriptor() is not None
+        )
 
         parsed = parse_set_args(list(ctx.args))
 

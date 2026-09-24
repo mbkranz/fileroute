@@ -8,7 +8,7 @@ from typing import Any, Optional
 import typer
 from dotenv import load_dotenv
 
-from sharedrive.helpers import resolve_descriptor_path as resolve_descriptor_path_helper
+from sharedrive.commands.config import resolve_descriptor_path
 
 
 class OutputFormat(str, Enum):
@@ -43,7 +43,7 @@ def prepare_descriptor_path(
     require_exists: bool = True,
 ) -> Path:
     load_env_file(env_file)
-    descriptor_path = resolve_descriptor_path_helper(descriptor)
+    descriptor_path = resolve_descriptor_path(descriptor)
     if require_exists:
         exit_if_descriptor_missing(descriptor_path)
     return descriptor_path

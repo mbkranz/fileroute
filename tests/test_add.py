@@ -6,7 +6,8 @@ import pytest
 import yaml
 
 from sharedrive.commands.descriptor import _add_resource_to_descriptor
-from sharedrive.models import infer_service_type
+from sharedrive.models import Catalog, Location
+from sharedrive.descriptor import resolve
 
 
 def _write_catalog_descriptor(path: Path) -> None:
@@ -129,9 +130,12 @@ def test_add_resource_to_descriptor_allows_create_if_missing(tmp_path: Path) -> 
     ],
 )
 def test_infer_service_type(source: str, expected: str) -> None:
-    assert infer_service_type(source) == expected
+    assert (
+        resolve(Catalog(targets=[Location(path=source)])).targets[0].service_type
+        == expected
+    )
 
 
 def test_infer_service_type_raises_when_unknown() -> None:
-    with pytest.raises(NotImplementedError, match="Could not infer serviceType"):
-        infer_service_type("C:/tmp/local-file.txt")
+    with pytest.raises(ValueError, match="Cannot resolve target"):
+        resolve(Catalog(targets=[Location(path="C:/tmp/local-file.txt")]))
