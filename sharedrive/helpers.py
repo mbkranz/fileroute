@@ -71,8 +71,8 @@ def has_saved_global_descriptor() -> bool:
     return isinstance(descriptor_value, str) and bool(descriptor_value.strip())
 
 
-def set_active_descriptor(descriptor_path: Path, *, entity: str | None = None) -> Path:
-    """Persist the active descriptor and optional checked-out entity."""
+def set_active_descriptor(descriptor_path: Path) -> Path:
+    """Persist the active descriptor."""
     if not descriptor_path.exists():
         raise ValueError(f"Descriptor '{descriptor_path}' does not exist.")
 
@@ -83,10 +83,7 @@ def set_active_descriptor(descriptor_path: Path, *, entity: str | None = None) -
         store["global"] = global_scope
 
     global_scope["descriptor"] = descriptor_path.as_posix()
-    if entity is not None and entity.strip():
-        global_scope["entity"] = entity.strip()
-    else:
-        global_scope.pop("entity", None)
+    global_scope.pop("entity", None)
     save_descriptor_defaults_store(store)
     return descriptor_path
 
@@ -113,31 +110,6 @@ def get_saved_params_for_descriptor(
     return merged
 
 
-def get_checked_out_entity() -> str | None:
-    """Return the currently checked-out entity dot-path, or None if no entity is active.
-
-    The checked-out entity is set via ``sharedrive checkout DESCRIPTOR ENTITY`` and
-    is stored in the global scope alongside the active descriptor.  It is distinct
-    from values written by ``sharedrive set`` so that ``set`` remains focused on
-    workflow defaults (output directories, etc.) and the entity context is managed
-    exclusively through checkout.
-
-    Only the entity portion is returned; the descriptor path is resolved separately
-    via :func:`resolve_descriptor_path`.
-    """
-    store = load_descriptor_defaults_store()
-    global_scope = store.get("global", {})
-    descriptor_path = global_scope.get("descriptor")
-    entity_path = global_scope.get("entity")
-
-    if entity_path and not descriptor_path:
-        raise ValueError("Inconsistent state: entity path is set without a descriptor path")
-
-    if isinstance(entity_path, str) and entity_path.strip():
-        return entity_path.strip()
-    return None
-
-
 def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path:
     """Resolve descriptor path from explicit input, saved defaults, or standard locations."""
     if descriptor is not None:
@@ -148,22 +120,6 @@ def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path:
         return Path(saved_descriptor.strip())
 
     return resolve_default_descriptor()
-
-
-def resolve_output_dir(
-    output_dir: Path | str | None = None,
-    *,
-    descriptor: Path | str | None = None,
-) -> Path:
-    """Resolve output_dir from explicit input, saved defaults, or the standard path."""
-    if output_dir is not None:
-        return Path(output_dir)
-
-    saved_output_dir = get_saved_params_for_descriptor(descriptor).get("output_dir")
-    if isinstance(saved_output_dir, str) and saved_output_dir.strip():
-        return Path(saved_output_dir.strip())
-
-    return Path("resources")
 
 
 def resolve_default_descriptor() -> Path:
@@ -181,13 +137,11 @@ def resolve_default_descriptor() -> Path:
 __all__ = [
     "DESCRIPTOR_DEFAULTS_FILE",
     "descriptor_scope_key",
-    "get_checked_out_entity",
     "get_saved_params_for_descriptor",
     "has_saved_global_descriptor",
     "load_descriptor_defaults_store",
     "resolve_default_descriptor",
     "resolve_descriptor_path",
-    "resolve_output_dir",
     "save_params_for_scope",
     "save_descriptor_defaults_store",
     "set_active_descriptor",

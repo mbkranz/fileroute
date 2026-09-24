@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+import json
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Optional, TypeAlias,  Union,Literal
+from typing import Annotated, Any, Literal, Optional, Self, cast
 from urllib.parse import urlparse
 
 import pydantic
-from pydantic import AliasChoices, BeforeValidator, Field, GetCoreSchemaHandler,AnyUrl, TypeAdapter
-from pydantic_core import core_schema
+import yaml
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
-from dplib.helpers.path import assert_safe_path
-from dplib.models import Package, Resource
-from dplib.system import Model
-
-
-CATALOG_PROFILE = "data-package-catalog"
+CATALOG_PROFILE = "sharedrive-catalog"
 
 SERVICE_TYPE_ALIASES = {
     "google": "GoogleDrive",
@@ -45,10 +50,6 @@ ENTITY_TYPE_ALIASES = {
 # ---------------------------------------------------------------------
 # General helpers
 # ---------------------------------------------------------------------
-
-
-def init() -> dict[str, Any]:
-    return {"$schema": CATALOG_PROFILE, "resources": [], "packages": [], "catalogs": []}
 
 
 def _require_non_empty(value: str, field_name: str) -> str:
@@ -87,40 +88,15 @@ def infer_service_type(locator: str) -> str:
 
     if scheme == "s3":
         return "S3"
-    if "sharepoint.com" in host:
+    if host == "sharepoint.com" or host.endswith(".sharepoint.com"):
         return "SharePoint"
-    if "drive.google.com" in host or "docs.google.com" in host:
+    if host in {"drive.google.com", "docs.google.com"}:
         return "GoogleDrive"
 
     raise NotImplementedError(
         f"Could not infer serviceType from '{normalized}'. "
         "Pass service_type explicitly."
     )
-
-
-def infer_entity_type(locator: str, *, service_type: str) -> str:
-    """Infer whether a locator points at a file, directory, or container."""
-    normalized = _require_non_empty(locator, "locator")
-    canonical_service_type = normalize_service_type(service_type)
-    parsed = urlparse(normalized)
-    path = parsed.path or ""
-    last_segment = path.rstrip("/").split("/")[-1] if path else ""
-
-    if canonical_service_type == "GoogleDrive":
-        return "Directory" if "/folders/" in normalized else "File"
-
-    if canonical_service_type == "S3":
-        object_path = parsed.path.lstrip("/")
-        if not object_path:
-            return "Container"
-        return "Directory" if object_path.endswith("/") else "File"
-
-    if canonical_service_type == "SharePoint":
-        if normalized.rstrip("/") != normalized:
-            return "Directory"
-        return "File" if "." in last_segment else "Directory"
-
-    return "File"
 
 
 def resolve_service_type(locator: str, service_type: str | None = None) -> str:
@@ -137,19 +113,6 @@ def resolve_service_type(locator: str, service_type: str | None = None) -> str:
     return normalized
 
 
-def resolve_entity_type(
-    locator: str,
-    *,
-    service_type: str,
-    entity_type: str | None = None,
-) -> str:
-    """Return the declared or inferred entity type."""
-    if entity_type is None:
-        return infer_entity_type(locator, service_type=service_type)
-
-    return normalize_entity_type(entity_type) or "File"
-
-
 def adapter_from_service_type(service_type: str | None) -> str | None:
     """Map supported serviceType values to registry adapter names."""
     normalized = normalize_service_type(service_type)
@@ -164,29 +127,15 @@ def adapter_from_service_type(service_type: str | None) -> str | None:
     return None
 
 
-def adapter_from_locator(locator: str) -> str:
-    """Infer a registry adapter name from a remote locator."""
-    return adapter_from_service_type(infer_service_type(locator)) or ""
-
-
-ServiceId = str
-ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]
-EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]
-def resolve_cache_path(cache: str|None, basepath: str|None):
-    if cache and basepath:
-        assert_safe_path(str(cache), basepath=basepath)
-        resolved_cache = str(Path(basepath).joinpath(cache))
-    else:
-        resolved_cache = cache
-    
-    return resolved_cache
-# ---------------------------------------------------------------------
-GDriveKind = Annotated[Literal["drive","file"], BeforeValidator(lambda v: v.replace("drive#", ""))]
+GDriveKind = Annotated[
+    Literal["drive", "file"], BeforeValidator(lambda v: v.replace("drive#", ""))
+]
 GDriveParents = Annotated[list[str], Field(default_factory=list)]
-class GDriveApiFile(pydantic.BaseModel,validate_assignment=True):
-    
+
+
+class GDriveApiFile(pydantic.BaseModel, validate_assignment=True):
     model_config = pydantic.ConfigDict()
-    
+
     kind: Annotated[GDriveKind, Literal["file"]] = "file"
     id: Optional[str] = None
     name: Optional[str] = None
@@ -194,424 +143,318 @@ class GDriveApiFile(pydantic.BaseModel,validate_assignment=True):
     parents: GDriveParents
     webViewLink: Optional[str] = None
     driveId: Optional[str] = None
-    
-    
-class GDriveApiDrive(pydantic.BaseModel,validate_assignment=True):
-    
+
+
+class GDriveApiDrive(pydantic.BaseModel, validate_assignment=True):
     kind: Annotated[GDriveKind, Literal["drive"]] = "drive"
     id: Optional[str] = None
     name: Optional[str] = None
 
-GDriveApiItem = Annotated[Union[GDriveApiFile, GDriveApiDrive],Field(discriminator="kind")]
-    
-    
-    
-# Resource / package models
-# ---------------------------------------------------------------------
+
+ServiceId = str
+ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]
+EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]
 
 
-class DriveRemoteResource(Resource):
-    """Data Package resource with shared-drive adapter metadata.
-
-    `path` remains the canonical Data Package data locator. `_cache` follows
-    the Data Package caching recipe as the local materialized copy location.
-    """
-    path: AnyUrl = Field(validation_alias=AliasChoices("path", "url"))
-    serviceType: Optional[ServiceTypeValue] = None
-    serviceId: Optional[str] = None
-    entityType: Optional[EntityTypeValue] = None
-    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
-   
-class DriveRemotePackage(Package):
-    """Data Package package with shared-drive adapter metadata."""
-
-    accessUrl: AnyUrl = Field(alias="accessURL", validation_alias=AliasChoices("accessURL", "accessUrl", "url"))
-    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
-    serviceType: Optional[ServiceTypeValue] = None
-    serviceId: Optional[str] = None
-    entityType: Optional[EntityTypeValue] = None
-    
-    
-  
-# ---------------------------------------------------------------------
-# Selector
-# ---------------------------------------------------------------------
+def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path:
+    """Resolve a local artifact inside root; never accept URLs or escapes."""
+    if "://" in path:
+        raise ValueError(f"Expected a local artifact path, got {path!r}")
+    root = root.resolve()
+    candidate = root / path
+    if reject_symlinks and any(
+        p.is_symlink() for p in (candidate, *candidate.parents) if p != root
+    ):
+        raise ValueError(f"Refusing symlink in path: {candidate}")
+    if any(parent.exists() and not parent.is_dir() for parent in candidate.parents):
+        raise ValueError(f"Path parent is not a directory: {candidate}")
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"Path is outside working directory {root}: {path}")
+    return resolved
 
 
-
-class CatalogSelector:
-    """Normalized selector for catalog/package/resource lookup.
-
-    Accepts:
-    - None
-    - a string
-    - a comma-separated string
-    - an iterable of strings
-
-    None, empty input, or "all" means select everything.
-    Otherwise, tokens are comma-split, stripped, and matched case-insensitively
-    against an entity's name or dot-path.
-    """
-
-    __slots__ = ("tokens", "_lower")
-
-    def __init__(self, raw: str | Iterable[str] | None = None) -> None:
-        values = [] if raw is None else ([raw] if isinstance(raw, str) else list(raw))
-
-        if not all(isinstance(value, str) for value in values):
-            invalid = sorted(
-                {
-                    type(value).__name__
-                    for value in values
-                    if not isinstance(value, str)
-                }
-            )
-            raise TypeError(
-                "selector values must be strings, an iterable of strings, or None; "
-                f"received invalid value types: {', '.join(invalid)}"
-            )
-
-        tokens = frozenset(
-            part.strip()
-            for value in values
-            for part in value.split(",")
-            if part.strip()
+def read_descriptor(path: Path) -> dict[str, Any]:
+    """Read JSON/YAML without discarding authored extension metadata."""
+    content = path.read_text(encoding="utf-8")
+    try:
+        document = (
+            json.loads(content)
+            if path.suffix.lower() == ".json"
+            else yaml.safe_load(content)
         )
-
-        self.tokens: frozenset[str] | None = (
-            None
-            if not tokens or "all" in {token.lower() for token in tokens}
-            else tokens
-        )
-        self._lower: frozenset[str] | None = (
-            None
-            if self.tokens is None
-            else frozenset(token.lower() for token in self.tokens)
-        )
-
-    def __bool__(self) -> bool:
-        return self.tokens is not None
-
-    def __repr__(self) -> str:
-        if not self:
-            return f"{type(self).__name__}()"
-        return f"{type(self).__name__}({sorted(self.tokens)!r})"
-
-    def matches(self, model: Model, *, path: str | None = None) -> bool:
-        """Return True if this selector matches a model name or dot-path."""
-        if self._lower is None:
-            return True
-
-        candidates = {
-            value.lower()
-            for value in (path, getattr(model, "name", None))
-            if isinstance(value, str) and value
-        }
-        return bool(candidates & self._lower)
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls,
-        source_type: Any,
-        handler: GetCoreSchemaHandler,
-    ) -> core_schema.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
-            lambda value: value if isinstance(value, cls) else cls(value),
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda selector: (
-                    sorted(selector.tokens)
-                    if selector.tokens is not None
-                    else None
-                )
-            ),
-        )
-
-# ---------------------------------------------------------------------
-# Catalog reference and catalog models
-# ---------------------------------------------------------------------
-
-class DriveRemoteCatalog(Model):
-    
-    name: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    cache: Optional[str] = Field(default=None, alias="_cache", validation_alias=AliasChoices("_cache", "cache"))
-    accessUrl: Optional[AnyUrl] = Field(default=None, alias="accessURL", validation_alias=AliasChoices("accessURL", "accessUrl", "url"))
-    serviceType: Optional[ServiceTypeValue] = None
-    serviceId: Optional[str] = None
-    entityType: Optional[EntityTypeValue] = None
-    resources: list[DriveRemoteResource] = pydantic.Field(default_factory=list)
-    packages: list[DriveRemotePackage] = pydantic.Field(default_factory=list)
-    catalogs: list[DriveRemoteCatalog] = pydantic.Field(default_factory=list)
-
-    
-DriveResourceChild: TypeAlias = Union["DriveRemoteResource", "Resource"]
-DrivePackageChild: TypeAlias = Union["DriveRemotePackage", "Package"]
-DriveCatalogChild: TypeAlias = Union["DriveRemoteCatalog", "DriveCatalogReference", "DriveCatalog"]
+    except (ValueError, yaml.YAMLError) as exc:
+        raise ValueError(f"Invalid descriptor '{path}': {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError(f"Descriptor '{path}' must contain an object")
+    return document
 
 
-class DriveReference(Model):
-    """ Base class for any named references to other metadata"""
-    name: Optional[str] = None
-    path: str
-    basepath: Optional[str] = pydantic.Field(default=None, exclude=True)
-    conformsTo: type[Model] # NOTE: https://www.w3.org/TR/vocab-dcat-3/#Property:record_conforms_to
-    def with_basepath(self, basepath: str | None) -> "DriveReference":
-        """Return a copy with inherited basepath, without rewriting path."""
-        if basepath is None or self.basepath is not None:
-            return self
-
-        assert_safe_path(self.path, basepath=basepath)
-        return self.model_copy(update={"basepath": basepath})
-
-    def load(self) -> Model:
-        """Load this reference as a DriveCatalog."""
-        if self.basepath is not None:
-            assert_safe_path(self.path, basepath=self.basepath)
-
-        catalog = self.conformsTo.from_path(self.path, basepath=self.basepath)
-
-        if catalog.name is None and self.name is not None:
-            catalog.name = self.name
-        else:
-            raise ValueError(
-                f"Loaded catalog from '{self.path}' must have a name, or the reference must have a name"
-            )
-            
-        return catalog
-    
-class DriveCatalogReference(DriveReference):
-    """Unresolved reference to an external DriveCatalog document.
-
-    `path` stays exactly as authored. `basepath` is inherited from the parent
-    catalog and used only for resolution/loading.
-    """
-    conformsTo: type[DriveCatalogChild] = pydantic.Field(default_factory=lambda: DriveCatalog)
-
-       
-class DriveCatalog(Model):
-
-    """A registry, library, or folder containing independent data entities."""
-
-    profile: str = pydantic.Field(default=CATALOG_PROFILE, alias="$schema")
-    basepath: Optional[str] = pydantic.Field(default=None, exclude=True)
-    name: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-
-    resources: list[DriveResourceChild] = pydantic.Field(default_factory=list)
-    packages: list[DrivePackageChild] = pydantic.Field(default_factory=list)
-    catalogs: list[DriveCatalogChild] = pydantic.Field(
-        default_factory=list
+def write_descriptor(path: Path, document: dict[str, Any]) -> None:
+    """Write JSON/YAML, preserving fields but not YAML comments/formatting."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = (
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+        if path.suffix.lower() == ".json"
+        else yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
     )
-    def model_post_init(self, _) -> None:
-        
-        if self.basepath is None:
-            return
-        
-        for resource in self.resources:
-            resource.basepath = self.basepath
-
-        for package in self.packages:
-            if package.basepath:
-                assert_safe_path(package.basepath, basepath=self.basepath)
-                package.basepath = self.basepath + "/" + package.basepath
-            if isinstance(package, DriveRemotePackage):
-                package.cache = resolve_cache_path(package.cache, package.basepath)
-            package.model_post_init(None)
-
-        normalized_catalogs = []
-
-        for catalog in self.catalogs:
-            if isinstance(catalog, DriveCatalogReference):
-                catalog = catalog.with_basepath(self.basepath).load()
-            
-            if isinstance(catalog, DriveRemoteCatalog):
-                catalog.cache = resolve_cache_path(catalog.cache, self.basepath)
-            elif isinstance(catalog, DriveCatalog):
-                catalog.basepath = self.basepath
-            else:
-                raise TypeError(
-                    f"Expected catalogs to be DriveCatalog, DriveRemoteCatalog, or DriveCatalogReference, "
-                    f"got {type(catalog).__name__}"
-                )
-                
-            normalized_catalogs.append(catalog)
-            catalog.model_post_init(None)
-
-        self.catalogs = normalized_catalogs
-
-    # ------------------------------------------------------------------
-    # Loading / traversal
-    # ------------------------------------------------------------------
-    def assert_valid_entity_paths(self):
-        pass
-
-    def _walk(
-        self,
-        root: Model,
-        prefix: str | None = None,
-        *,
-        traverse_references: bool = True,
-    ) -> Iterator[tuple[str, Model]]:
-        """Yield (dot_path, model) for descendants of root.
-
-        DriveCatalogReference objects are yielded as selectable entities.
-
-        When traverse_references=True, references are also loaded and walked
-        lazily, without replacing the reference in the parent catalog.
-        """
-        for collection in ("resources", "packages", "catalogs"):
-            for child in getattr(root, collection, []) or []:
-                name = getattr(child, "name", None)
-                path = f"{prefix}.{name}" if prefix and name else name or prefix
-
-                if path:
-                    yield path, child
-
-                if isinstance(child, DriveCatalogReference):
-                    if not traverse_references:
-                        continue
-
-                    loaded = child.load()
-
-                    # Reference name wins as the traversal prefix. If the
-                    # reference is unnamed, fall back to the loaded catalog name.
-                    loaded_prefix = path or loaded.name
-
-                    # If the reference was unnamed and the loaded catalog has a
-                    # name, expose the loaded catalog itself as selectable.
-                    if path is None and loaded.name:
-                        yield loaded.name, loaded
-
-                    yield from self._walk(
-                        loaded,
-                        loaded_prefix,
-                        traverse_references=traverse_references,
-                    )
-                    continue
-
-                yield from self._walk(
-                    child,
-                    path,
-                    traverse_references=traverse_references,
-                )
-
-    # ------------------------------------------------------------------
-    # Lookup helpers
-    # ------------------------------------------------------------------
+    path.write_text(content, encoding="utf-8")
 
 
-    def _find_in_walk(
-        self,
-        selector: CatalogSelector,
-        expected_class: type[Model],
-        rows: Iterable[tuple[str, Model]],
-    ) -> Model | None:
-        for path, model in rows:
-            if selector.matches(model, path=path):
-                if isinstance(model,DriveReference):
-                    return model.load()
-                else:
-                    return model
+class DescriptorModel(BaseModel):
+    """Owned metadata boundary; unknown fields survive load/save."""
 
-        return None
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    def _find(self, name: str, expected_class: type[Model]) -> Model:
-        selector = CatalogSelector(name)
-
-        entity_iter = self._walk(self, traverse_references=True)
-        found = self._find_in_walk(
-            selector,
-            expected_class,
-            entity_iter,
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump(
+            mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        if found is not None:
-            return found
-        else:
-            raise ValueError(
-                f"{expected_class.__name__} with name '{name}' not found"
-            )
 
-    # ------------------------------------------------------------------
-    # Public lookup API
-    # ------------------------------------------------------------------
+    def to_path(self, path: str | Path) -> None:
+        write_descriptor(Path(path), self.to_dict())
 
-    def get_package(self, name: str) -> DrivePackageChild:
-        """Get a package by name or dot-path, traversing catalog references lazily."""
-        return self._find(name, DrivePackageChild)
-
-    def get_resource(self, name: str) -> DriveResourceChild:
-        """Get a resource by name or dot-path, traversing catalog references lazily."""
-        return self._find(name, DriveResourceChild)
-
-    def get_catalog(self, name: str) -> DriveCatalog | DriveCatalogReference | DriveRemoteCatalog:
-        """Get a catalog by name or dot-path.
-
-        Matching DriveCatalogReference objects are loaded and returned.
-        """
-        catalog_classes = TypeAdapter(DriveCatalog | DriveCatalogReference | DriveRemoteCatalog)
-        catalog = self._find(name, catalog_classes)
-        return catalog
-    # ------------------------------------------------------------------
-    # Dereferencing
-    # ------------------------------------------------------------------
-
-    def dereference(self) -> "DriveCatalog":
-        for resource in self.resources:
-            resource.dereference()
-
-        for package in self.packages:
-            package.dereference()
-
-        resolved_catalogs: list[DriveCatalog] = []
-
-        for catalog in self.catalogs:
-            if isinstance(catalog, DriveCatalogReference):
-                resolved = catalog.load()
-            elif isinstance(catalog, DriveCatalog):
-                resolved = catalog
-            else:
-                raise TypeError(
-                    f"Expected catalogs to be DriveCatalog or DriveCatalogReference, "
-                    f"got {type(catalog).__name__}"
-                )
-            resolved.dereference()
-            resolved_catalogs.append(resolved)
-
-        self.catalogs = resolved_catalogs
-        
-        return self
     @classmethod
-    def from_path_dereferenced(cls, path: str) -> "DriveCatalog":
-        return cls.from_path(path).dereference()
+    def from_dict(cls, document: dict[str, Any]) -> Self:
+        return cls.model_validate(document)
 
-DriveRemoteResource.model_rebuild()
-DriveRemotePackage.model_rebuild()
-DriveCatalogReference.model_rebuild()
-DriveRemoteCatalog.model_rebuild()
-DriveCatalog.model_rebuild()
+
+class Location(DescriptorModel):
+    """Upstream input or downstream destination, with optional provider metadata.
+
+    ``path`` may be a local provenance file or remote URL. ``serviceType`` uses
+    OpenMetadata's drive service vocabulary; it is resolved only for transfers.
+    """
+
+    path: str = Field(min_length=1)
+    serviceType: ServiceTypeValue | None = None
+    serviceId: str | None = None
+    entityType: EntityTypeValue | None = None
+
+
+class Entity(DescriptorModel):
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    path: str | None = None
+    sources: list[Location] = Field(default_factory=list)
+    # None inherits catalog targets; [] explicitly disables publication.
+    targets: list[Location] | None = None
+    entityType: EntityTypeValue | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            legacy = {
+                "_cache",
+                "cache",
+                "accessURL",
+                "accessUrl",
+                "packages",
+                "serviceType",
+                "serviceId",
+                "syncTarget",
+            } & value.keys()
+            if legacy:
+                raise ValueError(
+                    f"Legacy fields {sorted(legacy)}: run sharedrive migrate first"
+                )
+        return value
+
+
+class Resource(Entity):
+    """A materialized artifact and its provenance/publication locations."""
+
+    path: str = Field(min_length=1)
+    format: str | None = None
+
+
+class CatalogReference(DescriptorModel):
+    """Lazy reference to another local descriptor; resolved beside its document."""
+
+    name: str | None = None
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(alias="$ref")
+    _basepath: Path = PrivateAttr(default_factory=Path.cwd)
+
+    def load(self) -> Catalog:
+        target = local_path(self.path, self._basepath)
+        catalog = Catalog.from_path(target)
+        if self.name is not None:
+            catalog.name = self.name
+        return catalog
+
+
+@dataclass(frozen=True)
+class EntityPath:
+    name_path: str
+    model: Entity | CatalogReference
+    json_pointer: str
+    entity_type: str
+
+
+def walk_entities(
+    root: Any, prefix: str = "", pointer: str = ""
+) -> Iterator[EntityPath]:
+    """One structural walker for models and authored mappings; no I/O."""
+    for collection in ("resources", "catalogs"):
+        children = (
+            root.get(collection, [])
+            if isinstance(root, dict)
+            else getattr(root, collection, [])
+        )
+        for index, child in enumerate(children or []):
+            name = child.get("name") if isinstance(child, dict) else child.name
+            name_path = ".".join(part for part in (prefix, name) if part)
+            child_pointer = f"{pointer}/{collection}/{index}"
+            yield EntityPath(
+                name_path,
+                child,
+                child_pointer,
+                "resource" if collection == "resources" else "catalog",
+            )
+            yield from walk_entities(child, name_path, child_pointer)
+
+
+class Catalog(Entity):
+    """Nested groups of resources and catalogs.
+
+    Data Package field names remain useful metadata conventions, but this is a
+    Sharedrive descriptor, not a full implementation of the Data Package schema.
+    Paths are never rewritten on load. Transfer roots are explicit and default
+    to cwd; reference paths are always relative to the containing descriptor.
+    """
+
+    profile: str = Field(default=CATALOG_PROFILE, alias="$schema")
+    resources: list[Resource] = Field(default_factory=list)
+    catalogs: list[Catalog | CatalogReference] = Field(default_factory=list)
+    _origin: Path | None = PrivateAttr(default=None)
+
+    @field_validator("catalogs", mode="before")
+    @classmethod
+    def identify_references(cls, children: Any) -> Any:
+        if not isinstance(children, list):
+            return children
+        return [
+            (
+                CatalogReference.model_validate(child)
+                if "$ref" in child
+                else Catalog.model_validate(child)
+            )
+            if isinstance(child, dict)
+            else child
+            for child in children
+        ]
+
+    @classmethod
+    def from_path(cls, path: str | Path) -> Self:
+        target = Path(path).resolve()
+        model = cls.from_dict(read_descriptor(target))
+        model._origin = target
+        for row in walk_entities(model):
+            if isinstance(row.model, CatalogReference):
+                row.model._basepath = target.parent
+        return model
+
+    def iter_entity_paths(
+        self,
+        *,
+        include_self: bool = False,
+        traverse_references: bool = True,
+        _seen: frozenset[Path] = frozenset(),
+    ) -> Iterator[EntityPath]:
+        if self._origin is not None:
+            if self._origin in _seen:
+                raise ValueError(f"Cyclic catalog reference: {self._origin}")
+            _seen = _seen | {self._origin}
+        if include_self:
+            yield EntityPath(self.name or "", self, "", "catalog")
+        for row in walk_entities(self):
+            if isinstance(row.model, CatalogReference) and traverse_references:
+                loaded = row.model.load()
+                yield EntityPath(
+                    row.name_path or loaded.name or "",
+                    loaded,
+                    row.json_pointer,
+                    "catalog",
+                )
+                for nested in loaded.iter_entity_paths(_seen=_seen):
+                    yield EntityPath(
+                        ".".join(
+                            p
+                            for p in (row.name_path or loaded.name, nested.name_path)
+                            if p
+                        ),
+                        nested.model,
+                        row.json_pointer + nested.json_pointer,
+                        nested.entity_type,
+                    )
+            else:
+                yield row
+
+    def assert_valid_entity_paths(self) -> None:
+        seen: set[str] = set()
+        for row in self.iter_entity_paths():
+            if not row.name_path:
+                continue
+            key = row.name_path.casefold()
+            if key in seen:
+                raise ValueError(f"Duplicate entity path: {row.name_path}")
+            seen.add(key)
+
+    def _find(self, name: str, kind: type[Entity]) -> Entity:
+        matches = [
+            row.model
+            for row in self.iter_entity_paths()
+            if isinstance(row.model, kind)
+            and name.casefold()
+            in {row.name_path.casefold(), (row.model.name or "").casefold()}
+        ]
+        if not matches:
+            raise ValueError(f"{kind.__name__} with name {name!r} not found")
+        if len(matches) != 1:
+            raise ValueError(f"Entity selector {name!r} is ambiguous; use a dot-path")
+        return matches[0]
+
+    def get_resource(self, name: str) -> Resource:
+        return cast(Resource, self._find(name, Resource))
+
+    def get_catalog(self, name: str) -> Catalog:
+        return cast(Catalog, self._find(name, Catalog))
+
+    def dereference(self, _seen: frozenset[Path] = frozenset()) -> Self:
+        if self._origin in _seen:
+            raise ValueError(f"Cyclic catalog reference: {self._origin}")
+        seen = _seen | {self._origin} if self._origin else _seen
+        self.catalogs = [
+            (
+                child.load() if isinstance(child, CatalogReference) else child
+            ).dereference(seen)
+            for child in self.catalogs
+        ]
+        return self
 
 
 __all__ = [
+    "Catalog",
+    "Resource",
+    "Location",
+    "CatalogReference",
+    "EntityPath",
+    "walk_entities",
+    "read_descriptor",
+    "write_descriptor",
+    "local_path",
     "CATALOG_PROFILE",
-    "ENTITY_TYPE_ALIASES",
-    "SERVICE_TYPE_ALIASES",
-    "SUPPORTED_SERVICE_TYPES",
-    "CatalogSelector",
-    "DriveCatalog",
-    "DriveCatalogReference",
-    "DriveRemotePackage",
-    "DriveRemoteResource",
-    "EntityTypeValue",
+    "ServiceId",
     "ServiceTypeValue",
-    "adapter_from_locator",
-    "adapter_from_service_type",
-    "infer_entity_type",
-    "infer_service_type",
-    "normalize_entity_type",
+    "EntityTypeValue",
+    "GDriveApiFile",
+    "GDriveApiDrive",
     "normalize_service_type",
-    "resolve_cache_path",
-    "resolve_entity_type",
+    "normalize_entity_type",
+    "infer_service_type",
     "resolve_service_type",
+    "adapter_from_service_type",
 ]

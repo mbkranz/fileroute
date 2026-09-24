@@ -16,9 +16,12 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
-* `upload`: Publish local descriptor caches; create or...
+* `upload`: Publish artifact paths to targets; alias...
+* `push`: Publish artifact paths to targets; create...
+* `pull`: Materialize a single remote source into...
+* `migrate`: Write canonical path/sources/targets to a...
 * `update`: Update descriptor-root or resource...
-* `checkout`: Activate a descriptor and optionally an...
+* `checkout`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
 * `add`: Add a standards-aligned resource or...
 * `set`: Set reusable key/value parameters for...
@@ -27,7 +30,7 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 
 ## `sharedrive upload`
 
-Publish local descriptor caches; create or replace, never delete.
+Publish artifact paths to targets; alias of push.
 
 **Usage**:
 
@@ -53,6 +56,64 @@ sharedrive upload config/sharedrive.yaml --dry-run
 ```bash
 sharedrive upload config/sharedrive.yaml
 ```
+
+## `sharedrive push`
+
+Publish artifact paths to targets; create or replace, never delete.
+
+**Usage**:
+
+```console
+$ sharedrive push [OPTIONS] [DESCRIPTOR]
+```
+
+**Arguments**:
+
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+
+**Options**:
+
+* `--dry-run`: List files without authenticating or writing.
+* `--help`: Show this message and exit.
+
+## `sharedrive pull`
+
+Materialize a single remote source into each artifact's path.
+
+**Usage**:
+
+```console
+$ sharedrive pull [OPTIONS] [DESCRIPTOR]
+```
+
+**Arguments**:
+
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+
+**Options**:
+
+* `--dry-run`: Plan without authenticating or writing.
+* `--help`: Show this message and exit.
+
+## `sharedrive migrate`
+
+Write canonical path/sources/targets to a new file; keep the original.
+
+**Usage**:
+
+```console
+$ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
+```
+
+**Arguments**:
+
+* `DESCRIPTOR`: Legacy descriptor to read.  [required]
+* `OUTPUT`: New canonical descriptor to write.  [required]
+
+**Options**:
+
+* `--direction TEXT`: Interpret legacy URLs as pull sources or push targets.  [default: pull]
+* `--help`: Show this message and exit.
 
 ## `sharedrive update`
 
@@ -87,18 +148,17 @@ sharedrive update --descriptor resources/descriptor.yaml --name file1 --title "H
 
 ## `sharedrive checkout`
 
-Activate a descriptor and optionally an entity within it for later commands.
+Activate a descriptor for later commands.
 
 **Usage**:
 
 ```console
-$ sharedrive checkout [OPTIONS] DESCRIPTOR [ENTITY]
+$ sharedrive checkout [OPTIONS] DESCRIPTOR
 ```
 
 **Arguments**:
 
 * `DESCRIPTOR`: Descriptor path to activate for later commands.  [required]
-* `[ENTITY]`: Entity dot-path within the descriptor to set as the active scope for fetch/download commands.
 
 **Options**:
 
@@ -108,14 +168,6 @@ $ sharedrive checkout [OPTIONS] DESCRIPTOR [ENTITY]
 
 ```bash
 sharedrive checkout resources/descriptor.yaml
-```
-
-```bash
-sharedrive checkout resources/descriptor.yaml research
-```
-
-```bash
-sharedrive checkout resources/descriptor.yaml research.archive
 ```
 
 ## `sharedrive list`
@@ -167,18 +219,18 @@ $ sharedrive add [OPTIONS] NAME
 
 **Options**:
 
-* `--catalog`: Treat as a catalog with accessURL.
+* `--catalog`: Treat as a catalog of resources or a directory.
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
 * `--help`: Show this message and exit.
 
 **Examples**
 
 ```bash
-sharedrive add my-resource --path https://drive.google.com/file/d/123... --cache downloads/file.csv
+sharedrive add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...
 ```
 
 ```bash
-sharedrive add my-folder --catalog --accessURL https://drive.google.com/drive/folders/abc...
+sharedrive add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
 ```
 
 ## `sharedrive set`

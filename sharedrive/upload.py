@@ -1,17 +1,18 @@
-"""Plan local descriptor uploads before contacting a remote service.
-
-Cache paths are relative to the command's working directory. This lets a
-repository descriptor in ``config/`` refer to build output in ``docs/``.
-"""
+"""Offline publication planning followed by explicit provider writes."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from sharedrive.models import (
-    DriveCatalog, DriveRemoteCatalog, DriveRemoteResource, adapter_from_service_type,
+    Catalog,
+    CatalogReference,
+    Entity,
+    Location,
+    local_path,
+    adapter_from_service_type,
     resolve_service_type,
 )
 from sharedrive.registry import get_client, get_provider
@@ -25,83 +26,150 @@ class UploadFile:
     service: str
     direct_file: bool = False
 
+    @property
+    def destination(self) -> str:
+        return (
+            self.remote
+            if self.direct_file
+            else f"{self.remote.rstrip('/')}/{quote(self.relative.as_posix(), safe='/')}"
+        )
 
-def plan_upload(descriptor: Path, *, root: Path | None = None) -> tuple[UploadFile, ...]:
-    """Expand file and directory caches, preserving paths under remote folders.
 
-    No remote requests or authentication occur here. A missing or unsafe local
-    input fails the whole plan before the first transfer.
+def plan_upload(
+    descriptor: Path, *, root: Path | None = None
+) -> tuple[UploadFile, ...]:
+    """Publish path to targets, never sources; validate everything before auth.
+
+    Paths are relative to root (cwd by default). Catalog targets are folders;
+    children inherit them using paths relative to the declaring catalog's path,
+    or root when absent. Explicit child targets replace inherited ones; [] opts
+    out. A catalog with children publishes only those children. A leaf catalog
+    publishes its directory tree. Explicit resource targets are file URLs unless
+    entityType is Directory/Container.
     """
     root = (root or Path.cwd()).resolve()
-    # Pass the repository root as basepath so cache paths are rooted at cwd.
-    document = DriveCatalog.from_path(str(descriptor.resolve()), basepath=str(root))
+    document = Catalog.from_path(descriptor.resolve())
     entries: list[UploadFile] = []
+    destinations: dict[str, Path] = {}
 
-    def add(local_name: str | None, remote: object, service: str | None, directory: bool) -> None:
-        if not local_name or not remote:
-            raise ValueError("Upload entries require _cache and accessURL/path")
-        service = resolve_service_type(str(remote), service)
+    def add(local: Path, target: Location, relative: Path | None) -> None:
+        service = resolve_service_type(target.path, target.serviceType)
         provider = get_provider(adapter_from_service_type(service) or "")
         if provider is None or not provider.capabilities.supports_upload:
             raise ValueError(f"Upload is not implemented for {service}")
-        locator = urlparse(str(remote))
-        if locator.query or locator.fragment:
-            raise ValueError("Upload needs a direct folder/file URL without a query or fragment")
-        local = root / local_name
-        if local.is_symlink():
-            raise ValueError(f"Upload cache is a symlink: {local}")
-        local = local.resolve()
-        if not local.is_relative_to(root):
-            raise ValueError(f"Upload cache is outside working directory: {local}")
-        if not local.exists():
-            raise ValueError(f"Upload cache is missing: {local}")
-        if directory:
-            if not local.is_dir():
-                raise ValueError(f"Upload cache must be a directory: {local}")
-            files = sorted(local.rglob("*"))
-            for file in files:
-                if file.is_symlink():
-                    raise ValueError(f"Refusing symlink in upload: {file}")
-                if file.is_file():
-                    entries.append(UploadFile(file, str(remote), file.relative_to(local), service))
-        else:
-            if not local.is_file():
-                raise ValueError(f"Upload cache must be a file: {local}")
-            remote_url = str(remote)
-            name = unquote(urlparse(remote_url).path.rsplit("/", 1)[-1])
-            if not name or name in {".", ".."} or "/" in name:
-                raise ValueError(f"Invalid remote file path: {remote_url}")
-            entries.append(UploadFile(local, remote_url, Path(name), service, True))
+        url = urlparse(target.path)
+        if url.query or url.fragment:
+            raise ValueError(
+                "Upload needs a direct folder/file URL without a query or fragment"
+            )
+        if (
+            "your-tenant" in target.path.casefold()
+            or "your-site" in target.path.casefold()
+        ):
+            raise ValueError(
+                "Replace the SharePoint placeholder target before uploading"
+            )
+        if not local.is_file():
+            raise ValueError(f"Upload input must be a file: {local}")
+        if service == "SharePoint" and local.stat().st_size > 250_000_000:
+            raise ValueError(
+                f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}"
+            )
+        direct = relative is None
+        if direct:
+            name = unquote(url.path.rsplit("/", 1)[-1])
+            if not name or name in {".", ".."} or "/" in name or "\\" in name:
+                raise ValueError(f"Invalid remote file path: {target.path}")
+            relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"Unsafe relative upload path: {relative}")
+        entry = UploadFile(local, target.path, relative, service, direct)
+        # Decoding catches authored aliases for the same remote file.
+        key = (
+            unquote(entry.destination).casefold()
+            if service == "SharePoint"
+            else entry.destination
+        )
+        if key in destinations:
+            if destinations[key] != local:
+                raise ValueError(f"Multiple local files target {entry.destination}")
+            return
+        destinations[key] = local
+        entries.append(entry)
 
-    for resource in document.resources:
-        if not isinstance(resource, DriveRemoteResource):
-            raise ValueError("Upload resources must have remote paths")
-        add(resource.cache, resource.path, resource.serviceType, False)
-    for catalog in document.catalogs:
-        if not isinstance(catalog, DriveRemoteCatalog):
-            raise ValueError("Upload catalogs must be remote directories")
-        if catalog.entityType != "Directory":
-            raise ValueError("Upload catalogs must have entityType Directory")
-        add(catalog.cache, catalog.accessUrl, catalog.serviceType, True)
-    if document.packages or not entries:
-        raise ValueError("Upload needs at least one local file; packages are not supported")
-    for entry in entries:
-        if entry.service == "SharePoint" and entry.local.stat().st_size > 250_000_000:
-            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {entry.local}")
+    def visit(
+        entity: Entity, inherited: list[Location], anchor: Path, seen: frozenset[Path]
+    ) -> None:
+        explicit = entity.targets is not None
+        targets = entity.targets if explicit else inherited
+        local = (
+            local_path(entity.path, root, reject_symlinks=True)
+            if entity.path is not None
+            else None
+        )
+        if isinstance(entity, Catalog):
+            if entity._origin is not None:
+                if entity._origin in seen:
+                    raise ValueError(f"Cyclic catalog reference: {entity._origin}")
+                seen = seen | {entity._origin}
+            if any(target.entityType == "File" for target in targets or []):
+                raise ValueError("Catalog targets must be folders, not files")
+            if explicit:
+                anchor = local or root
+            children = [*entity.resources, *entity.catalogs]
+            if children:
+                for child in children:
+                    if isinstance(child, CatalogReference):
+                        child = child.load()
+                    visit(child, targets or [], anchor, seen)
+                return
+            if not targets:
+                return
+            if local is None or not local.is_dir():
+                raise ValueError(
+                    f"Upload directory missing or not a directory: {entity.path}"
+                )
+            for file in sorted(local.rglob("*")):
+                safe = local_path(str(file), root, reject_symlinks=True)
+                if safe.is_file():
+                    for target in targets:
+                        add(safe, target, safe.relative_to(anchor))
+        elif targets:
+            if local is None or not local.exists():
+                raise ValueError(f"Upload input missing: {entity.path}")
+            for target in targets:
+                relative = (
+                    (
+                        Path(local.name)
+                        if target.entityType in {"Directory", "Container"}
+                        else None
+                    )
+                    if explicit
+                    else local.relative_to(anchor)
+                )
+                add(local, target, relative)
+
+    visit(document, [], root, frozenset())
+    if not entries:
+        raise ValueError("Upload needs at least one local file with targets")
     return tuple(entries)
 
 
 def upload(files: tuple[UploadFile, ...]) -> None:
     """Transfer a prepared plan; remote files outside it are never deleted."""
-    if any("your-tenant" in file.remote.casefold() or "your-site" in file.remote.casefold() for file in files):
-        raise ValueError("Replace the SharePoint placeholder accessURL before uploading")
+    if any(
+        "your-tenant" in file.remote.casefold() or "your-site" in file.remote.casefold()
+        for file in files
+    ):
+        raise ValueError("Replace the SharePoint placeholder target before uploading")
     clients = {}
     for file in files:
         if file.service not in clients:
-            clients[file.service] = get_client(adapter_from_service_type(file.service) or "")
-        client = clients[file.service]
+            clients[file.service] = get_client(
+                adapter_from_service_type(file.service) or ""
+            )
         folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
-        client.upload_to_folder(folder, file.relative, file.local)
+        clients[file.service].upload_to_folder(folder, file.relative, file.local)
 
 
 __all__ = ["UploadFile", "plan_upload", "upload"]
