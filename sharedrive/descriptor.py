@@ -8,14 +8,52 @@ from __future__ import annotations
 
 import json
 import tempfile
+from io import StringIO
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Literal
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.error import YAMLError
+from ruamel.yaml.scalarstring import ScalarString
 from sharedrive.models import Catalog, CatalogReference, Location, Resource, ServiceType
+
+
+def _yaml() -> YAML:
+    parser = YAML(typ="rt")
+    parser.preserve_quotes = True
+    parser.indent(mapping=2, sequence=4, offset=2)
+    return parser
+
+
+def _synchronize(authored: object, canonical: object) -> object:
+    """Update matching YAML nodes in place so their comments and styles survive."""
+    if isinstance(authored, dict) and isinstance(canonical, dict):
+        for key in list(authored):
+            if key not in canonical:
+                del authored[key]
+        for key, value in canonical.items():
+            if key in authored:
+                authored[key] = _synchronize(authored[key], value)
+            else:
+                authored[key] = _synchronize(CommentedMap() if isinstance(value, dict) else CommentedSeq() if isinstance(value, list) else None, value)
+        return authored
+    if isinstance(authored, list) and isinstance(canonical, list):
+        for index, value in enumerate(canonical):
+            if index < len(authored):
+                authored[index] = _synchronize(authored[index], value)
+            else:
+                authored.append(_synchronize(CommentedMap() if isinstance(value, dict) else CommentedSeq() if isinstance(value, list) else None, value))
+        del authored[len(canonical):]
+        return authored
+    if authored == canonical and type(authored) is not bool:
+        return authored
+    if isinstance(authored, ScalarString) and isinstance(canonical, str):
+        return type(authored)(canonical)
+    return canonical
 
 
 def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
@@ -35,9 +73,9 @@ def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
             data = (
                 json.loads(content)
                 if target.suffix.lower() == ".json"
-                else yaml.safe_load(content)
+                else _yaml().load(content)
             )
-        except (ValueError, yaml.YAMLError) as exc:
+        except (ValueError, YAMLError) as exc:
             raise ValueError(f"Invalid descriptor '{target}': {exc}") from exc
         catalog = Catalog.model_validate(data)
         if resolve_references:
@@ -67,8 +105,8 @@ def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
 def save(catalog: Catalog, path: Path | str) -> None:
     """Atomically save canonical metadata, including authored defaults/extensions.
 
-    YAML comments/formatting are not retained. Unexpanded $ref entries remain
-    references. Saving an explicitly expanded catalog writes the expanded tree.
+    Existing YAML is edited in place where practical, preserving authored
+    comments, styles and ordering. Unexpanded $ref entries remain references.
     """
     path = Path(path)
     catalog = catalog.model_copy(deep=True)
@@ -78,11 +116,16 @@ def save(catalog: Catalog, path: Path | str) -> None:
             if getattr(row.model, field, None):
                 row.model.model_fields_set.add(field)
     data = catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
-    content = (
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-        if path.suffix.lower() == ".json"
-        else yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
-    )
+    if path.suffix.lower() == ".json":
+        content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    else:
+        parser = _yaml()
+        authored = parser.load(path.read_text(encoding="utf-8")) if path.exists() else CommentedMap()
+        if not isinstance(authored, dict):
+            raise ValueError(f"Invalid descriptor '{path}': expected a YAML mapping")
+        output = StringIO()
+        parser.dump(_synchronize(authored, data), output)
+        content = output.getvalue()
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=path.parent, delete=False

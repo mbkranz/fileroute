@@ -86,8 +86,9 @@ catalogs:
     $ref: catalogs/research.yaml
 ```
 
-Unrecognized metadata fields survive model round trips. YAML formatting and
-comments are not preserved. This is a Sharedrive format inspired by Data Package
+Unrecognized metadata fields survive model round trips. Existing YAML descriptors
+are round-trip edited where practical, retaining comments and authored styles.
+This is a Sharedrive format inspired by Data Package
 and DCAT, not a full implementation of either standard. `$schema` is an optional
 profile label; loading does not fetch a schema from the network.
 
@@ -134,7 +135,8 @@ does not follow redirects, fetch remote IDs, or check remote permissions.
 
 Write-back updates only the selected document and preserves `$ref` entries;
 resolve referenced descriptors separately to persist their inferred metadata.
-Repeated resolution is idempotent. YAML comments and formatting are not retained.
+Repeated resolution is idempotent. Existing YAML comments and styles are retained
+where practical; byte-for-byte whitespace preservation is not guaranteed.
 Transfers expand references and resolve the relevant sources or targets in
 memory, so write-back is optional. `push --dry-run` and `pull --dry-run` provide
 concrete transfer plans; there is no separate `plan` command or stored lockfile.

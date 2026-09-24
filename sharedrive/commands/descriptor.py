@@ -264,7 +264,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             return
 
         document = Catalog.model_validate(
-            document.model_dump(exclude_unset=True, warnings=False)
+            document.model_dump(by_alias=True, exclude_unset=True, warnings=False)
         )
         if dry_run:
             for change in changed_properties:
