@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from sharedrive.auth.google import GoogleAuth
-from sharedrive.auth.settings import (
+from fileroute.auth.google import GoogleAuth
+from fileroute.auth.settings import (
     GoogleAuthConfig,
     GoogleAuthMode,
 )
@@ -61,7 +61,7 @@ def test_google_auth_config_to_auth_returns_google_auth(monkeypatch: pytest.Monk
         requires_scopes = False
 
     monkeypatch.setattr(
-        "sharedrive.auth.google.google.auth.default",
+        "fileroute.auth.google.google.auth.default",
         lambda scopes: (DummyCreds(), "project"),
     )
 
@@ -84,7 +84,7 @@ def test_google_auth_config_builds_user_oauth_auth_with_token_store(monkeypatch:
             return DummyCreds()
 
     monkeypatch.setattr(
-        "sharedrive.auth.google.InstalledAppFlow.from_client_secrets_file",
+        "fileroute.auth.google.InstalledAppFlow.from_client_secrets_file",
         lambda *a, **kw: DummyFlow(),
     )
 

@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from sharedrive.auth.google import GoogleAuth
-from sharedrive.clients.googledrive import (
+from fileroute.auth.google import GoogleAuth
+from fileroute.clients.googledrive import (
     FOLDER_MIME,
     GoogleBaseClient,
     GoogleDriveClient,
 )
-from sharedrive.exceptions import GoogleDriveError
+from fileroute.exceptions import GoogleDriveError
 
 
 class DummyCreds:
@@ -72,10 +72,6 @@ def test_client_uses_explicit_auth() -> None:
 
     assert client._auth is auth
     assert client._auth.credentials is creds
-
-
-def test_google_drive_client_reports_write_capability() -> None:
-    assert GoogleDriveClient.capabilities.supports_write
 
 
 def test_client_uses_credentials_escape_hatch() -> None:

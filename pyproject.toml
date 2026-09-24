@@ -3,47 +3,36 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sharedrive"
-version = "1.0.0"
+name = "fileroute"
+version = "0.1.1.dev1"
 description = "Convenient connectors to make interoperating and collaborating across multiple content management systems easier"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.10.6",
     "pydantic-settings>=2.7.0",
-    "pyyaml>=6.0.2",
+    "ruamel.yaml>=0.19.1,<0.20",
     "requests>=2.32.3",
     "python-dotenv>=1.0.1",
     "typer>=0.24.1",
     "boto3>=1.42.55",
-    # TODO: Move below dependencies to own groups? Make separate packages for each type of tool?
-    "GitPython>=3.1.44",
     "google-auth-oauthlib>=1.2.1",
-    "google>=3.0.0",
-    # TODO: add to dedicated lib
+    "google-auth>=2.0",
+    "rich>=13.0",
     "msal>=1.33.0",
-    "dplib-py",
-]   
+]
 
 [project.scripts]
-sharedrive = "sharedrive.cli:main"
+fileroute = "fileroute.cli:main"
 
 [project.optional-dependencies]
-
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.1",
 ]
-dev-datamgmt = [
-    "frictionless"
-]
-
 
 [dependency-groups]
 dev = [
-    "jupyter",
-    "black",
-    "ipykernel>=6.29.5",
     "ruff>=0.11.5",
     {include-group = "test"}
 ]
@@ -51,8 +40,95 @@ test = [
     "pytest"
 ]
 
+[tool.poe]
+executor = "simple"
+
+[tool.poe.tasks.install]
+cmd = "uv tool install ."
+help = "Install fileroute as a uv tool from this checkout."
+
+[tool.poe.tasks.sync]
+cmd = "uv sync"
+help = "Install the default project and development dependencies."
+
+[tool.poe.tasks.sync-dev]
+cmd = "uv sync --group dev"
+help = "Install development and test dependency groups."
+
+[tool.poe.tasks.lint]
+cmd = "uv run ruff check ."
+help = "Run Ruff lint checks."
+
+[tool.poe.tasks.format]
+cmd = "uv run ruff format ."
+help = "Format Python files with Ruff."
+
+[tool.poe.tasks.test]
+cmd = "uv run pytest"
+help = "Run the test suite."
+
+[tool.poe.tasks.check]
+sequence = ["lint", "test"]
+help = "Run lint and tests."
+
+[tool.poe.tasks.build]
+cmd = "uv build"
+help = "Build the source distribution and wheel."
+
+[tool.poe.tasks.release-check]
+sequence = ["check", "docs-check"]
+help = "Run the checks required before an automated release."
+
+[tool.poe.tasks.docs-sync]
+cmd = "uv sync --extra docs"
+help = "Install documentation dependencies."
+
+[tool.poe.tasks.docs-update]
+cmd = "uv run python scripts/update_docs_markdown.py"
+help = "Regenerate CLI and API Markdown documentation."
+
+[tool.poe.tasks.docs-check]
+cmd = "uv run python scripts/update_docs_markdown.py --check"
+help = "Check that generated CLI and API Markdown documentation is current."
+
+[tool.poe.tasks.docs-serve]
+cmd = "uv run --extra docs mkdocs serve"
+help = "Serve documentation locally."
+
+[tool.poe.tasks.docs-build]
+cmd = "uv run --extra docs mkdocs build"
+help = "Build the documentation site."
+
+[tool.poe.tasks.docs]
+sequence = ["docs-update", "docs-build"]
+help = "Regenerate and build documentation."
+
+[tool.poe.tasks.dry-run]
+cmd = "uv run fileroute ${action} ${descriptor} --dry-run"
+help = "Run a local pull or push dry-run against a descriptor."
+
+[[tool.poe.tasks.dry-run.args]]
+name = "action"
+positional = true
+default = "pull"
+choices = ["pull", "push"]
+help = "Transfer direction to plan."
+
+[[tool.poe.tasks.dry-run.args]]
+name = "descriptor"
+positional = true
+default = "resources/descriptor.yaml"
+help = "Descriptor path to plan."
+
+[tool.poe.tasks.clean]
+shell = """
+rm -rf .pytest_cache .ruff_cache .coverage htmlcov site
+find . -type d -name __pycache__ -prune -exec rm -rf {} +
+"""
+help = "Remove local Python, test, and documentation build caches."
+
 [tool.setuptools]
-packages = ["sharedrive", "sharedrive.auth", "sharedrive.clients", "sharedrive.commands"]
+packages = ["fileroute", "fileroute.auth", "fileroute.clients", "fileroute.commands"]
 
 [tool.ruff]
 line-length = 88
@@ -68,3 +144,11 @@ preview = true  # Enables improved formatter behavior
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.poe.tasks.release]
+cmd = "python scripts/release.py"
+help = "Prepare a release locally; requires --branch and --source. CI saves and pushes it."
+
+[tool.poe.tasks.release-test]
+cmd = "python -m unittest discover -s tests -p test_release.py"
+help = "Test release transitions and retries using temporary Git repositories."

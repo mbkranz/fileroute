@@ -2,142 +2,181 @@
 
 Auto-generated from source signatures and docstrings.
 
-## `sharedrive.helpers`
-
-### Constants
-
-- `DESCRIPTOR_DEFAULTS_FILE = Path('.sharedrive/sharedrive_set.json')`
+## `fileroute.transfer`
 
 ### Functions
 
-- `def descriptor_scope_key(descriptor: Path | str) -> str`
-  - Return the stable key used for descriptor-scoped defaults.
-- `def get_checked_out_entity() -> str | None`
-  - Return the currently checked-out entity dot-path, or None if no entity is active.
-- `def get_saved_params_for_descriptor(descriptor: Path | str | None = None) -> dict[str, Any]`
-  - Return merged global and descriptor-scoped saved params.
-- `def has_saved_global_descriptor() -> bool`
-  - Return whether the global defaults include a descriptor path.
-- `def load_descriptor_defaults_store() -> dict[str, Any]`
-  - Load persisted descriptor defaults for global and descriptor scopes.
-- `def resolve_default_descriptor() -> Path`
-  - Return the first existing default descriptor path.
-- `def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path`
-  - Resolve descriptor path from explicit input, saved defaults, or standard locations.
-- `def resolve_output_dir(output_dir: Path | str | None = None, *, descriptor: Path | str | None = None) -> Path`
-  - Resolve output_dir from explicit input, saved defaults, or the standard path.
-- `def save_params_for_scope(parsed: dict[str, Any], descriptor: Path | str | None, *, global_scope: bool) -> str`
-  - Save reusable CLI params to the global or descriptor-specific scope.
-- `def save_descriptor_defaults_store(data: dict[str, Any]) -> None`
-  - Persist descriptor defaults store to disk.
-- `def set_active_descriptor(descriptor_path: Path, *, entity: str | None = None) -> Path`
-  - Persist the active descriptor and optional checked-out entity.
-
-
-## `sharedrive.models`
-
-### Constants
-
-- `CATALOG_PROFILE = 'data-package-catalog'`
-- `ENTITY_TYPE_ALIASES = {'file': 'File', 'object': 'File', 'blob': 'File', 'document': 'File', 'spreadsheet': 'File', 'directory': 'Directory', 'folder': 'Directory', 'container': 'Container', 'bucket': 'Container'}`
-- `SERVICE_TYPE_ALIASES = {'google': 'GoogleDrive', 'googledrive': 'GoogleDrive', 'google_drive': 'GoogleDrive', 'google-drive': 'GoogleDrive', 'drive': 'GoogleDrive', 'sharepoint': 'SharePoint', 'share_point': 'SharePoint', 'share-point': 'SharePoint', 's3': 'S3'}`
-- `SUPPORTED_SERVICE_TYPES = {'GoogleDrive', 'SharePoint', 'S3'}`
-- `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
-- `ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]`
-
-### Functions
-
-- `def adapter_from_locator(locator: str) -> str`
-  - Infer a registry adapter name from a remote locator.
-- `def adapter_from_service_type(service_type: str | None) -> str | None`
-  - Map supported serviceType values to registry adapter names.
-- `def infer_entity_type(locator: str, *, service_type: str) -> str`
-  - Infer whether a locator points at a file, directory, or container.
-- `def infer_service_type(locator: str) -> str`
-  - Infer a supported serviceType from a remote locator.
-- `def normalize_entity_type(value: str | None) -> str | None`
-  - Normalize OpenMetadata-style drive/storage entity names.
-- `def normalize_service_type(value: str | None) -> str | None`
-  - Normalize OpenMetadata-style drive/storage service names.
-- `def resolve_cache_path(cache: str | None, basepath: str | None)`
-- `def resolve_entity_type(locator: str, *, service_type: str, entity_type: str | None = None) -> str`
-  - Return the declared or inferred entity type.
-- `def resolve_service_type(locator: str, service_type: str | None = None) -> str`
-  - Return a supported canonical serviceType, inferring it when omitted.
+- `def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]`
+  - Plan remote sources to local paths, offline.
+- `def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry, ...]`
+  - Publish path to targets, never sources; validate everything before auth.
+- `def pull(entries: tuple[PullEntry, ...]) -> None`
+  - Resolve remote items, check their paths, then download planned files.
+- `def push(files: tuple[PushEntry, ...]) -> None`
+  - Transfer a prepared plan; remote files outside it are never deleted.
 
 ### Classes
 
-#### `CatalogSelector`
-- Normalized selector for catalog/package/resource lookup.
-- Methods:
-  - `def matches(self, model: Model, *, path: str | None = None) -> bool`
-    - Return True if this selector matches a model name or dot-path.
+#### `PullEntry`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `service_type: ServiceType`
+  - `directory: bool`
 
-#### `DriveCatalog`
-- A registry, library, or folder containing independent data entities.
+#### `PushEntry`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `relative: Path`
+  - `service_type: ServiceType`
+  - `direct_file: bool`
+- Methods:
+  - `def destination(self) -> str`
+
+
+## `fileroute.descriptor`
+
+### Functions
+
+- `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
+  - Load YAML/JSON; optionally expand $ref relative to each containing file.
+- `def save(catalog: Catalog, path: Path | str) -> None`
+  - Atomically save canonical metadata, including authored defaults/extensions.
+- `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
+  - Walk typed metadata only; no file I/O. Reject duplicate named paths.
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
+  - Find one entity by name/dot-path, optionally restricting its model kind.
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None) -> Catalog`
+  - Return resolved metadata without mutating input, URLs, files, or references.
+- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
+  - Resolve a local artifact inside root; never accept URLs or escapes.
+
+### Classes
+
+#### `EntityPath`
+- Fields:
+  - `name_path: str`
+  - `model: Catalog | Resource | CatalogReference`
+  - `json_pointer: str`
+- Methods:
+  - `def entity_type(self) -> str`
+
+
+## `fileroute.diagram`
+
+### Functions
+
+- `def build_graph(catalog: Catalog) -> DescriptorGraph`
+  - Project descriptor sources, artifacts, inherited targets, and nesting.
+- `def load_graph(path: Path | str) -> DescriptorGraph`
+  - Load references, resolve provider metadata offline, and build a graph.
+- `def render_svg(graph: DescriptorGraph, output: Path | str) -> Path`
+  - Render a compact left-to-right SVG with no optional runtime dependency.
+
+### Classes
+
+#### `DescriptorGraph`
+- Provider-independent graph derived from one resolved descriptor.
+- Fields:
+  - `nodes: tuple[DiagramNode, ...]`
+  - `edges: tuple[DiagramEdge, ...]`
+
+#### `DiagramEdge`
+- A semantic relationship between two descriptor nodes.
+- Fields:
+  - `source: str`
+  - `target: str`
+  - `kind: str`
+  - `inherited_from: str | None`
+
+#### `DiagramNode`
+- One artifact, source, target, or unresolved catalog reference.
+- Fields:
+  - `key: str`
+  - `label: str`
+  - `kind: str`
+  - `path: str | None`
+  - `service_type: ServiceType | None`
+  - `entity_type: str | None`
+  - `anchor: str`
+  - `metadata: dict[str, Any]`
+
+
+## `fileroute.diagram_reports`
+
+### Functions
+
+- `def render_html(graph: DescriptorGraph, output: Path | str, *, detail: Detail = 'summary') -> Path`
+  - Write a self-contained searchable SVG and metadata inspector, usable offline.
+- `def render_markdown(graph: DescriptorGraph, output: Path | str, *, detail: Detail = 'summary') -> Path`
+  - Write a file dictionary and companion SVG; dictionary anchors are portable.
+
+
+## `fileroute.models`
+
+### Constants
+
+- `CATALOG_PROFILE = 'fileroute-catalog'`
+- `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
+
+### Functions
+
+- `def normalize_entity_type(value: str | None) -> str | None`
+  - Normalize OpenMetadata-style drive/storage entity names.
+
+### Classes
+
+#### `ServiceType`
+
+#### `Catalog`
+- Nested groups of resources and catalogs.
 - Fields:
   - `profile: str`
-  - `basepath: Optional[str]`
-  - `name: Optional[str]`
-  - `title: Optional[str]`
-  - `description: Optional[str]`
-  - `resources: list[DriveResourceChild]`
-  - `packages: list[DrivePackageChild]`
-  - `catalogs: list[DriveCatalogChild]`
+  - `resources: list[Resource]`
+  - `catalogs: list[Catalog | CatalogReference]`
 - Methods:
-  - `def model_post_init(self, _) -> None`
-  - `def assert_valid_entity_paths(self)`
-  - `def get_package(self, name: str) -> DrivePackageChild`
-    - Get a package by name or dot-path, traversing catalog references lazily.
-  - `def get_resource(self, name: str) -> DriveResourceChild`
-    - Get a resource by name or dot-path, traversing catalog references lazily.
-  - `def get_catalog(self, name: str) -> DriveCatalog | DriveCatalogReference | DriveRemoteCatalog`
-    - Get a catalog by name or dot-path.
-  - `def dereference(self) -> 'DriveCatalog'`
-  - `def from_path_dereferenced(cls, path: str) -> 'DriveCatalog'`
+  - `def identify_references(cls, children: Any) -> Any`
 
-#### `DriveCatalogReference`
-- Unresolved reference to an external DriveCatalog document.
+#### `Resource`
+- A materialized artifact and its provenance/publication locations.
 - Fields:
-  - `conformsTo: type[DriveCatalogChild]`
+  - `path: str`
+  - `format: str | None`
 
-#### `DriveRemotePackage`
-- Data Package package with shared-drive adapter metadata.
+#### `Location`
+- Upstream input or downstream destination, with optional provider metadata.
 - Fields:
-  - `accessUrl: RemoteAccessUrl`
-  - `cache: Optional[LocalCachePath]`
-  - `serviceType: Optional[ServiceTypeValue]`
-  - `serviceId: Optional[str]`
-  - `entityType: Optional[EntityTypeValue]`
+  - `path: str`
+  - `service_type: ServiceTypeField | None`
+  - `service_id: str | None`
+  - `entity_type: EntityTypeValue | None`
 
-#### `DriveRemoteResource`
-- Data Package resource with shared-drive adapter metadata.
+#### `CatalogReference`
+- Reference to another local descriptor; descriptor.load owns resolution.
 - Fields:
-  - `path: RemotePathUrl`
-  - `serviceType: Optional[ServiceTypeValue]`
-  - `serviceId: Optional[str]`
-  - `entityType: Optional[EntityTypeValue]`
-  - `cache: Optional[LocalCachePath]`
+  - `name: str | None`
+  - `path: str`
 
 
-## `sharedrive.item`
+## `fileroute.item`
 
 ### Classes
 
 #### `ServiceItem`
 - Base interface for files and directories in a remote service.
 - Methods:
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def refresh(self, *, include_children: bool = True) -> 'ServiceItem'`
     - Refresh this runtime item from its backing service.
   - `def children(self) -> list['ServiceItem']`
     - Direct child items for directories; always empty for files.
-  - `def parent_id(self) -> ServiceId | None`
+  - `def parent_id(self) -> str | None`
     - Best-known parent identifier for this item, when available.
   - `def parent(self) -> 'ServiceItem' | None`
     - Best-known parent item from the active traversal snapshot.
@@ -149,11 +188,11 @@ Auto-generated from source signatures and docstrings.
     - Yield file descendants, excluding directories and the starting item.
   - `def download(self, target: Path | str) -> None`
     - Download this item to *target*.
-  - `def to_catalog(self) -> DriveRemoteCatalog | DriveRemoteResource`
-    - Convert to a descriptor resource, package, or catalog entry.
+  - `def to_catalog(self) -> Catalog | Resource`
+    - Export local artifact paths and remote provenance as owned models.
 
 
-## `sharedrive.clients.aws`
+## `fileroute.clients.s3`
 
 ### Functions
 
@@ -178,7 +217,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['S3Item']`
@@ -186,7 +225,7 @@ Auto-generated from source signatures and docstrings.
   - `def download(self, target_dir: str | Path) -> None`
 
 
-## `sharedrive.clients.googledrive`
+## `fileroute.clients.googledrive`
 
 ### Classes
 
@@ -194,7 +233,6 @@ Auto-generated from source signatures and docstrings.
 - Shared Google client base: auth lifecycle and HTTP transport helpers.
 - Fields:
   - `auth_methods: ClassVar[list[str]]`
-  - `capabilities: ClassVar[AdapterCapabilities]`
 - Methods:
   - `def refresh(self) -> None`
   - `def build_default(cls) -> 'GoogleBaseClient'`
@@ -234,12 +272,12 @@ Auto-generated from source signatures and docstrings.
   - `def mime_type(self) -> Optional[str]`
   - `def children(self) -> list['ServiceItem']`
     - Direct children of this directory; empty list for files.
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def refresh(self, *, include_children: bool = True) -> 'GDriveItem'`
     - Re-fetch raw metadata (and optionally children) from the API.
   - `def export(self, target_mime_type: Optional[str] = None, output_path: Optional[str] = None) -> Union[bytes, str]`
@@ -252,7 +290,7 @@ Auto-generated from source signatures and docstrings.
     - Post a comment on this file via the Drive v3 comments API.
 
 
-## `sharedrive.auth.google`
+## `fileroute.auth.google`
 
 ### Classes
 
@@ -268,14 +306,14 @@ Auto-generated from source signatures and docstrings.
   - `def from_user_oauth(cls, scopes: Sequence[str] | str, client_secrets_path: str | Path = None, token_path: str | Path = None, token_store: Any = None) -> 'GoogleAuth'`
     - Build via the OAuth installed-app flow, with token persistence.
   - `def from_settings(cls, config: object | None = None) -> 'GoogleAuth'`
-    - Build from environment variables or a :class:`~sharedrive.auth.settings.GoogleAuthConfig`.
+    - Build from environment variables or a :class:`~fileroute.auth.settings.GoogleAuthConfig`.
   - `def credentials(self) -> Credentials`
     - The underlying :class:`~google.auth.credentials.Credentials` object.
   - `def ensure_valid(self) -> None`
     - Refresh credentials when the current token is not valid.
 
 
-## `sharedrive.auth.microsoft`
+## `fileroute.auth.microsoft`
 
 ### Classes
 
@@ -287,12 +325,12 @@ Auto-generated from source signatures and docstrings.
   - `def from_delegated(cls, tenant_id: str, client_id: str, scopes: Sequence[str] | str | None = None) -> 'MicrosoftAuth'`
     - Build using interactive delegated (user) flow via MSAL.
   - `def from_settings(cls, config: object | None = None) -> 'MicrosoftAuth'`
-    - Build from environment variables or a :class:`~sharedrive.auth.settings.MicrosoftAuthConfig`.
+    - Build from environment variables or a :class:`~fileroute.auth.settings.MicrosoftAuthConfig`.
   - `def access_token(self) -> str`
     - The raw Bearer access token string.
 
 
-## `sharedrive.auth.token_store`
+## `fileroute.auth.token_store`
 
 ### Classes
 
@@ -303,7 +341,7 @@ Auto-generated from source signatures and docstrings.
   - `def save(self, creds: UserCredentials) -> None`
 
 
-## `sharedrive.auth.settings`
+## `fileroute.auth.settings`
 
 ### Classes
 
@@ -319,7 +357,7 @@ Auto-generated from source signatures and docstrings.
   - `def to_scope_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]`
   - `def validate_for_mode(self) -> GoogleAuthConfig`
   - `def to_auth(self) -> GoogleAuth`
-    - Return a :class:`~sharedrive.auth.google.GoogleAuth` for this configuration.
+    - Return a :class:`~fileroute.auth.google.GoogleAuth` for this configuration.
 
 #### `GoogleAuthMode`
 
@@ -337,12 +375,12 @@ Auto-generated from source signatures and docstrings.
   - `def to_scope_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]`
   - `def validate_for_mode(self) -> MicrosoftAuthConfig`
   - `def to_auth(self) -> MicrosoftAuth`
-    - Return a :class:`~sharedrive.auth.microsoft.MicrosoftAuth` for this configuration.
+    - Return a :class:`~fileroute.auth.microsoft.MicrosoftAuth` for this configuration.
 
 #### `MicrosoftAuthMode`
 
 
-## `sharedrive.clients.sharepoint`
+## `fileroute.clients.sharepoint`
 
 ### Classes
 
@@ -350,7 +388,7 @@ Auto-generated from source signatures and docstrings.
 - SharePoint / OneDrive client backed by the Microsoft Graph API.
 - Fields:
   - `auth_methods: ClassVar[list[str]]`
-  - `capabilities: ClassVar[AdapterCapabilities]`
+  - `capabilities: ClassVar[ClientCapabilities]`
 - Methods:
   - `def build_default(cls) -> 'SharepointClient'`
     - Construct from environment variables / settings.
@@ -375,6 +413,8 @@ Auto-generated from source signatures and docstrings.
     - Replace the content of an existing file.
   - `def upload_file(self, *, site_name: str, folder_path: str, local_file_path: str | Path, create_if_missing: bool = True) -> 'SharepointItem'`
     - Update a file, optionally creating it when it does not exist.
+  - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
+    - Create or replace a file below an existing SharePoint folder URL.
 
 #### `SharepointItem`
 - A SharePoint file or folder item backed by Microsoft Graph.
@@ -383,7 +423,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['SharepointItem']`

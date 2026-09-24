@@ -1,8 +1,8 @@
 # Google Auth Credentials
 
-This page explains how to set up Google Drive credentials for `sharedrive`.
+This page explains how to set up Google Drive credentials for `fileroute`.
 
-`sharedrive` supports three Google auth modes:
+`fileroute` supports three Google auth modes:
 
 - `adc`: Application Default Credentials.
 - `service_account`: non-interactive automation via service account JSON.
@@ -36,10 +36,10 @@ GOOGLE_SCOPES=https://www.googleapis.com/auth/drive
 GOOGLE_OAUTH_USE_LOCAL_SERVER=true
 ```
 
-Run interactive login:
+Run interactive login from a project that includes Fileroute:
 
 ```bash
-uvx sharedrive auth login gdrive \
+uv run fileroute auth login gdrive \
   --oauth-client-secrets .google/oauth-credentials.json \
   --oauth-token-path .google/oauth-token.json
 ```
@@ -47,11 +47,16 @@ uvx sharedrive auth login gdrive \
 For headless/SSH terminals:
 
 ```bash
-uvx sharedrive auth login gdrive \
+uv run fileroute auth login gdrive \
   --no-local-server \
   --oauth-client-secrets .google/oauth-credentials.json \
   --oauth-token-path .google/oauth-token.json
 ```
+
+For standalone use, substitute `uvx --from
+git+https://github.com/mbkranz/fileroute.git@dev fileroute` for
+`uv run fileroute`. See the README's [usage options](https://github.com/mbkranz/fileroute#choose-how-to-run-it)
+for the difference between the project environment and a separate tool environment.
 
 ## Programmatic and CI setup (service account)
 
@@ -73,7 +78,7 @@ You can also use `GOOGLE_APPLICATION_CREDENTIALS` instead of `GOOGLE_SERVICE_ACC
 ## What can and cannot be fully automated
 
 - Creating local files and `.env` values can be scripted.
-- Calling `sharedrive auth login gdrive` can be scripted.
+- Calling `fileroute auth login gdrive` can be scripted.
 - Reusing saved OAuth token JSON is automatic.
 - The first user consent grant for `user_oauth` is interactive by Google design.
 

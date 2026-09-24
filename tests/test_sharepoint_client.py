@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from sharedrive.auth.microsoft import MicrosoftAuth
-from sharedrive.clients.sharepoint import SharepointClient, SharepointItem
-from sharedrive.exceptions import GraphApiDriveError
+from fileroute.auth.microsoft import MicrosoftAuth
+from fileroute.clients.sharepoint import SharepointClient, SharepointItem
+from fileroute.exceptions import GraphApiDriveError
 
 
 class DummyResponse:
@@ -62,8 +63,8 @@ def test_sharepoint_item_move_is_explicitly_unsupported() -> None:
         item.move("new-parent")
 
 
-def test_sharepoint_client_reports_write_capability() -> None:
-    assert SharepointClient.capabilities.supports_write
+def test_sharepoint_client_reports_upload_capability() -> None:
+    assert SharepointClient.capabilities.supports_upload
 
 
 def test_download_content_requires_identifiers_or_download_url() -> None:
@@ -79,7 +80,7 @@ def test_download_content_raises_graph_error_for_http_failure(
     client = SharepointClient(access_token="token")
 
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.requests.get",
+        "fileroute.clients.sharepoint.requests.get",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=503, reason="Service Unavailable", text="upstream down"
         ),
@@ -99,7 +100,7 @@ def test_download_raises_graph_error_before_writing_failed_response(
     target = tmp_path / "report.csv"
 
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.requests.get",
+        "fileroute.clients.sharepoint.requests.get",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=500, reason="Server Error", text="bad gateway", ok=False
         ),
@@ -150,7 +151,7 @@ def test_update_file_replaces_existing_content(
             },
         )
 
-    monkeypatch.setattr("sharedrive.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
 
     item = client.update_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -191,7 +192,7 @@ def test_upload_file_creates_missing_content(
         )
 
     monkeypatch.setattr(client, "get_item_metadata", missing)
-    monkeypatch.setattr("sharedrive.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
 
     item = client.upload_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -403,3 +404,62 @@ def test_sharepoint_delta_traversal_deduplicates_and_filters_subtree(
         "Approvals/final-name/approval.docx"
     ]
     assert calls == 1
+
+
+def test_upload_creates_missing_nested_folder_and_replaces_file(monkeypatch, tmp_path):
+    local = tmp_path / "catalog.xlsx"
+    local.write_bytes(b"xls")
+    client = SharepointClient(access_token="fake", host_url="contoso.sharepoint.com")
+    monkeypatch.setattr(
+        client,
+        "_resolve_weburl",
+        lambda url: {"drive_id": "drive", "item_path": "/Docs"},
+    )
+
+    calls = []
+
+    def metadata(drive, *, item_path):
+        calls.append(("get", item_path))
+        if item_path == "Docs/surveys":
+            raise GraphApiDriveError("missing", status_code=404)
+        return {"id": "folder", "folder": {}}
+
+    monkeypatch.setattr(client, "get_item_metadata", metadata)
+    monkeypatch.setattr(
+        "fileroute.clients.sharepoint.requests.post",
+        lambda url, **kw: (
+            calls.append(("post", kw["json"]["name"]))
+            or SimpleNamespace(
+                status_code=201, json=lambda: {"id": "child", "folder": {}}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        client,
+        "_put_file",
+        lambda url, path: (
+            calls.append(("put", url))
+            or {"id": "file", "name": "catalog.xlsx", "file": {}}
+        ),
+    )
+    client.upload_to_folder(
+        "https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs",
+        Path("surveys/catalog.xlsx"),
+        local,
+    )
+    assert ("post", "surveys") in calls
+    assert calls[-1][0] == "put"
+    assert "/root:/Docs/surveys/catalog.xlsx:/content" in calls[-1][1]
+    # A repeat finds the existing folder, uses the same PUT path, and never deletes.
+    monkeypatch.setattr(
+        client,
+        "get_item_metadata",
+        lambda drive, *, item_path: {"id": "folder", "folder": {}},
+    )
+    client.upload_to_folder(
+        "https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs",
+        Path("surveys/catalog.xlsx"),
+        local,
+    )
+    assert len([kind for kind, _ in calls if kind == "post"]) == 1
+    assert len([kind for kind, _ in calls if kind == "put"]) == 2

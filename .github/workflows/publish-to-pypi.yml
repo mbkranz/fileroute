@@ -1,0 +1,113 @@
+name: Version, tag, and publish
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "fileroute/**"
+      - "pyproject.toml"
+      - "README.md"
+      - "LICENSE*"
+
+permissions:
+  contents: read
+
+# Both branches share the version/tag namespace.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      reused: ${{ steps.release.outputs.reused }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+          version: "0.12.17"
+      - run: uvx --from poethepoet==0.48.0 poe release-check
+      - name: Prepare release
+        id: release
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: uvx --from poethepoet==0.48.0 poe release --branch "$BRANCH" --source "$SOURCE_SHA"
+      - name: Save distributions before pushing the release
+        if: steps.release.outputs.reused == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          # A previous attempt may have saved files but failed its atomic push.
+          overwrite: true
+      - name: Push release commit and tag together
+        if: steps.release.outputs.reused == 'false'
+        env:
+          BRANCH: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: git push --atomic origin "$RELEASE_SHA:refs/heads/$BRANCH" "refs/tags/$TAG"
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Locate the original release artifact on retries
+        if: needs.prepare.outputs.reused == 'true'
+        id: original
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          # Artifacts belong to workflow runs, not to a commit or tag. Select
+          # only an unexpired artifact uploaded for this exact source commit.
+          run_id=$(gh api --paginate "repos/$GH_REPO/actions/artifacts?name=dist-$SOURCE_SHA&per_page=100" \
+            --jq ".artifacts[] | select(.name == \"dist-$SOURCE_SHA\" and .expired == false and .workflow_run.head_sha == \"$SOURCE_SHA\") | .workflow_run.id" \
+            | sort -nr | sed -n '1p')
+          if [ -z "$run_id" ]; then
+            echo "No saved distribution for $SOURCE_SHA; recover the original artifact before publishing." >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+          run-id: ${{ steps.original.outputs.run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.12.17"
+      - run: uv publish --trusted-publishing always
+
+  release:
+    needs: [prepare, publish]
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create stable GitHub release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi

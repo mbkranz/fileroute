@@ -10,36 +10,42 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 API_MODULES = [
-    {"module": "sharedrive.helpers", "path": ROOT / "sharedrive" / "helpers.py"},
-    {"module": "sharedrive.models", "path": ROOT / "sharedrive" / "models.py"},
-    {"module": "sharedrive.item", "path": ROOT / "sharedrive" / "item.py"},
+    {"module": "fileroute.transfer", "path": ROOT / "fileroute" / "transfer.py"},
+    {"module": "fileroute.descriptor", "path": ROOT / "fileroute" / "descriptor.py"},
+    {"module": "fileroute.diagram", "path": ROOT / "fileroute" / "diagram.py"},
     {
-        "module": "sharedrive.clients.aws",
-        "path": ROOT / "sharedrive" / "clients" / "aws.py",
+        "module": "fileroute.diagram_reports",
+        "path": ROOT / "fileroute" / "diagram_reports.py",
+    },
+    {"module": "fileroute.models", "path": ROOT / "fileroute" / "models.py"},
+    {"module": "fileroute.item", "path": ROOT / "fileroute" / "item.py"},
+    {
+        "module": "fileroute.clients.s3",
+        "path": ROOT / "fileroute" / "clients" / "s3.py",
     },
     {
-        "module": "sharedrive.clients.googledrive",
-        "path": ROOT / "sharedrive" / "clients" / "googledrive.py",
+        "module": "fileroute.clients.googledrive",
+        "path": ROOT / "fileroute" / "clients" / "googledrive.py",
     },
     {
-        "module": "sharedrive.auth.google",
-        "path": ROOT / "sharedrive" / "auth" / "google.py",
+        "module": "fileroute.auth.google",
+        "path": ROOT / "fileroute" / "auth" / "google.py",
     },
     {
-        "module": "sharedrive.auth.microsoft",
-        "path": ROOT / "sharedrive" / "auth" / "microsoft.py",
+        "module": "fileroute.auth.microsoft",
+        "path": ROOT / "fileroute" / "auth" / "microsoft.py",
     },
     {
-        "module": "sharedrive.auth.token_store",
-        "path": ROOT / "sharedrive" / "auth" / "token_store.py",
+        "module": "fileroute.auth.token_store",
+        "path": ROOT / "fileroute" / "auth" / "token_store.py",
     },
     {
-        "module": "sharedrive.auth.settings",
-        "path": ROOT / "sharedrive" / "auth" / "settings.py",
+        "module": "fileroute.auth.settings",
+        "path": ROOT / "fileroute" / "auth" / "settings.py",
     },
     {
-        "module": "sharedrive.clients.sharepoint",
-        "path": ROOT / "sharedrive" / "clients" / "sharepoint.py",
+        "module": "fileroute.clients.sharepoint",
+        "path": ROOT / "fileroute" / "clients" / "sharepoint.py",
     },
 ]
 
@@ -50,11 +56,11 @@ def _render_cli_markdown() -> str:
         sys.executable,
         "-m",
         "typer",
-        "sharedrive.cli",
+        "fileroute.cli",
         "utils",
         "docs",
         "--name",
-        "sharedrive",
+        "fileroute",
         "--title",
         "CLI Reference",
     ]

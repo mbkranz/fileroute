@@ -1,12 +1,13 @@
-site_name: sharedrive
+site_name: fileroute
 site_description: Shared-drive adapters and retrieval workflows for SharePoint, Google Drive, and S3.
-repo_name: sharedrive
+repo_name: fileroute
 
 theme:
   name: material
 
 nav:
   - Home: index.md
+  - Descriptor Diagrams: diagram.md
   - Google Auth Credentials: google-auth.md
   - CLI Reference: cli.md
   - Python API: api.md

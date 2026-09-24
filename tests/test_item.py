@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from sharedrive import AmbiguousPathError
-from sharedrive.item import ServiceItem
-from sharedrive.models import DriveRemoteCatalog, DriveRemoteResource
+from fileroute import AmbiguousPathError
+from fileroute.item import ServiceItem
+from fileroute.models import Catalog, Resource
 
 
 class _Item(ServiceItem):
@@ -70,7 +70,7 @@ class _Item(ServiceItem):
         self.downloaded_to.append(Path(target))
 
 
-def test_file_to_catalog_uses_remote_path_and_local_cache() -> None:
+def test_file_to_catalog_uses_artifact_path_and_remote_source() -> None:
     item = _Item(
         id="file-1",
         name="Report.CSV",
@@ -80,13 +80,13 @@ def test_file_to_catalog_uses_remote_path_and_local_cache() -> None:
 
     resource = item.to_catalog()
 
-    assert isinstance(resource, DriveRemoteResource)
+    assert isinstance(resource, Resource)
     assert resource.name == "reports/Report.CSV"
-    assert str(resource.path) == "https://drive.google.com/file/d/file-1"
-    assert resource.cache == "reports/Report.CSV"
-    assert resource.serviceId == "file-1"
-    assert resource.serviceType == "GoogleDrive"
-    assert resource.entityType == "File"
+    assert resource.path == "reports/Report.CSV"
+    assert resource.sources[0].path == "https://drive.google.com/file/d/file-1"
+    assert resource.sources[0].service_id == "file-1"
+    assert resource.sources[0].service_type == "GoogleDrive"
+    assert resource.entity_type == "File"
     assert resource.format == "csv"
 
 
@@ -101,7 +101,7 @@ def test_file_to_catalog_leaves_format_empty_without_extension() -> None:
 
     resource = item.to_catalog()
 
-    assert isinstance(resource, DriveRemoteResource)
+    assert isinstance(resource, Resource)
     assert resource.format is None
 
 
@@ -141,12 +141,12 @@ def test_directory_to_catalog_preserves_child_resources_and_catalogs() -> None:
 
     catalog = root.to_catalog()
 
-    assert isinstance(catalog, DriveRemoteCatalog)
+    assert isinstance(catalog, Catalog)
     assert catalog.name == ""
-    assert str(catalog.accessUrl) == "s3://example-bucket"
-    assert catalog.serviceId == "root-folder"
-    assert catalog.serviceType == "S3"
-    assert catalog.entityType == "Directory"
+    assert catalog.sources[0].path == "s3://example-bucket"
+    assert catalog.sources[0].service_id == "root-folder"
+    assert catalog.sources[0].service_type == "S3"
+    assert catalog.entity_type == "Directory"
     assert [resource.name for resource in catalog.resources] == ["summary.csv"]
     assert [child.name for child in catalog.catalogs] == ["archive"]
     assert [resource.name for resource in catalog.catalogs[0].resources] == [
