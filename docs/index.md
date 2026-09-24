@@ -8,7 +8,8 @@ Descriptors use `Catalog`, `Resource`, `Location`, and `CatalogReference`:
 `path` identifies the artifact, `sources` records upstream inputs, and `targets`
 identifies publication destinations. `pull` reads sources; `push`
 writes targets. Both support offline `--dry-run` planning. `diagram` turns the
-same resolved descriptor relationships into a standalone SVG without
+same resolved descriptor relationships into SVG, an offline HTML inspector, or a
+Markdown file dictionary without
 contacting a remote service.
 
 ```bash

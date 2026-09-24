@@ -235,7 +235,7 @@ sharedrive add my-folder --catalog --path docs/_output --target https://tenant.s
 
 ## `sharedrive diagram`
 
-Render descriptor sources, artifacts, and targets as an SVG workflow.
+Render descriptor sources, artifacts, and targets as SVG, HTML, or Markdown.
 
 **Usage**:
 
@@ -249,7 +249,8 @@ $ sharedrive diagram [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
-* `-o, --output PATH`: SVG file to write.  [default: sharedrive-diagram.svg]
+* `-o, --output PATH`: Output .svg, .html, or .md file (Markdown also writes a companion SVG).  [default: sharedrive-diagram.svg]
+* `--detail [summary|full]`: Metadata exported in HTML/Markdown; SVG remains compact.  [default: summary]
 * `--help`: Show this message and exit.
 
 ## `sharedrive auth`

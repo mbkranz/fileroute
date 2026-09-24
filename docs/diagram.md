@@ -45,3 +45,72 @@ render_svg(graph, "sharedrive-diagram.svg")
 `DescriptorGraph` contains `DiagramNode` and `DiagramEdge` values. The node kinds are `catalog`, `resource`, `source`, `target`, and, when `build_graph()` is called on an unresolved model, `reference`. Edge kinds are `source`, `target`, and `contains`.
 
 This API is intentionally provider- and renderer-neutral. Repository-specific documentation systems can translate the graph into their own diagram model rather than duplicating Sharedrive descriptor traversal. The built-in SVG renderer stays small and dependency-free so `uvx sharedrive diagram` does not require Graphviz or another rendering runtime.
+
+## HTML inspector and Markdown dictionary
+
+Select the output format by its extension (SVG remains the default):
+
+```bash
+sharedrive diagram config/sharedrive.yaml -o workflow.html
+sharedrive diagram config/sharedrive.yaml -o workflow.md
+sharedrive diagram config/sharedrive.yaml -o workflow.html --detail full
+uvx sharedrive diagram config/sharedrive.yaml -o workflow.html
+```
+
+`.html`/`.htm` produces one self-contained offline file. Open it in a browser;
+select a diagram node or file-dictionary entry to inspect its metadata. Search
+matches exported metadata. Related-node links and URL fragments select and
+highlight the corresponding node. Nodes support Enter/Space, dictionary entries
+support keyboard navigation, and native disclosure widgets remain usable with
+JavaScript disabled. There are no CDN dependencies or provider requests.
+
+`.md`/`.markdown` produces a Markdown dictionary and a same-stem companion SVG
+(e.g. `workflow.md` and `workflow.svg`). Keep both files together when sharing or
+including them in documentation. Dictionary entries link to each other through
+anchors. Navigation inside an embedded SVG varies by Markdown renderer; use
+HTML for bidirectional diagram/dictionary navigation. Existing output files,
+including the Markdown companion SVG, are replaced.
+
+`--detail summary` is the default: name, title, description, kind, path, format,
+provider, and entity type where available. `--detail full` also exports additional
+descriptor metadata, including custom fields and service IDs. This controls the
+actual exported content, not just its initial visibility. SVG stays compact at
+either setting, with full labels and paths in tooltips. Metadata is escaped as
+text, and only explicit HTTP(S) URLs without embedded credentials become open
+links. Local paths and S3 URIs remain copyable text. Reports do not read or embed
+file contents, check existence/permissions, or authenticate.
+
+Relationships identify the catalog that declared inherited targets. Unmarked
+target relationships are explicitly declared. `targets: []` continues to disable
+publication, so no target edges are added for that artifact.
+
+### Node identity
+
+Existing `DiagramNode.key` values remain available to graph consumers. The new
+`anchor` is separate: it hashes catalog ancestry plus a resource's name (or path
+when unnamed). Catalogs use name, path, title, then an anonymous fallback;
+locations use their role and complete metadata. Reordering uniquely identified
+siblings leaves anchors unchanged. Duplicate identities receive encounter-order
+suffixes; permalinks to indistinguishable duplicates are not stable across their
+reordering. Renaming an identity or changing location metadata changes its
+anchor. Give catalogs and resources distinct names for durable links.
+
+Locations with different metadata remain distinct even when their paths match,
+so a report does not silently discard conflicting metadata. Node metadata keeps
+non-relationship fields; graph edges represent sources, targets, and containment.
+`DiagramEdge.inherited_from` points to the declaring catalog's graph key.
+
+### Python report API
+
+```python
+from sharedrive.diagram import load_graph
+from sharedrive.diagram_reports import render_html, render_markdown
+
+graph = load_graph("config/sharedrive.yaml")
+render_html(graph, "workflow.html")
+render_markdown(graph, "workflow.md", detail="full")
+```
+
+The report module reuses the graph and SVG layout. Plain JavaScript handles
+selection and filtering; embedded file previews and additional graph layout
+libraries are outside this feature's scope.

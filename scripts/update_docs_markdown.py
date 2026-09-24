@@ -13,6 +13,10 @@ API_MODULES = [
     {"module": "sharedrive.transfer", "path": ROOT / "sharedrive" / "transfer.py"},
     {"module": "sharedrive.descriptor", "path": ROOT / "sharedrive" / "descriptor.py"},
     {"module": "sharedrive.diagram", "path": ROOT / "sharedrive" / "diagram.py"},
+    {
+        "module": "sharedrive.diagram_reports",
+        "path": ROOT / "sharedrive" / "diagram_reports.py",
+    },
     {"module": "sharedrive.models", "path": ROOT / "sharedrive" / "models.py"},
     {"module": "sharedrive.item", "path": ROOT / "sharedrive" / "item.py"},
     {
