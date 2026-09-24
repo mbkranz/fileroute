@@ -4,6 +4,14 @@
 publishes the file at `path` to **every** target. They are separate steps:
 Fileroute neither streams directly between providers nor transforms files.
 
+```bash
+uv run fileroute pull config/fileroute.yaml --dry-run
+uv run fileroute push config/fileroute.yaml --dry-run
+```
+
+See the exact [`pull`](cli.md#fileroute-pull) and
+[`push`](cli.md#fileroute-push) options in the CLI reference.
+
 | Direction | SharePoint | Google Drive | S3 |
 | --- | --- | --- | --- |
 | Remote source for `pull` | Supported | Supported | Supported |

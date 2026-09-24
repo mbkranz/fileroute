@@ -38,6 +38,26 @@ catalogs:
 Build `guide.docx` with Quarto before pushing it. The `internal` resource
 opts out of the catalog's publication target.
 
+## Descriptor commands
+
+The descriptor commands operate on local metadata. An explicit descriptor
+path overrides the active/default selection; `activate` saves a selection
+for later commands.
+
+| Goal | CLI command |
+| --- | --- |
+| Select a descriptor | [`activate`](cli.md#fileroute-activate) |
+| Add a resource or catalog | [`add`](cli.md#fileroute-add) |
+| Inspect local entries | [`list`](cli.md#fileroute-list) |
+| Edit an entry | [`update`](cli.md#fileroute-update) |
+| Infer provider metadata | [`resolve`](cli.md#fileroute-resolve) |
+| Copy a descriptor | [`clone descriptor`](cli.md#fileroute-clone-descriptor) |
+| Convert legacy metadata | [`migrate`](cli.md#fileroute-migrate) |
+
+See [Transfers](transfers.md) for `pull` and `push`, and
+[Diagrams](diagram.md) for `diagram`. The generated
+[CLI reference](cli.md) lists every argument and option.
+
 ## Paths and references
 
 Artifact paths are relative to the **working directory**, even when the

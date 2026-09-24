@@ -1,6 +1,7 @@
-# Google Auth Credentials
+# Google Drive credentials
 
 This page explains how to set up Google Drive credentials for `fileroute`.
+For the SharePoint and S3 options, start with [Authentication](authentication.md).
 
 `fileroute` supports three Google auth modes:
 

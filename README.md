@@ -64,8 +64,8 @@ uv run fileroute push config/fileroute.yaml
 
 `resolve`, `diagram`, and dry runs do not authenticate or contact providers;
 actual pull/push operations require access. Configure credentials using
-[.env-sample](.env-sample); Google OAuth setup is covered in
-[Google authentication](docs/google-auth.md).
+[.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
+provider setup.
 
 ## Documentation
 

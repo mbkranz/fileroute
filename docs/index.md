@@ -40,6 +40,6 @@ also gives a quick start for GitHub visitors.
 ## Go further
 
 - [Descriptor diagrams](diagram.md): SVG, Mermaid, HTML, Markdown, and graph API.
-- [Google authentication](google-auth.md): local and automated credentials.
+- [Authentication](authentication.md): SharePoint, Google Drive, and S3 setup.
 - [CLI reference](cli.md) and [Python API](api.md): generated from the code.
 - [Contributing and releases](contributing.md): development, migration, CI.
