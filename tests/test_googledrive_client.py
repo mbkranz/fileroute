@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from sharedrive.auth.google import GoogleAuth
-from sharedrive.clients.googledrive import (
+from fileroute.auth.google import GoogleAuth
+from fileroute.clients.googledrive import (
     FOLDER_MIME,
     GoogleBaseClient,
     GoogleDriveClient,
 )
-from sharedrive.exceptions import GoogleDriveError
+from fileroute.exceptions import GoogleDriveError
 
 
 class DummyCreds:

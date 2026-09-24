@@ -1,8 +1,8 @@
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.diagram import build_graph, load_graph, render_svg
-from sharedrive.models import Catalog, Location, Resource, ServiceType
+from fileroute.cli import app
+from fileroute.diagram import build_graph, load_graph, render_svg
+from fileroute.models import Catalog, Location, Resource, ServiceType
 
 
 def test_build_graph_applies_catalog_targets_to_resources():
@@ -56,7 +56,7 @@ def test_load_graph_resolves_providers_and_references(tmp_path):
         "      - path: s3://bucket/data.csv\n",
         encoding="utf-8",
     )
-    descriptor = tmp_path / "sharedrive.yaml"
+    descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
         "catalogs:\n"
         "  - $ref: child.yaml\n"
@@ -78,7 +78,7 @@ def test_load_graph_resolves_providers_and_references(tmp_path):
 
 
 def test_render_svg_and_cli_default_output(tmp_path, monkeypatch):
-    descriptor = tmp_path / "sharedrive.yaml"
+    descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
         "resources:\n"
         "  - name: guide\n"
@@ -97,6 +97,6 @@ def test_render_svg_and_cli_default_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(app, ["diagram", str(descriptor)])
     assert result.exit_code == 0, result.output
-    output = tmp_path / "sharedrive-diagram.svg"
+    output = tmp_path / "fileroute-diagram.svg"
     assert output.exists()
     assert "Rendered descriptor diagram" in result.output

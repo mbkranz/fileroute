@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 from google.oauth2.credentials import Credentials as UserCredentials
 
-from sharedrive.auth.google import (
+from fileroute.auth.google import (
     GoogleAuth,
     normalize_google_scopes,
 )
-from sharedrive.auth.token_store import JsonTokenStore
-from sharedrive.exceptions import GoogleAuthError
+from fileroute.auth.token_store import JsonTokenStore
+from fileroute.exceptions import GoogleAuthError
 
 
 class DummyCreds:
@@ -54,15 +54,15 @@ def test_google_auth_init_stores_credentials() -> None:
     assert auth.credentials is creds
 
 
-def test_google_auth_from_adc_error_mentions_sharedrive_user_oauth(
+def test_google_auth_from_adc_error_mentions_fileroute_user_oauth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "sharedrive.auth.google.google.auth.default",
+        "fileroute.auth.google.google.auth.default",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("adc missing")),
     )
 
-    with pytest.raises(GoogleAuthError, match="sharedrive auth login gdrive"):
+    with pytest.raises(GoogleAuthError, match="fileroute auth login gdrive"):
         GoogleAuth.from_adc()
 
 
@@ -70,7 +70,7 @@ def test_google_auth_from_service_account_raises_on_bad_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "sharedrive.auth.google.service_account.Credentials.from_service_account_file",
+        "fileroute.auth.google.service_account.Credentials.from_service_account_file",
         lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError("no file")),
     )
     with pytest.raises(GoogleAuthError, match="Failed to load service account"):
@@ -141,7 +141,7 @@ def test_google_auth_from_user_oauth_runs_flow_when_store_missing(
             return issued_creds
 
     monkeypatch.setattr(
-        "sharedrive.auth.google.InstalledAppFlow.from_client_secrets_file",
+        "fileroute.auth.google.InstalledAppFlow.from_client_secrets_file",
         lambda path, scopes: DummyFlow(),
     )
 

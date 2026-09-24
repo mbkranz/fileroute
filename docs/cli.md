@@ -5,7 +5,7 @@ Shared drive utilities for SharePoint, Google Drive, and S3.
 **Usage**:
 
 ```console
-$ sharedrive [OPTIONS] COMMAND [ARGS]...
+$ fileroute [OPTIONS] COMMAND [ARGS]...
 ```
 
 **Options**:
@@ -28,14 +28,14 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `auth`: Authentication helpers.
 * `clone`: Clone descriptor state for new local...
 
-## `sharedrive push`
+## `fileroute push`
 
 Publish artifact paths to targets; create or replace, never delete.
 
 **Usage**:
 
 ```console
-$ sharedrive push [OPTIONS] [DESCRIPTOR]
+$ fileroute push [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
@@ -47,14 +47,14 @@ $ sharedrive push [OPTIONS] [DESCRIPTOR]
 * `--dry-run`: List files without authenticating or writing.
 * `--help`: Show this message and exit.
 
-## `sharedrive pull`
+## `fileroute pull`
 
 Materialize a single remote source into each artifact's path.
 
 **Usage**:
 
 ```console
-$ sharedrive pull [OPTIONS] [DESCRIPTOR]
+$ fileroute pull [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
@@ -66,14 +66,14 @@ $ sharedrive pull [OPTIONS] [DESCRIPTOR]
 * `--dry-run`: Plan without authenticating or writing.
 * `--help`: Show this message and exit.
 
-## `sharedrive resolve`
+## `fileroute resolve`
 
 Preview inferred provider metadata, preserving URLs; no network access.
 
 **Usage**:
 
 ```console
-$ sharedrive resolve [OPTIONS] [DESCRIPTOR]
+$ fileroute resolve [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
@@ -85,14 +85,14 @@ $ sharedrive resolve [OPTIONS] [DESCRIPTOR]
 * `--write`: Save resolved metadata back to this descriptor.
 * `--help`: Show this message and exit.
 
-## `sharedrive migrate`
+## `fileroute migrate`
 
 Convert a legacy descriptor to path/sources/targets in a new file.
 
 **Usage**:
 
 ```console
-$ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
+$ fileroute migrate [OPTIONS] DESCRIPTOR OUTPUT
 ```
 
 **Arguments**:
@@ -108,21 +108,21 @@ $ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
 **Examples**
 
 ```bash
-sharedrive migrate old.yaml new.yaml --direction pull
+fileroute migrate old.yaml new.yaml --direction pull
 ```
 
 ```bash
-sharedrive migrate old.yaml new.yaml --direction push
+fileroute migrate old.yaml new.yaml --direction push
 ```
 
-## `sharedrive update`
+## `fileroute update`
 
 Update descriptor-root or resource properties using flag-style field edits.
 
 **Usage**:
 
 ```console
-$ sharedrive update [OPTIONS]
+$ fileroute update [OPTIONS]
 ```
 
 **Options**:
@@ -135,25 +135,25 @@ $ sharedrive update [OPTIONS]
 **Examples**
 
 ```bash
-sharedrive update --title "Hello" --description "hello"
+fileroute update --title "Hello" --description "hello"
 ```
 
 ```bash
-sharedrive update --name file1 --title "Hello" --description "hello"
+fileroute update --name file1 --title "Hello" --description "hello"
 ```
 
 ```bash
-sharedrive update --descriptor resources/descriptor.yaml --name file1 --title "Hello"
+fileroute update --descriptor resources/descriptor.yaml --name file1 --title "Hello"
 ```
 
-## `sharedrive activate`
+## `fileroute activate`
 
 Activate a descriptor for later commands.
 
 **Usage**:
 
 ```console
-$ sharedrive activate [OPTIONS] DESCRIPTOR
+$ fileroute activate [OPTIONS] DESCRIPTOR
 ```
 
 **Arguments**:
@@ -167,17 +167,17 @@ $ sharedrive activate [OPTIONS] DESCRIPTOR
 **Examples**
 
 ```bash
-sharedrive activate resources/descriptor.yaml
+fileroute activate resources/descriptor.yaml
 ```
 
-## `sharedrive list`
+## `fileroute list`
 
 List local descriptor entities, paths, and source metadata.
 
 **Usage**:
 
 ```console
-$ sharedrive list [OPTIONS] [DESCRIPTOR]
+$ fileroute list [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
@@ -192,25 +192,25 @@ $ sharedrive list [OPTIONS] [DESCRIPTOR]
 **Examples**
 
 ```bash
-sharedrive list
+fileroute list
 ```
 
 ```bash
-sharedrive list resources/descriptor.yaml
+fileroute list resources/descriptor.yaml
 ```
 
 ```bash
-sharedrive list resources/descriptor.yaml --format json
+fileroute list resources/descriptor.yaml --format json
 ```
 
-## `sharedrive add`
+## `fileroute add`
 
 Add a standards-aligned resource or catalog entry to a descriptor.
 
 **Usage**:
 
 ```console
-$ sharedrive add [OPTIONS] NAME
+$ fileroute add [OPTIONS] NAME
 ```
 
 **Arguments**:
@@ -226,21 +226,21 @@ $ sharedrive add [OPTIONS] NAME
 **Examples**
 
 ```bash
-sharedrive add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...
+fileroute add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...
 ```
 
 ```bash
-sharedrive add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
+fileroute add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
 ```
 
-## `sharedrive diagram`
+## `fileroute diagram`
 
 Render descriptor sources, artifacts, and targets as SVG, HTML, or Markdown.
 
 **Usage**:
 
 ```console
-$ sharedrive diagram [OPTIONS] [DESCRIPTOR]
+$ fileroute diagram [OPTIONS] [DESCRIPTOR]
 ```
 
 **Arguments**:
@@ -249,18 +249,18 @@ $ sharedrive diagram [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
-* `-o, --output PATH`: Output .svg, .html, or .md file (Markdown also writes a companion SVG).  [default: sharedrive-diagram.svg]
+* `-o, --output PATH`: Output .svg, .html, or .md file (Markdown also writes a companion SVG).  [default: fileroute-diagram.svg]
 * `--detail [summary|full]`: Metadata exported in HTML/Markdown; SVG remains compact.  [default: summary]
 * `--help`: Show this message and exit.
 
-## `sharedrive auth`
+## `fileroute auth`
 
 Authentication helpers.
 
 **Usage**:
 
 ```console
-$ sharedrive auth [OPTIONS] COMMAND [ARGS]...
+$ fileroute auth [OPTIONS] COMMAND [ARGS]...
 ```
 
 **Options**:
@@ -271,14 +271,14 @@ $ sharedrive auth [OPTIONS] COMMAND [ARGS]...
 
 * `login`: Interactive login commands.
 
-### `sharedrive auth login`
+### `fileroute auth login`
 
 Interactive login commands.
 
 **Usage**:
 
 ```console
-$ sharedrive auth login [OPTIONS] COMMAND [ARGS]...
+$ fileroute auth login [OPTIONS] COMMAND [ARGS]...
 ```
 
 **Options**:
@@ -291,14 +291,14 @@ $ sharedrive auth login [OPTIONS] COMMAND [ARGS]...
 * `microsoft`: Validate Microsoft authentication used by...
 * `sharepoint`: Validate SharePoint authentication using...
 
-#### `sharedrive auth login gdrive`
+#### `fileroute auth login gdrive`
 
 Run the Google installed-app OAuth flow and optionally persist a token.
 
 **Usage**:
 
 ```console
-$ sharedrive auth login gdrive [OPTIONS]
+$ fileroute auth login gdrive [OPTIONS]
 ```
 
 **Options**:
@@ -313,21 +313,21 @@ $ sharedrive auth login gdrive [OPTIONS]
 **Examples**
 
 ```bash
-sharedrive auth login gdrive --oauth-client-secrets .google/oauth-credentials.json --oauth-token-path .google/oauth-token.json
+fileroute auth login gdrive --oauth-client-secrets .google/oauth-credentials.json --oauth-token-path .google/oauth-token.json
 ```
 
 ```bash
-sharedrive auth login gdrive --scope https://www.googleapis.com/auth/drive.readonly
+fileroute auth login gdrive --scope https://www.googleapis.com/auth/drive.readonly
 ```
 
-#### `sharedrive auth login microsoft`
+#### `fileroute auth login microsoft`
 
 Validate Microsoft authentication used by SharePoint workflows.
 
 **Usage**:
 
 ```console
-$ sharedrive auth login microsoft [OPTIONS]
+$ fileroute auth login microsoft [OPTIONS]
 ```
 
 **Options**:
@@ -341,25 +341,25 @@ $ sharedrive auth login microsoft [OPTIONS]
 **Examples**
 
 ```bash
-sharedrive auth login microsoft
+fileroute auth login microsoft
 ```
 
 ```bash
-sharedrive auth login microsoft --auth-mode delegated
+fileroute auth login microsoft --auth-mode delegated
 ```
 
 ```bash
-sharedrive auth login microsoft --host-url norc.sharepoint.com
+fileroute auth login microsoft --host-url norc.sharepoint.com
 ```
 
-#### `sharedrive auth login sharepoint`
+#### `fileroute auth login sharepoint`
 
 Validate SharePoint authentication using the configured auth mode.
 
 **Usage**:
 
 ```console
-$ sharedrive auth login sharepoint [OPTIONS]
+$ fileroute auth login sharepoint [OPTIONS]
 ```
 
 **Options**:
@@ -373,25 +373,25 @@ $ sharedrive auth login sharepoint [OPTIONS]
 **Examples**
 
 ```bash
-sharedrive auth login sharepoint
+fileroute auth login sharepoint
 ```
 
 ```bash
-sharedrive auth login sharepoint --auth-mode delegated
+fileroute auth login sharepoint --auth-mode delegated
 ```
 
 ```bash
-sharedrive auth login sharepoint --host-url norc.sharepoint.com
+fileroute auth login sharepoint --host-url norc.sharepoint.com
 ```
 
-## `sharedrive clone`
+## `fileroute clone`
 
 Clone descriptor state for new local variants.
 
 **Usage**:
 
 ```console
-$ sharedrive clone [OPTIONS] COMMAND [ARGS]...
+$ fileroute clone [OPTIONS] COMMAND [ARGS]...
 ```
 
 **Options**:
@@ -402,14 +402,14 @@ $ sharedrive clone [OPTIONS] COMMAND [ARGS]...
 
 * `descriptor`: Clone one descriptor file to a new local...
 
-### `sharedrive clone descriptor`
+### `fileroute clone descriptor`
 
 Clone one descriptor file to a new local path.
 
 **Usage**:
 
 ```console
-$ sharedrive clone descriptor [OPTIONS] TARGET_PATH
+$ fileroute clone descriptor [OPTIONS] TARGET_PATH
 ```
 
 **Arguments**:
@@ -426,9 +426,9 @@ $ sharedrive clone descriptor [OPTIONS] TARGET_PATH
 **Examples**
 
 ```bash
-sharedrive clone descriptor resources/descriptor-copy.yaml --descriptor resources/descriptor.yaml
+fileroute clone descriptor resources/descriptor-copy.yaml --descriptor resources/descriptor.yaml
 ```
 
 ```bash
-sharedrive clone descriptor resources/descriptor-copy.json --descriptor resources/descriptor.yaml --dry-run
+fileroute clone descriptor resources/descriptor-copy.json --descriptor resources/descriptor.yaml --dry-run
 ```

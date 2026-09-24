@@ -1,4 +1,4 @@
-"$schema": sharedrive-catalog
+"$schema": fileroute-catalog
 resources:
   - name: placeholder
     path: background/.gitkeep

@@ -1,6 +1,6 @@
-# sharedrive
+# fileroute
 
-Sharedrive describes where project artifacts come from, where they live locally,
+Fileroute describes where project artifacts come from, where they live locally,
 and where they should be published. A small YAML or JSON catalog connects local
 files with SharePoint, Google Drive, and S3 URLs, so a document or data export
 can keep its provenance and multiple destinations in one place. The CLI can
@@ -12,38 +12,38 @@ individual files. Python 3.11 or newer is required.
 
 ## Choose how to run it
 
-**Within a project:** add Sharedrive to that project's dependencies, commit its
+**Within a project:** add Fileroute to that project's dependencies, commit its
 `uv.lock` and descriptor, and run commands from the project root. `uv run` uses
 the project's environment and resolves its declared dependencies before running
 the command. This is the better fit for automation and Python API imports.
 
 ```bash
-uv add git+https://github.com/mbkranz/sharedrive.git@dev
-uv run sharedrive diagram config/sharedrive.yaml
-uv run sharedrive pull config/sharedrive.yaml --dry-run
-uv run sharedrive push config/sharedrive.yaml --dry-run
+uv add git+https://github.com/mbkranz/fileroute.git@dev
+uv run fileroute diagram config/fileroute.yaml
+uv run fileroute pull config/fileroute.yaml --dry-run
+uv run fileroute push config/fileroute.yaml --dry-run
 ```
 
 Use a commit SHA instead of `dev` in the Git dependency for a fixed revision,
-or `uv add ./path/to/sharedrive` when developing against a local checkout. See
+or `uv add ./path/to/fileroute` when developing against a local checkout. See
 uv's [project command guide](https://docs.astral.sh/uv/concepts/projects/run/)
 and [dependency guide](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
-**As a standalone tool:** `uvx` (an alias for `uv tool run`) runs Sharedrive in
+**As a standalone tool:** `uvx` (an alias for `uv tool run`) runs Fileroute in
 its own cached, disposable environment, separate from any project environment.
 It reads descriptor paths and files from your current working directory, but it
-does not add Sharedrive to the project's dependencies or make it importable by
+does not add Fileroute to the project's dependencies or make it importable by
 that project's Python code. Use this for ad hoc CLI operations:
 
 ```bash
-uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive list config/sharedrive.yaml
-uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive diagram config/sharedrive.yaml
-uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive pull config/sharedrive.yaml --dry-run
+uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute list config/fileroute.yaml
+uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute diagram config/fileroute.yaml
+uvx --from git+https://github.com/mbkranz/fileroute.git@dev fileroute pull config/fileroute.yaml --dry-run
 ```
 
-Once the intended Sharedrive distribution is available from your package index,
-the shorter forms include `uvx sharedrive diagram config/sharedrive.yaml` and
-`uvx sharedrive list config/sharedrive.yaml` (or `uvx sharedrive --help`). For a
+Once the intended Fileroute distribution is available from your package index,
+the shorter forms include `uvx fileroute diagram config/fileroute.yaml` and
+`uvx fileroute list config/fileroute.yaml` (or `uvx fileroute --help`). For a
 fixed tool version, pin the package version or Git commit. See uv's
 [tool guide](https://docs.astral.sh/uv/concepts/tools/).
 
@@ -51,7 +51,7 @@ To develop this repository itself:
 
 ```bash
 uv sync
-uv run sharedrive --help
+uv run fileroute --help
 ```
 
 Configure credentials using `.env-sample`. SharePoint uses the `AZURE_*` and
@@ -60,9 +60,9 @@ S3 uses the standard AWS credential chain. Descriptor loading, diagramming, and
 dry runs do not authenticate.
 
 ```bash
-sharedrive auth login gdrive
-sharedrive auth login microsoft --auth-mode delegated
-sharedrive auth login sharepoint --auth-mode delegated
+fileroute auth login gdrive
+fileroute auth login microsoft --auth-mode delegated
+fileroute auth login sharepoint --auth-mode delegated
 ```
 
 See [descriptor diagrams](docs/diagram.md),
@@ -88,7 +88,7 @@ For example, a rendered Word document can identify its Quarto source without
 making that source a publication destination:
 
 ```yaml
-$schema: sharedrive-catalog
+$schema: fileroute-catalog
 catalogs:
   - name: documentation
     path: docs/_output
@@ -132,7 +132,7 @@ catalogs:
 
 Unrecognized metadata fields survive model round trips. Existing YAML descriptors
 are round-trip edited where practical, retaining comments and authored styles.
-This is a Sharedrive format inspired by Data Package
+This is a Fileroute format inspired by Data Package
 and DCAT, not a full implementation of either standard. `$schema` is an optional
 profile label; loading does not fetch a schema from the network.
 
@@ -142,8 +142,8 @@ Each resource has one local artifact `path`. Its `sources` record where the
 artifact came from; its `targets` list every intended publication destination.
 One resource can have multiple targets. `pull` downloads **one remote source**
 to `path`, and `push` uploads the file at `path` to **all targets**. Run them as
-separate steps; Sharedrive does not stream directly between cloud providers or
-convert source formats. These examples can be saved as `config/sharedrive.yaml`.
+separate steps; Fileroute does not stream directly between cloud providers or
+convert source formats. These examples can be saved as `config/fileroute.yaml`.
 
 ### One SharePoint source and two SharePoint targets
 
@@ -160,8 +160,8 @@ resources:
       - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv
 ```
 
-For this supported combination, run `sharedrive pull config/sharedrive.yaml`
-and then `sharedrive push config/sharedrive.yaml`, with `--dry-run` on either
+For this supported combination, run `fileroute pull config/fileroute.yaml`
+and then `fileroute push config/fileroute.yaml`, with `--dry-run` on either
 command to inspect its plan first. Each SharePoint site needs working access.
 
 ### SharePoint source and Google Drive target
@@ -230,10 +230,10 @@ target inheritance, and draws sources → artifacts → targets as a standalone 
 It does not require Graphviz or another rendering dependency.
 
 ```bash
-sharedrive diagram config/sharedrive.yaml
-sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.svg
-sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.html
-sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.md --detail full
+fileroute diagram config/fileroute.yaml
+fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.svg
+fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.html
+fileroute diagram config/fileroute.yaml --output docs/fileroute-workflow.md --detail full
 ```
 
 HTML provides a searchable offline file dictionary linked to diagram nodes; Markdown
@@ -244,29 +244,29 @@ preview file contents or authenticate. See the diagram guide for anchor stabilit
 and duplicate-identity behavior.
 
 The descriptor argument follows the same saved/default selection behavior as
-`pull`, `push`, and `resolve`, so after `sharedrive activate` you can simply run
-`sharedrive diagram`. The default output is `sharedrive-diagram.svg` in the
+`pull`, `push`, and `resolve`, so after `fileroute activate` you can simply run
+`fileroute diagram`. The default output is `fileroute-diagram.svg` in the
 current working directory. See [Descriptor diagrams](docs/diagram.md) for the
 Python `DescriptorGraph` API and repository-integration guidance.
 
 ## Commands
 
 ```bash
-sharedrive add export --path downloads/source.csv --source s3://my-bucket/source.csv
-sharedrive add documentation --catalog --path docs/_output --target https://contoso.sharepoint.com/sites/dev/Docs
-sharedrive list config/sharedrive.yaml --format json
-sharedrive activate config/sharedrive.yaml
-sharedrive update --name documentation --title "Published documentation"
-sharedrive resolve config/sharedrive.yaml
-sharedrive resolve config/sharedrive.yaml --write
-sharedrive diagram config/sharedrive.yaml
-sharedrive migrate old.yaml new.yaml --direction push
-sharedrive pull config/sharedrive.yaml --dry-run
-sharedrive push config/sharedrive.yaml --dry-run
-sharedrive push config/sharedrive.yaml
+fileroute add export --path downloads/source.csv --source s3://my-bucket/source.csv
+fileroute add documentation --catalog --path docs/_output --target https://contoso.sharepoint.com/sites/dev/Docs
+fileroute list config/fileroute.yaml --format json
+fileroute activate config/fileroute.yaml
+fileroute update --name documentation --title "Published documentation"
+fileroute resolve config/fileroute.yaml
+fileroute resolve config/fileroute.yaml --write
+fileroute diagram config/fileroute.yaml
+fileroute migrate old.yaml new.yaml --direction push
+fileroute pull config/fileroute.yaml --dry-run
+fileroute push config/fileroute.yaml --dry-run
+fileroute push config/fileroute.yaml
 ```
 
-`activate` saves the active descriptor in `.sharedrive/descriptor`.
+`activate` saves the active descriptor in `.fileroute/descriptor`.
 The optional descriptor argument also accepts an explicit override. `update`
 selects an exact name or dot-path and reports ambiguous names; `clone descriptor`
 copies a single authored document. For a resource with one source,
@@ -342,20 +342,20 @@ before writing any files. Pull replaces existing local files at planned paths.
 
 ```python
 from pathlib import Path
-from sharedrive import Catalog, Resource, Location
-from sharedrive.descriptor import save
-from sharedrive.diagram import load_graph, render_svg
-from sharedrive.transfer import plan_push, push
+from fileroute import Catalog, Resource, Location
+from fileroute.descriptor import save
+from fileroute.diagram import load_graph, render_svg
+from fileroute.transfer import plan_push, push
 
 catalog = Catalog(resources=[Resource(
     name="guide", path="docs/guide.docx",
     sources=[Location(path="docs/guide.qmd")],
     targets=[Location(path="https://contoso.sharepoint.com/sites/dev/Docs/guide.docx")],
 )])
-save(catalog, "config/sharedrive.yaml")
-graph = load_graph("config/sharedrive.yaml")
-render_svg(graph, "sharedrive-diagram.svg")
-plan = plan_push(Path("config/sharedrive.yaml"), root=Path.cwd())
+save(catalog, "config/fileroute.yaml")
+graph = load_graph("config/fileroute.yaml")
+render_svg(graph, "fileroute-diagram.svg")
+plan = plan_push(Path("config/fileroute.yaml"), root=Path.cwd())
 # Inspect plan before transfer.
 push(plan)
 ```
@@ -400,7 +400,7 @@ no longer read.
 Legacy `Drive*` classes, packages, `_cache`, and artifact-level provider fields
 are unsupported. Update authored descriptors to `path`, `sources`, `targets`,
 `resources`, and `catalogs`; provider metadata belongs on a location. Normal loading has no compatibility shims or automatic legacy conversion. Use
-`sharedrive migrate OLD NEW --direction pull|push` for an explicit, one-way
+`fileroute migrate OLD NEW --direction pull|push` for an explicit, one-way
 conversion that preserves the input file.
 
 ## Development

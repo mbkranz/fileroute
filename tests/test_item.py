@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from sharedrive import AmbiguousPathError
-from sharedrive.item import ServiceItem
-from sharedrive.models import Catalog, Resource
+from fileroute import AmbiguousPathError
+from fileroute.item import ServiceItem
+from fileroute.models import Catalog, Resource
 
 
 class _Item(ServiceItem):

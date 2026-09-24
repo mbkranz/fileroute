@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sharedrive"
+name = "fileroute"
 version = "1.0.1.dev1"
 description = "Convenient connectors to make interoperating and collaborating across multiple content management systems easier"
 readme = "README.md"
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sharedrive = "sharedrive.cli:main"
+fileroute = "fileroute.cli:main"
 
 [project.optional-dependencies]
 docs = [
@@ -45,7 +45,7 @@ executor = "simple"
 
 [tool.poe.tasks.install]
 cmd = "uv tool install ."
-help = "Install sharedrive as a uv tool from this checkout."
+help = "Install fileroute as a uv tool from this checkout."
 
 [tool.poe.tasks.sync]
 cmd = "uv sync"
@@ -104,7 +104,7 @@ sequence = ["docs-update", "docs-build"]
 help = "Regenerate and build documentation."
 
 [tool.poe.tasks.dry-run]
-cmd = "uv run sharedrive ${action} ${descriptor} --dry-run"
+cmd = "uv run fileroute ${action} ${descriptor} --dry-run"
 help = "Run a local pull or push dry-run against a descriptor."
 
 [[tool.poe.tasks.dry-run.args]]
@@ -128,7 +128,7 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 help = "Remove local Python, test, and documentation build caches."
 
 [tool.setuptools]
-packages = ["sharedrive", "sharedrive.auth", "sharedrive.clients", "sharedrive.commands"]
+packages = ["fileroute", "fileroute.auth", "fileroute.clients", "fileroute.commands"]
 
 [tool.ruff]
 line-length = 88

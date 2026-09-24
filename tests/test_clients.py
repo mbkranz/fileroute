@@ -1,10 +1,10 @@
 import pytest
-from sharedrive.clients import get_provider
-from sharedrive.clients.base import BaseClient
-from sharedrive.clients.googledrive import GoogleDriveClient
-from sharedrive.clients.sharepoint import SharepointClient
-from sharedrive.clients.s3 import S3Client
-from sharedrive.models import ServiceType
+from fileroute.clients import get_provider
+from fileroute.clients.base import BaseClient
+from fileroute.clients.googledrive import GoogleDriveClient
+from fileroute.clients.sharepoint import SharepointClient
+from fileroute.clients.s3 import S3Client
+from fileroute.models import ServiceType
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 import pytest
 
-from sharedrive.descriptor import resolve
-from sharedrive.models import Catalog, Location, Resource, ServiceType
+from fileroute.descriptor import resolve
+from fileroute.models import Catalog, Location, Resource, ServiceType
 
 
 @pytest.mark.parametrize(
@@ -80,7 +80,7 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     import json
     import yaml_support as yaml
     from typer.testing import CliRunner
-    from sharedrive.cli import app
+    from fileroute.cli import app
 
     path = tmp_path / "catalog.yaml"
     url = "https://tenant.sharepoint.com/sites/dev/Docs/guide%20one.docx"
@@ -97,7 +97,7 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     )
     before = path.read_bytes()
     monkeypatch.setattr(
-        "sharedrive.clients.get_provider", lambda _: pytest.fail("provider lookup")
+        "fileroute.clients.get_provider", lambda _: pytest.fail("provider lookup")
     )
     runner = CliRunner()
     preview = runner.invoke(app, ["resolve", str(path)])
@@ -115,9 +115,9 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
 
 def test_resolve_preserves_references_and_does_not_edit_referenced_files(tmp_path):
     from typer.testing import CliRunner
-    from sharedrive.cli import app
-    from sharedrive.descriptor import load
-    from sharedrive.models import CatalogReference
+    from fileroute.cli import app
+    from fileroute.descriptor import load
+    from fileroute.models import CatalogReference
 
     child = tmp_path / "child.yaml"
     child.write_text(
@@ -134,7 +134,7 @@ def test_resolve_preserves_references_and_does_not_edit_referenced_files(tmp_pat
 
 def test_failed_resolve_write_leaves_descriptor_unchanged(tmp_path):
     from typer.testing import CliRunner
-    from sharedrive.cli import app
+    from fileroute.cli import app
 
     path = tmp_path / "catalog.yaml"
     path.write_text("targets:\n - path: s3://bucket/file\n   serviceType: SharePoint\n")

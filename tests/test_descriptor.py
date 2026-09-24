@@ -5,9 +5,9 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.models import Catalog, CatalogReference, Resource
-from sharedrive.descriptor import load, save, walk, find
+from fileroute.cli import app
+from fileroute.models import Catalog, CatalogReference, Resource
+from fileroute.descriptor import load, save, walk, find
 
 
 def test_roundtrip_preserves_metadata_and_target_opt_out(tmp_path):
@@ -107,7 +107,7 @@ def test_walk_never_loads_references(tmp_path):
 
 def test_save_preserves_explicit_defaults_and_null_metadata(tmp_path):
     path = tmp_path / "catalog.json"
-    data = {"$schema": "sharedrive-catalog", "resources": [], "custom": None}
+    data = {"$schema": "fileroute-catalog", "resources": [], "custom": None}
     save(Catalog.model_validate(data), path)
     assert json.loads(path.read_text()) == data
 

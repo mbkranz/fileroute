@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 import yaml_support as yaml
 
-from sharedrive.commands.descriptor import _add_resource_to_descriptor
-from sharedrive.models import Catalog, Location
-from sharedrive.descriptor import resolve
+from fileroute.commands.descriptor import _add_resource_to_descriptor
+from fileroute.models import Catalog, Location
+from fileroute.descriptor import resolve
 
 
 def _write_catalog_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
-            {"$schema": "sharedrive-catalog", "resources": [], "catalogs": []},
+            {"$schema": "fileroute-catalog", "resources": [], "catalogs": []},
             sort_keys=False,
         ),
         encoding="utf-8",

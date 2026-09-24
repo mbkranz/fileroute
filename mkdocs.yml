@@ -1,6 +1,6 @@
-site_name: sharedrive
+site_name: fileroute
 site_description: Shared-drive adapters and retrieval workflows for SharePoint, Google Drive, and S3.
-repo_name: sharedrive
+repo_name: fileroute
 
 theme:
   name: material
