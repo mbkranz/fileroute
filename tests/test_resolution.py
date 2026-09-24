@@ -42,6 +42,7 @@ def test_resolution_preserves_clickable_urls_and_local_provenance():
     [
         "https://sharepoint.com.evil.example/file",
         "https://notsharepoint.com/file",
+        "https://s3.evil.example/bucket/file",
         "https://example.com/link",
         "relative/file",
     ],

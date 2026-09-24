@@ -43,7 +43,9 @@ def _parse_s3_source_url(
         bucket = parsed.netloc
         key = parsed.path.lstrip("/")
     elif scheme in {"http", "https"}:
-        host = parsed.netloc.lower()
+        host = (parsed.hostname or "").lower()
+        if not host.endswith(".amazonaws.com"):
+            raise ValueError(f"Unsupported S3 URL host: {parsed.netloc}")
         path = parsed.path.lstrip("/")
         if host == "s3.amazonaws.com" or host.startswith("s3."):
             parts = path.split("/", 1)
@@ -89,6 +91,7 @@ class S3Client(BaseClient):
         host = (parsed.hostname or "").lower()
         return bool(host) and (parsed.scheme == "s3" or (
             parsed.scheme in {"http", "https"} and
+            host.endswith(".amazonaws.com") and
             (host == "s3.amazonaws.com" or host.startswith("s3.")
              or ".s3." in host or host.endswith(".s3.amazonaws.com"))
         ))
