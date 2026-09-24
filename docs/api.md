@@ -2,7 +2,7 @@
 
 Auto-generated from source signatures and docstrings.
 
-## `sharedrive.transfer`
+## `fileroute.transfer`
 
 ### Functions
 
@@ -35,7 +35,7 @@ Auto-generated from source signatures and docstrings.
   - `def destination(self) -> str`
 
 
-## `sharedrive.descriptor`
+## `fileroute.descriptor`
 
 ### Functions
 
@@ -63,7 +63,7 @@ Auto-generated from source signatures and docstrings.
   - `def entity_type(self) -> str`
 
 
-## `sharedrive.diagram`
+## `fileroute.diagram`
 
 ### Functions
 
@@ -103,7 +103,7 @@ Auto-generated from source signatures and docstrings.
   - `metadata: dict[str, Any]`
 
 
-## `sharedrive.diagram_reports`
+## `fileroute.diagram_reports`
 
 ### Functions
 
@@ -113,11 +113,11 @@ Auto-generated from source signatures and docstrings.
   - Write a file dictionary and companion SVG; dictionary anchors are portable.
 
 
-## `sharedrive.models`
+## `fileroute.models`
 
 ### Constants
 
-- `CATALOG_PROFILE = 'sharedrive-catalog'`
+- `CATALOG_PROFILE = 'fileroute-catalog'`
 - `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
 
 ### Functions
@@ -159,7 +159,7 @@ Auto-generated from source signatures and docstrings.
   - `path: str`
 
 
-## `sharedrive.item`
+## `fileroute.item`
 
 ### Classes
 
@@ -192,7 +192,7 @@ Auto-generated from source signatures and docstrings.
     - Export local artifact paths and remote provenance as owned models.
 
 
-## `sharedrive.clients.s3`
+## `fileroute.clients.s3`
 
 ### Functions
 
@@ -225,7 +225,7 @@ Auto-generated from source signatures and docstrings.
   - `def download(self, target_dir: str | Path) -> None`
 
 
-## `sharedrive.clients.googledrive`
+## `fileroute.clients.googledrive`
 
 ### Classes
 
@@ -290,7 +290,7 @@ Auto-generated from source signatures and docstrings.
     - Post a comment on this file via the Drive v3 comments API.
 
 
-## `sharedrive.auth.google`
+## `fileroute.auth.google`
 
 ### Classes
 
@@ -306,14 +306,14 @@ Auto-generated from source signatures and docstrings.
   - `def from_user_oauth(cls, scopes: Sequence[str] | str, client_secrets_path: str | Path = None, token_path: str | Path = None, token_store: Any = None) -> 'GoogleAuth'`
     - Build via the OAuth installed-app flow, with token persistence.
   - `def from_settings(cls, config: object | None = None) -> 'GoogleAuth'`
-    - Build from environment variables or a :class:`~sharedrive.auth.settings.GoogleAuthConfig`.
+    - Build from environment variables or a :class:`~fileroute.auth.settings.GoogleAuthConfig`.
   - `def credentials(self) -> Credentials`
     - The underlying :class:`~google.auth.credentials.Credentials` object.
   - `def ensure_valid(self) -> None`
     - Refresh credentials when the current token is not valid.
 
 
-## `sharedrive.auth.microsoft`
+## `fileroute.auth.microsoft`
 
 ### Classes
 
@@ -325,12 +325,12 @@ Auto-generated from source signatures and docstrings.
   - `def from_delegated(cls, tenant_id: str, client_id: str, scopes: Sequence[str] | str | None = None) -> 'MicrosoftAuth'`
     - Build using interactive delegated (user) flow via MSAL.
   - `def from_settings(cls, config: object | None = None) -> 'MicrosoftAuth'`
-    - Build from environment variables or a :class:`~sharedrive.auth.settings.MicrosoftAuthConfig`.
+    - Build from environment variables or a :class:`~fileroute.auth.settings.MicrosoftAuthConfig`.
   - `def access_token(self) -> str`
     - The raw Bearer access token string.
 
 
-## `sharedrive.auth.token_store`
+## `fileroute.auth.token_store`
 
 ### Classes
 
@@ -341,7 +341,7 @@ Auto-generated from source signatures and docstrings.
   - `def save(self, creds: UserCredentials) -> None`
 
 
-## `sharedrive.auth.settings`
+## `fileroute.auth.settings`
 
 ### Classes
 
@@ -357,7 +357,7 @@ Auto-generated from source signatures and docstrings.
   - `def to_scope_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]`
   - `def validate_for_mode(self) -> GoogleAuthConfig`
   - `def to_auth(self) -> GoogleAuth`
-    - Return a :class:`~sharedrive.auth.google.GoogleAuth` for this configuration.
+    - Return a :class:`~fileroute.auth.google.GoogleAuth` for this configuration.
 
 #### `GoogleAuthMode`
 
@@ -375,12 +375,12 @@ Auto-generated from source signatures and docstrings.
   - `def to_scope_list(cls, value: str | list[str] | tuple[str, ...] | None) -> list[str]`
   - `def validate_for_mode(self) -> MicrosoftAuthConfig`
   - `def to_auth(self) -> MicrosoftAuth`
-    - Return a :class:`~sharedrive.auth.microsoft.MicrosoftAuth` for this configuration.
+    - Return a :class:`~fileroute.auth.microsoft.MicrosoftAuth` for this configuration.
 
 #### `MicrosoftAuthMode`
 
 
-## `sharedrive.clients.sharepoint`
+## `fileroute.clients.sharepoint`
 
 ### Classes
 

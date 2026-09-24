@@ -1,6 +1,6 @@
 # Next steps
 
-The descriptor simplification is implemented: Sharedrive owns four Pydantic
+The descriptor simplification is implemented: Fileroute owns four Pydantic
 models, nested groups use ordinary catalogs, and sources/targets express transfer
 direction. `dplib-py`, unused GitPython, and the unrelated `google` package are
 removed. The lockfile no longer contains their exclusive transitive dependencies.
@@ -16,5 +16,5 @@ Future work should follow concrete demand:
 - Add SharePoint upload sessions if publication needs files larger than 250 MB.
 - Add automatic descriptor discovery only when its operator workflow is defined.
 
-Keep transformation/authoring tools such as Quarto outside Sharedrive. Sources
-can document those inputs, but Sharedrive does not execute transformations.
+Keep transformation/authoring tools such as Quarto outside Fileroute. Sources
+can document those inputs, but Fileroute does not execute transformations.

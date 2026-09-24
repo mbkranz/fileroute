@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.descriptor import load
-from sharedrive.migration import migrate_descriptor
-from sharedrive.models import ServiceType
+from fileroute.cli import app
+from fileroute.descriptor import load
+from fileroute.migration import migrate_descriptor
+from fileroute.models import ServiceType
 
 RUNNER = CliRunner()
 
@@ -73,7 +73,7 @@ catalogs:
     result = RUNNER.invoke(
         app,
         ["migrate", str(source), str(output), "--direction", "push"],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     assert result.exit_code == 0, result.output

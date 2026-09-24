@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from sharedrive.auth.microsoft import (
+from fileroute.auth.microsoft import (
     DEFAULT_MICROSOFT_GRAPH_SCOPES,
     MicrosoftAuth,
     normalize_microsoft_scopes,
 )
-from sharedrive.exceptions import GraphAuthError
+from fileroute.exceptions import GraphAuthError
 
 
 def test_normalize_microsoft_scopes_supports_none_string_and_sequence() -> None:
@@ -35,7 +35,7 @@ def test_microsoft_auth_from_delegated_uses_interactive_flow_when_no_cached_acco
             return {"access_token": "delegated-token"}
 
     monkeypatch.setattr(
-        "sharedrive.auth.microsoft.msal.PublicClientApplication",
+        "fileroute.auth.microsoft.msal.PublicClientApplication",
         lambda client_id, authority: DummyApp(),
     )
 
@@ -56,7 +56,7 @@ def test_microsoft_auth_from_app_only_uses_confidential_client(
             return {"access_token": "app-token"}
 
     monkeypatch.setattr(
-        "sharedrive.auth.microsoft.msal.ConfidentialClientApplication",
+        "fileroute.auth.microsoft.msal.ConfidentialClientApplication",
         lambda **kwargs: DummyApp(),
     )
 

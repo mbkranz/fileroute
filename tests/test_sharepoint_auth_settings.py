@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from sharedrive.auth.microsoft import MicrosoftAuth
-from sharedrive.auth.settings import (
+from fileroute.auth.microsoft import MicrosoftAuth
+from fileroute.auth.settings import (
     MicrosoftAuthConfig,
     MicrosoftAuthMode,
 )
@@ -70,7 +70,7 @@ def test_sharepoint_auth_config_to_auth_returns_microsoft_auth(
             return {"access_token": "app-token"}
 
     monkeypatch.setattr(
-        "sharedrive.auth.microsoft.msal.ConfidentialClientApplication",
+        "fileroute.auth.microsoft.msal.ConfidentialClientApplication",
         lambda **kwargs: DummyApp(),
     )
 
@@ -98,7 +98,7 @@ def test_sharepoint_auth_config_to_auth_delegated(monkeypatch: pytest.MonkeyPatc
             return {"access_token": "delegated-token"}
 
     monkeypatch.setattr(
-        "sharedrive.auth.microsoft.msal.PublicClientApplication",
+        "fileroute.auth.microsoft.msal.PublicClientApplication",
         lambda client_id, authority: DummyApp(),
     )
 

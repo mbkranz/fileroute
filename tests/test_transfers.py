@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.descriptor import save
-from sharedrive.models import Catalog, Resource, Location
-from sharedrive.transfer import PushEntry, plan_push, push, plan_pull, pull
+from fileroute.cli import app
+from fileroute.descriptor import save
+from fileroute.models import Catalog, Resource, Location
+from fileroute.transfer import PushEntry, plan_push, push, plan_pull, pull
 
 REMOTE = "https://tenant.sharepoint.com/sites/dev/Docs"
 
@@ -110,7 +110,7 @@ def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
             stream.truncate(250_000_001)
     path = descriptor(tmp_path, resources=resources)
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        "fileroute.clients.sharepoint.SharepointClient.build_default",
         lambda: pytest.fail("authenticated"),
     )
     with pytest.raises(ValueError):
@@ -133,7 +133,7 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
     path.write_text("catalogs:\n - $ref: child.yaml\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        "fileroute.clients.sharepoint.SharepointClient.build_default",
         lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["push", str(path), "--dry-run"])
@@ -157,7 +157,7 @@ def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
         is_directory=False, download=lambda target: calls.append(target)
     )
     client = SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item)
-    monkeypatch.setattr("sharedrive.clients.s3.S3Client.build_default", lambda: client)
+    monkeypatch.setattr("fileroute.clients.s3.S3Client.build_default", lambda: client)
     entries = plan_pull(path, root=tmp_path)
     pull(entries)
     assert calls == ["s3://bucket/source.csv", tmp_path / "download/file.csv"]
@@ -187,7 +187,7 @@ def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.clients.s3.S3Client.build_default",
+        "fileroute.clients.s3.S3Client.build_default",
         lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["pull", str(path), "--dry-run"])
@@ -214,7 +214,7 @@ def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monke
         path="root", is_directory=True, iter_files=lambda: iter(children)
     )
     monkeypatch.setattr(
-        "sharedrive.clients.s3.S3Client.build_default",
+        "fileroute.clients.s3.S3Client.build_default",
         lambda: SimpleNamespace(get_from_weburl=lambda url: item),
     )
     with pytest.raises(ValueError, match="outside"):
@@ -249,7 +249,7 @@ def test_directional_planning_ignores_opposite_location_errors(tmp_path):
 
 
 def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
-    from sharedrive.descriptor import load, resolve, save
+    from fileroute.descriptor import load, resolve, save
 
     (tmp_path / "out").mkdir()
     (tmp_path / "out/guide.docx").write_text("doc")
@@ -260,10 +260,10 @@ def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
 
 
 def _descriptor(root: Path) -> Path:
-    descriptor = root / "config" / "sharedrive.yaml"
+    descriptor = root / "config" / "fileroute.yaml"
     descriptor.parent.mkdir()
     descriptor.write_text(
-        "$schema: sharedrive-catalog\n"
+        "$schema: fileroute-catalog\n"
         "catalogs:\n  - name: documentation\n"
         "    path: docs/_output\n"
         "    targets:\n      - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n"
@@ -285,7 +285,7 @@ def test_plan_nested_and_dry_run_does_not_authenticate(tmp_path, monkeypatch):
     ]
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        "fileroute.clients.sharepoint.SharepointClient.build_default",
         lambda: pytest.fail("authenticated on dry run"),
     )
     result = CliRunner().invoke(app, ["push", str(descriptor), "--dry-run"])
@@ -307,7 +307,7 @@ def test_missing_or_symlink_fails_before_transfer(tmp_path):
 
 def test_placeholder_cannot_trigger_authentication(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        "fileroute.clients.sharepoint.SharepointClient.build_default",
         lambda: pytest.fail("authenticated"),
     )
     with pytest.raises(ValueError, match="placeholder"):
@@ -323,9 +323,9 @@ def test_placeholder_cannot_trigger_authentication(tmp_path, monkeypatch):
 
 def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     (tmp_path / "local.docx").write_bytes(b"document")
-    descriptor = tmp_path / "sharedrive.yaml"
+    descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
-        "$schema: sharedrive-catalog\nresources:\n  - name: guide\n"
+        "$schema: fileroute-catalog\nresources:\n  - name: guide\n"
         "    path: local.docx\n    targets:\n"
         "      - path: https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
     )
@@ -333,7 +333,7 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     calls = []
     client = SimpleNamespace(upload_to_folder=lambda *args: calls.append(args))
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.SharepointClient.build_default", lambda: client
+        "fileroute.clients.sharepoint.SharepointClient.build_default", lambda: client
     )
     push(files)
     assert calls == [

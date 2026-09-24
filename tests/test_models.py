@@ -2,7 +2,7 @@
 
 import pytest
 
-from sharedrive.models import Catalog, CatalogReference, Location, Resource, ServiceType
+from fileroute.models import Catalog, CatalogReference, Location, Resource, ServiceType
 
 
 def test_location_aliases_and_metadata_validation():

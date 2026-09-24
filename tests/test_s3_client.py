@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from botocore.exceptions import ClientError
 
-from sharedrive.clients.s3 import S3Client, S3Item
+from fileroute.clients.s3 import S3Client, S3Item
 
 
 def client_error(code: str = "404") -> ClientError:

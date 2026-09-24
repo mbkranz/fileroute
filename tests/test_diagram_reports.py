@@ -6,10 +6,10 @@ from xml.etree import ElementTree
 import pytest
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.diagram import build_graph, render_svg
-from sharedrive.diagram_reports import render_html, render_markdown
-from sharedrive.models import Catalog, Location, Resource
+from fileroute.cli import app
+from fileroute.diagram import build_graph, render_svg
+from fileroute.diagram_reports import render_html, render_markdown
+from fileroute.models import Catalog, Location, Resource
 
 
 def test_metadata_and_target_origin_survive_projection():
@@ -167,7 +167,7 @@ def test_markdown_companion_and_dictionary_links(tmp_path):
     "suffix", [".html", ".md", ".svg", ".HTML", ".htm", ".markdown"]
 )
 def test_cli_formats(tmp_path, suffix):
-    descriptor = tmp_path / "sharedrive.yaml"
+    descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text("resources:\n  - path: data.csv\n")
     output = tmp_path / ("workflow" + suffix)
     result = CliRunner().invoke(

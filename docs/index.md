@@ -1,6 +1,6 @@
-# sharedrive
+# fileroute
 
-Sharedrive catalogs local artifacts, their sources, and their publication
+Fileroute catalogs local artifacts, their sources, and their publication
 destinations across SharePoint, Google Drive, and S3. Pull supports all three
 providers; push currently publishes to SharePoint targets only.
 
@@ -13,16 +13,16 @@ Markdown file dictionary without
 contacting a remote service.
 
 ```bash
-sharedrive resolve config/retrieval.yaml --write
-sharedrive pull config/retrieval.yaml --dry-run
-sharedrive push config/publication.yaml --dry-run
-sharedrive diagram config/publication.yaml
-sharedrive list config/publication.yaml --format json
+fileroute resolve config/retrieval.yaml --write
+fileroute pull config/retrieval.yaml --dry-run
+fileroute push config/publication.yaml --dry-run
+fileroute diagram config/publication.yaml
+fileroute list config/publication.yaml --format json
 ```
 
-See the [README](https://github.com/mbkranz/sharedrive#readme) for descriptor
-examples, [project and standalone usage](https://github.com/mbkranz/sharedrive#choose-how-to-run-it),
-[multi-destination use cases](https://github.com/mbkranz/sharedrive#common-use-cases),
+See the [README](https://github.com/mbkranz/fileroute#readme) for descriptor
+examples, [project and standalone usage](https://github.com/mbkranz/fileroute#choose-how-to-run-it),
+[multi-destination use cases](https://github.com/mbkranz/fileroute#common-use-cases),
 target inheritance, path rules, and URL resolution. See
 [Descriptor diagrams](diagram.md) for the CLI and reusable semantic graph API.
 
@@ -62,5 +62,5 @@ Install Poe with `uv tool install poethepoet==0.48.0`, or run a task using
 
 ## Package releases
 
-See the [release workflow and retry instructions](https://github.com/mbkranz/sharedrive#package-releases).
+See the [release workflow and retry instructions](https://github.com/mbkranz/fileroute#package-releases).
 Use `poe release-check` to validate and `poe build` to build locally.

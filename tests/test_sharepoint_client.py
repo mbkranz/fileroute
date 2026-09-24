@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from sharedrive.auth.microsoft import MicrosoftAuth
-from sharedrive.clients.sharepoint import SharepointClient, SharepointItem
-from sharedrive.exceptions import GraphApiDriveError
+from fileroute.auth.microsoft import MicrosoftAuth
+from fileroute.clients.sharepoint import SharepointClient, SharepointItem
+from fileroute.exceptions import GraphApiDriveError
 
 
 class DummyResponse:
@@ -80,7 +80,7 @@ def test_download_content_raises_graph_error_for_http_failure(
     client = SharepointClient(access_token="token")
 
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.requests.get",
+        "fileroute.clients.sharepoint.requests.get",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=503, reason="Service Unavailable", text="upstream down"
         ),
@@ -100,7 +100,7 @@ def test_download_raises_graph_error_before_writing_failed_response(
     target = tmp_path / "report.csv"
 
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.requests.get",
+        "fileroute.clients.sharepoint.requests.get",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=500, reason="Server Error", text="bad gateway", ok=False
         ),
@@ -151,7 +151,7 @@ def test_update_file_replaces_existing_content(
             },
         )
 
-    monkeypatch.setattr("sharedrive.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
 
     item = client.update_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -192,7 +192,7 @@ def test_upload_file_creates_missing_content(
         )
 
     monkeypatch.setattr(client, "get_item_metadata", missing)
-    monkeypatch.setattr("sharedrive.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
 
     item = client.upload_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -426,7 +426,7 @@ def test_upload_creates_missing_nested_folder_and_replaces_file(monkeypatch, tmp
 
     monkeypatch.setattr(client, "get_item_metadata", metadata)
     monkeypatch.setattr(
-        "sharedrive.clients.sharepoint.requests.post",
+        "fileroute.clients.sharepoint.requests.post",
         lambda url, **kw: (
             calls.append(("post", kw["json"]["name"]))
             or SimpleNamespace(

@@ -4,8 +4,8 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
-from sharedrive.descriptor import load, save
+from fileroute.cli import app
+from fileroute.descriptor import load, save
 
 
 AUTHORED = """# Catalog introduction

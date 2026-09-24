@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml_support as yaml
 from typer.testing import CliRunner
 
-from sharedrive.cli import app
+from fileroute.cli import app
 
 RUNNER = CliRunner()
 
@@ -14,7 +14,7 @@ def _write_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
             {
-                "$schema": "sharedrive-catalog",
+                "$schema": "fileroute-catalog",
                 "title": "Original title",
                 "description": "Original description",
                 "resources": [
@@ -64,7 +64,7 @@ def test_update_descriptor_root_properties(tmp_path: Path) -> None:
             "--description",
             "hello",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
@@ -90,7 +90,7 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
             "--description",
             "Updated description",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
@@ -98,7 +98,7 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
     assert document["resources"][0]["title"] == "Updated title"
     assert document["resources"][0]["description"] == "Updated description"
     assert "title" not in document["resources"][1]
-    assert document["$schema"] == "sharedrive-catalog"
+    assert document["$schema"] == "fileroute-catalog"
     assert document["resources"][0]["path"] == "background/specs/spec-workbook.xlsx"
 
 
@@ -121,7 +121,7 @@ def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
             "--title",
             "Nested",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     assert result.exit_code == 0
@@ -137,14 +137,14 @@ def test_update_resource_uses_active_descriptor(monkeypatch, tmp_path: Path) -> 
     _write_descriptor(descriptor)
 
     activate_result = RUNNER.invoke(
-        app, ["activate", "resources/descriptor.yaml"], prog_name="sharedrive"
+        app, ["activate", "resources/descriptor.yaml"], prog_name="fileroute"
     )
     assert activate_result.exit_code == 0
 
     result = RUNNER.invoke(
         app,
         ["update", "--name", "spec-workbook", "--title", "Active title"],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
@@ -161,7 +161,7 @@ def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -
     _write_descriptor(override)
 
     activate_result = RUNNER.invoke(
-        app, ["activate", "resources/descriptor.yaml"], prog_name="sharedrive"
+        app, ["activate", "resources/descriptor.yaml"], prog_name="fileroute"
     )
     assert activate_result.exit_code == 0
 
@@ -176,7 +176,7 @@ def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -
             "--title",
             "Override title",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     active_doc = yaml.safe_load(active.read_text(encoding="utf-8"))
@@ -201,7 +201,7 @@ def test_update_resource_normalizes_service_type(tmp_path: Path) -> None:
             "--service-type",
             "sharepoint",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
@@ -226,7 +226,7 @@ def test_update_dry_run_does_not_write(tmp_path: Path) -> None:
             "Dry run title",
             "--dry-run",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     assert result.exit_code == 0
@@ -239,7 +239,7 @@ def test_update_requires_fields(tmp_path: Path) -> None:
     _write_descriptor(descriptor)
 
     result = RUNNER.invoke(
-        app, ["update", "--descriptor", str(descriptor)], prog_name="sharedrive"
+        app, ["update", "--descriptor", str(descriptor)], prog_name="fileroute"
     )
 
     assert result.exit_code != 0
@@ -261,7 +261,7 @@ def test_update_missing_resource_errors(tmp_path: Path) -> None:
             "--title",
             "Hello",
         ],
-        prog_name="sharedrive",
+        prog_name="fileroute",
     )
 
     assert result.exit_code != 0
