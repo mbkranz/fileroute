@@ -4,26 +4,27 @@ Sharedrive retrieves and publishes files through SharePoint, Google Drive, and S
 
 Descriptors use `Catalog`, `Resource`, `Location`, and `CatalogReference`:
 `path` identifies the artifact, `sources` records upstream inputs, and `targets`
-identifies publication destinations. `pull` reads sources; `push` (also `upload`)
+identifies publication destinations. `pull` reads sources; `push`
 writes targets. Both support offline `--dry-run` planning.
 
 ```bash
+sharedrive resolve config/retrieval.yaml --write
 sharedrive pull config/retrieval.yaml --dry-run
 sharedrive push config/publication.yaml --dry-run
 sharedrive list config/publication.yaml --format json
 ```
 
 See the [README](https://github.com/mbkranz/sharedrive#readme) for descriptor
-examples, target inheritance, path rules, and explicit migration commands.
+examples, target inheritance, path rules, and URL resolution.
 
 ## Architecture
 
-- `models.py`: owned Pydantic descriptors, local references, and structural traversal.
-- `download.py` / `upload.py`: plan transfers, then dispatch to providers.
+- `models.py`: four declarative Pydantic models and `ServiceType`.
+- `descriptor.py`: load, save, walk, find, and offline URL/provider resolution.
+- `transfer.py`: plan pull/push, then dispatch through the resolved provider enum.
 - `item.py`: live provider-backed items and runtime hierarchy snapshots.
 - `clients/` and `auth/`: provider API and credential behavior.
 - `commands/`: CLI input, saved descriptor selection, and editing.
-- `migration.py`: explicit legacy conversion outside normal model loading.
 
 The descriptor layer has no `dplib` dependency. Provider/runtime traversal is
 separate because it represents live remote state rather than authored metadata.

@@ -10,10 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 API_MODULES = [
-    {"module": "sharedrive.upload", "path": ROOT / "sharedrive" / "upload.py"},
-    {"module": "sharedrive.download", "path": ROOT / "sharedrive" / "download.py"},
+    {"module": "sharedrive.transfer", "path": ROOT / "sharedrive" / "transfer.py"},
     {"module": "sharedrive.descriptor", "path": ROOT / "sharedrive" / "descriptor.py"},
-    {"module": "sharedrive.helpers", "path": ROOT / "sharedrive" / "helpers.py"},
     {"module": "sharedrive.models", "path": ROOT / "sharedrive" / "models.py"},
     {"module": "sharedrive.item", "path": ROOT / "sharedrive" / "item.py"},
     {

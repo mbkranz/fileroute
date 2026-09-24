@@ -74,3 +74,72 @@ def test_explicit_provider_allows_nonstandard_remote_locator():
         )
     )
     assert result.targets[0].service_type is ServiceType.SHAREPOINT
+
+
+def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
+    import json
+    import yaml
+    from typer.testing import CliRunner
+    from sharedrive.cli import app
+
+    path = tmp_path / "catalog.yaml"
+    url = "https://tenant.sharepoint.com/sites/dev/Docs/guide%20one.docx"
+    path.write_text(
+        yaml.safe_dump({
+            "resources": [
+                {
+                    "path": "out.docx",
+                    "sources": [{"path": "guide.qmd"}],
+                    "targets": [{"path": url}],
+                }
+            ]
+        })
+    )
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        "sharedrive.clients.get_provider", lambda _: pytest.fail("provider lookup")
+    )
+    runner = CliRunner()
+    preview = runner.invoke(app, ["resolve", str(path)])
+    assert preview.exit_code == 0, preview.output
+    target = json.loads(preview.output)["resources"][0]["targets"][0]
+    assert target == {"path": url, "serviceType": "SharePoint"}
+    assert path.read_bytes() == before
+    written = runner.invoke(app, ["resolve", str(path), "--write"])
+    assert written.exit_code == 0, written.output
+    first = path.read_bytes()
+    assert runner.invoke(app, ["resolve", str(path), "--write"]).exit_code == 0
+    assert path.read_bytes() == first
+    assert yaml.safe_load(first)["resources"][0]["sources"] == [{"path": "guide.qmd"}]
+
+
+def test_resolve_preserves_references_and_does_not_edit_referenced_files(tmp_path):
+    from typer.testing import CliRunner
+    from sharedrive.cli import app
+    from sharedrive.descriptor import load
+    from sharedrive.models import CatalogReference
+
+    child = tmp_path / "child.yaml"
+    child.write_text(
+        "resources:\n - path: file\n   sources:\n    - path: s3://bucket/file\n"
+    )
+    before = child.read_bytes()
+    parent = tmp_path / "parent.yaml"
+    parent.write_text("catalogs:\n - $ref: child.yaml\n")
+    result = CliRunner().invoke(app, ["resolve", str(parent), "--write"])
+    assert result.exit_code == 0, result.output
+    assert isinstance(load(parent).catalogs[0], CatalogReference)
+    assert child.read_bytes() == before
+
+
+def test_failed_resolve_write_leaves_descriptor_unchanged(tmp_path):
+    from typer.testing import CliRunner
+    from sharedrive.cli import app
+
+    path = tmp_path / "catalog.yaml"
+    path.write_text("targets:\n - path: s3://bucket/file\n   serviceType: SharePoint\n")
+    before = path.read_bytes()
+    result = CliRunner().invoke(app, ["resolve", str(path), "--write"])
+    assert result.exit_code == 1
+    assert "conflicts" in result.output
+    assert path.read_bytes() == before

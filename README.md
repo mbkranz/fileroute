@@ -77,8 +77,8 @@ also accept an explicit `root`. Paths are preserved when loading and saving.
 Transfers reject paths outside that root and symbolic links.
 
 Reference paths are the exception: `$ref` is relative to the containing
-**descriptor's directory**. References are loaded lazily, stay references on
-save, and cannot escape that directory. Cycles raise an error.
+**descriptor's directory**. References stay references on normal load/save. Transfer planning explicitly
+expands them once; they cannot escape the containing directory. Cycles raise an error.
 
 ```yaml
 catalogs:
@@ -99,12 +99,14 @@ sharedrive add documentation --catalog --path docs/_output --target https://cont
 sharedrive list config/sharedrive.yaml --format json
 sharedrive checkout config/sharedrive.yaml
 sharedrive update --name documentation --title "Published documentation"
+sharedrive resolve config/sharedrive.yaml
+sharedrive resolve config/sharedrive.yaml --write
 sharedrive pull config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml
 ```
 
-`checkout` saves the active descriptor in `.sharedrive/sharedrive_set.json`.
+`checkout` saves the active descriptor in `.sharedrive/descriptor`.
 The optional descriptor argument also accepts an explicit override. `update`
 selects an exact name or dot-path and reports ambiguous names; `clone descriptor`
 copies a single authored document. For a resource with one source,
@@ -112,9 +114,34 @@ copies a single authored document. For a resource with one source,
 Edit `sources`/`targets` in YAML for more involved changes, or supply a JSON array
 using `--sources`/`--targets`.
 
-### Push / upload
+### Resolve URLs
 
-`push` publishes `path` to `targets`; `upload` is an alias for the same operation.
+`resolve` previews canonical JSON without authenticating or contacting a remote
+service. `resolve --write` saves the result to the selected YAML/JSON descriptor.
+It infers `serviceType` from `s3://` URLs, `drive.google.com` / `docs.google.com`,
+and SharePoint hosts, while preserving the original URL exactly as a clickable
+link. For example:
+
+```yaml
+path: https://contoso.sharepoint.com/sites/dev/Docs/guide.docx
+serviceType: SharePoint
+```
+
+A conflicting explicit provider is an error. Unrecognized target URLs require
+an explicit `serviceType`; local files and general web citations remain valid
+provider-less sources. Pull requires a supported remote source. Resolution
+does not follow redirects, fetch remote IDs, or check remote permissions.
+
+Write-back updates only the selected document and preserves `$ref` entries;
+resolve referenced descriptors separately to persist their inferred metadata.
+Repeated resolution is idempotent. YAML comments and formatting are not retained.
+Transfers expand references and resolve the relevant sources or targets in
+memory, so write-back is optional. `push --dry-run` and `pull --dry-run` provide
+concrete transfer plans; there is no separate `plan` command or stored lockfile.
+
+### Push
+
+`push` publishes `path` to `targets`.
 Sources are never treated as targets. Only SharePoint uploads are currently
 implemented. Other providers fail during planning, before authentication.
 
@@ -155,24 +182,36 @@ before writing any files. Pull replaces existing local files at planned paths.
 ```python
 from pathlib import Path
 from sharedrive import Catalog, Resource, Location
-from sharedrive.upload import plan_upload, upload
+from sharedrive.descriptor import save
+from sharedrive.transfer import plan_push, push
 
 catalog = Catalog(resources=[Resource(
     name="guide", path="docs/guide.docx",
     sources=[Location(path="docs/guide.qmd")],
     targets=[Location(path="https://contoso.sharepoint.com/sites/dev/Docs/guide.docx")],
 )])
-catalog.to_path("config/sharedrive.yaml")
-plan = plan_upload(Path("config/sharedrive.yaml"), root=Path.cwd())
+save(catalog, "config/sharedrive.yaml")
+plan = plan_push(Path("config/sharedrive.yaml"), root=Path.cwd())
 # Inspect plan before transfer.
-upload(plan)
+push(plan)
 ```
 
-`models.py` owns validation, serialization, reference loading, and one structural
-walker shared by lookup/list and authored-document editing. `upload.py` and
-`download.py` bridge descriptors to providers. `migration.py` is an explicit
-conversion utility, separate from normal loading and transfers. No `dplib` or
-OmegaConf layer is involved.
+The core has one module per responsibility:
+
+- `models.py`: declarative `Catalog`, `Resource`, `Location`, `CatalogReference`
+  and `ServiceType` validation.
+- `descriptor.py`: `load`, `save`, `walk`, `find`, and offline `resolve`.
+- `transfer.py`: `plan_pull` / `plan_push`, then `pull` / `push` execution.
+- `item.py`: runtime `ServiceItem` hierarchy.
+- `clients/sharepoint.py`, `clients/googledrive.py`, `clients/s3.py`: provider APIs.
+- `auth/` and `commands/`: credential handling and CLI workflows.
+
+After resolution, `location.service_type` is the authoritative `ServiceType`
+enum used directly for provider dispatch. Pydantic accepts aliases such as
+`gdrive` or `google_drive`; saved values are `GoogleDrive`, `SharePoint`, or `S3`.
+Python attributes use `service_type`, `service_id`, and `entity_type`; descriptors
+use `serviceType`, `serviceId`, and `entityType`. No provider-string conversion
+layer or dynamic registry is needed.
 
 `ServiceItem` and provider clients retain their runtime roles. Clients own
 provider-specific authentication and HTTP behavior; runtime items expose
@@ -182,24 +221,19 @@ Runtime paths remain relative to the provider container. `get_path()` is
 relative to the current item. Parent relationships and recursive traversal use
 a snapshot until refresh or mutation invalidates it.
 
-## Migrating old descriptors
+## Breaking API changes
 
-This refactor intentionally changes the model API and serialized format. The
-`Drive*` classes, Package model/collection, selector framework, `_cache`, and
-artifact-level remote provider fields have been removed. Import the four models
-above. Old descriptors fail with guidance rather than silently changing meaning.
+Use the four models above and the functions in `descriptor` and `transfer`.
+Model I/O and traversal methods, `upload.py`, `download.py`, `helpers.py`, the
+provider registry, and the migration utility have been removed. The CLI has no
+`upload` alias, `set` command, or `migrate` command. Run `checkout` again to select
+a descriptor using the new single-path selection file; obsolete saved workflow
+defaults are no longer read.
 
-```bash
-sharedrive migrate old.yaml new.yaml --direction pull
-sharedrive migrate old-upload.yaml new-upload.yaml --direction push
-```
-
-Migration converts `packages` into `catalogs`, `_cache` into `path`, and remote
-URLs into either `sources` or `targets` according to the explicit direction.
-It preserves existing explicit provenance and does not turn it into a target.
-Local references are inlined so the output can be saved elsewhere. Pathless
-legacy resources need a local path before conversion. Output must be a new file.
-There are no compatibility aliases in the runtime model.
+Legacy `Drive*` classes, packages, `_cache`, and artifact-level provider fields
+are unsupported. Update authored descriptors to `path`, `sources`, `targets`,
+`resources`, and `catalogs`; provider metadata belongs on a location. There are
+no compatibility shims or automatic legacy conversions.
 
 ## Development
 

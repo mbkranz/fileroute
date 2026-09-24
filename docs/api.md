@@ -2,45 +2,37 @@
 
 Auto-generated from source signatures and docstrings.
 
-## `sharedrive.upload`
+## `sharedrive.transfer`
 
 ### Functions
 
-- `def plan_upload(descriptor: Path, *, root: Path | None = None) -> tuple[UploadFile, ...]`
+- `def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]`
+  - Plan remote sources to local paths, offline.
+- `def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
-- `def upload(files: tuple[UploadFile, ...]) -> None`
+- `def pull(entries: tuple[PullEntry, ...]) -> None`
+  - Resolve remote items, check their paths, then download planned files.
+- `def push(files: tuple[PushEntry, ...]) -> None`
   - Transfer a prepared plan; remote files outside it are never deleted.
 
 ### Classes
 
-#### `UploadFile`
+#### `PullEntry`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `service_type: ServiceType`
+  - `directory: bool`
+
+#### `PushEntry`
 - Fields:
   - `local: Path`
   - `remote: str`
   - `relative: Path`
-  - `service: ServiceType`
+  - `service_type: ServiceType`
   - `direct_file: bool`
 - Methods:
   - `def destination(self) -> str`
-
-
-## `sharedrive.download`
-
-### Functions
-
-- `def plan_download(descriptor: Path, *, root: Path | None = None) -> tuple[Download, ...]`
-  - Plan remote sources to local paths, offline.
-- `def download(entries: tuple[Download, ...]) -> None`
-  - Resolve remote items, check their paths, then download planned files.
-
-### Classes
-
-#### `Download`
-- Fields:
-  - `local: Path`
-  - `remote: str`
-  - `service: ServiceType`
-  - `directory: bool`
 
 
 ## `sharedrive.descriptor`
@@ -55,7 +47,7 @@ Auto-generated from source signatures and docstrings.
   - Walk typed metadata only; no file I/O. Reject duplicate named paths.
 - `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
   - Find one entity by name/dot-path, optionally restricting its model kind.
-- `def resolve(catalog: Catalog) -> Catalog`
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None) -> Catalog`
   - Return resolved metadata without mutating input, URLs, files, or references.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
@@ -69,34 +61,6 @@ Auto-generated from source signatures and docstrings.
   - `json_pointer: str`
 - Methods:
   - `def entity_type(self) -> str`
-
-
-## `sharedrive.helpers`
-
-### Constants
-
-- `DESCRIPTOR_DEFAULTS_FILE = Path('.sharedrive/sharedrive_set.json')`
-
-### Functions
-
-- `def descriptor_scope_key(descriptor: Path | str) -> str`
-  - Return the stable key used for descriptor-scoped defaults.
-- `def get_saved_params_for_descriptor(descriptor: Path | str | None = None) -> dict[str, Any]`
-  - Return merged global and descriptor-scoped saved params.
-- `def has_saved_global_descriptor() -> bool`
-  - Return whether the global defaults include a descriptor path.
-- `def load_descriptor_defaults_store() -> dict[str, Any]`
-  - Load persisted descriptor defaults for global and descriptor scopes.
-- `def resolve_default_descriptor() -> Path`
-  - Return the first existing default descriptor path.
-- `def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path`
-  - Resolve descriptor path from explicit input, saved defaults, or standard locations.
-- `def save_params_for_scope(parsed: dict[str, Any], descriptor: Path | str | None, *, global_scope: bool) -> str`
-  - Save reusable CLI params to the global or descriptor-specific scope.
-- `def save_descriptor_defaults_store(data: dict[str, Any]) -> None`
-  - Persist descriptor defaults store to disk.
-- `def set_active_descriptor(descriptor_path: Path) -> Path`
-  - Persist the active descriptor.
 
 
 ## `sharedrive.models`

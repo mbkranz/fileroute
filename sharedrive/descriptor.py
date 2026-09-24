@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
+from typing import Literal
 
 import yaml
 from sharedrive.models import Catalog, CatalogReference, Location, Resource, ServiceType
@@ -199,21 +200,27 @@ def _resolve_location(location: Location, *, required: bool) -> None:
         )
 
 
-def resolve(catalog: Catalog) -> Catalog:
+def resolve(
+    catalog: Catalog, *, direction: Literal["pull", "push"] | None = None
+) -> Catalog:
     """Return resolved metadata without mutating input, URLs, files, or references.
 
     Known source URLs gain serviceType; other provenance remains valid metadata.
     Every target must resolve to a provider. Load external references separately
     before resolving a transfer; descriptor write-back changes only its own file.
     """
+    if direction not in {None, "pull", "push"}:
+        raise ValueError("direction must be pull or push")
     result = catalog.model_copy(deep=True)
     for row in walk(result, include_self=True):
         if isinstance(row.model, CatalogReference):
             continue
-        for location in row.model.sources:
-            _resolve_location(location, required=False)
-        for location in row.model.targets or []:
-            _resolve_location(location, required=True)
+        if direction != "push":
+            for location in row.model.sources:
+                _resolve_location(location, required=False)
+        if direction != "pull":
+            for location in row.model.targets or []:
+                _resolve_location(location, required=True)
     return result
 
 

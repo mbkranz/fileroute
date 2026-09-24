@@ -7,7 +7,7 @@ removed. The lockfile no longer contains their exclusive transitive dependencies
 
 Before release, exercise canonical descriptors against development SharePoint,
 Google Drive, and S3 credentials. Offline regression tests cover model round
-trips, reference loading, target inheritance/overrides, migration, provider
+trips, reference loading, URL resolution/write-back, target inheritance/overrides, provider
 contracts, and mocked transfers. They do not validate live tenant access.
 
 Future work should follow concrete demand:

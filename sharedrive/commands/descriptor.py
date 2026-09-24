@@ -16,8 +16,8 @@ from sharedrive.commands.toolkit import (
     prepare_descriptor_path,
 )
 from sharedrive.exceptions import GoogleApiError, GraphApiError
-from sharedrive.helpers import has_saved_global_descriptor, set_active_descriptor
-from sharedrive.descriptor import load, save, walk, find
+from sharedrive.commands.config import active_descriptor, set_active_descriptor
+from sharedrive.descriptor import load, save, walk, find, resolve
 from sharedrive.models import Catalog, Resource, normalize_entity_type, Location
 
 
@@ -72,31 +72,24 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         "push",
         help="Publish artifact paths to targets; create or replace, never delete.",
     )
-    @app.command(
-        "upload",
-        epilog=examples_epilog(
-            "sharedrive upload config/sharedrive.yaml --dry-run",
-            "sharedrive upload config/sharedrive.yaml",
-        ),
-    )
-    def upload_command(
+    def push_command(
         descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="List files without authenticating or writing."
         ),
     ) -> None:
-        """Publish artifact paths to targets; alias of push."""
-        from sharedrive.upload import plan_upload, upload
+        """Publish artifact paths to targets; create or replace files."""
+        from sharedrive.transfer import plan_push, push
 
         try:
-            files = plan_upload(prepare_descriptor_path(descriptor))
+            files = plan_push(prepare_descriptor_path(descriptor))
             for file in files:
                 target = file.destination
                 typer.echo(
                     f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}"
                 )
             if not dry_run:
-                upload(files)
+                push(files)
         except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -109,16 +102,16 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ),
     ) -> None:
         """Materialize a single remote source into each artifact's path."""
-        from sharedrive.download import plan_download, download
+        from sharedrive.transfer import plan_pull, pull
 
         try:
-            entries = plan_download(prepare_descriptor_path(descriptor))
+            entries = plan_pull(prepare_descriptor_path(descriptor))
             for entry in entries:
                 typer.echo(
                     f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"
                 )
             if not dry_run:
-                download(entries)
+                pull(entries)
         except (
             OSError,
             ValueError,
@@ -126,6 +119,29 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             GoogleApiError,
             GraphApiError,
         ) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+    @app.command("resolve")
+    def resolve_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        write: bool = typer.Option(
+            False, "--write", help="Save resolved metadata back to this descriptor."
+        ),
+    ) -> None:
+        """Preview inferred provider metadata, preserving URLs; no network access."""
+        try:
+            path = prepare_descriptor_path(descriptor)
+            # Editing one document never rewrites or expands referenced files.
+            catalog = resolve(load(path))
+            if write:
+                save(catalog, path)
+                typer.echo(f"Resolved descriptor: {path}")
+            else:
+                echo_json(
+                    catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
+                )
+        except (OSError, ValueError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
@@ -367,9 +383,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         """Add a standards-aligned resource or catalog entry to a descriptor."""
         descriptor_path = prepare_descriptor_path(
             descriptor,
-            require_exists=descriptor is not None or has_saved_global_descriptor(),
+            require_exists=descriptor is not None or (active_descriptor() is not None),
         )
-        explicit_descriptor = descriptor is not None or has_saved_global_descriptor()
+        explicit_descriptor = descriptor is not None or (
+            active_descriptor() is not None
+        )
 
         parsed = parse_set_args(list(ctx.args))
 
