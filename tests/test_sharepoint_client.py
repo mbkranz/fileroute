@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -403,3 +404,62 @@ def test_sharepoint_delta_traversal_deduplicates_and_filters_subtree(
         "Approvals/final-name/approval.docx"
     ]
     assert calls == 1
+
+
+def test_upload_creates_missing_nested_folder_and_replaces_file(monkeypatch, tmp_path):
+    local = tmp_path / "catalog.xlsx"
+    local.write_bytes(b"xls")
+    client = SharepointClient(access_token="fake", host_url="contoso.sharepoint.com")
+    monkeypatch.setattr(
+        client,
+        "_resolve_weburl",
+        lambda url: {"drive_id": "drive", "item_path": "/Docs"},
+    )
+
+    calls = []
+
+    def metadata(drive, *, item_path):
+        calls.append(("get", item_path))
+        if item_path == "Docs/surveys":
+            raise GraphApiDriveError("missing", status_code=404)
+        return {"id": "folder", "folder": {}}
+
+    monkeypatch.setattr(client, "get_item_metadata", metadata)
+    monkeypatch.setattr(
+        "sharedrive.clients.sharepoint.requests.post",
+        lambda url, **kw: (
+            calls.append(("post", kw["json"]["name"]))
+            or SimpleNamespace(
+                status_code=201, json=lambda: {"id": "child", "folder": {}}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        client,
+        "_put_file",
+        lambda url, path: (
+            calls.append(("put", url))
+            or {"id": "file", "name": "catalog.xlsx", "file": {}}
+        ),
+    )
+    client.upload_to_folder(
+        "https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs",
+        Path("surveys/catalog.xlsx"),
+        local,
+    )
+    assert ("post", "surveys") in calls
+    assert calls[-1][0] == "put"
+    assert "/root:/Docs/surveys/catalog.xlsx:/content" in calls[-1][1]
+    # A repeat finds the existing folder, uses the same PUT path, and never deletes.
+    monkeypatch.setattr(
+        client,
+        "get_item_metadata",
+        lambda drive, *, item_path: {"id": "folder", "folder": {}},
+    )
+    client.upload_to_folder(
+        "https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs",
+        Path("surveys/catalog.xlsx"),
+        local,
+    )
+    assert len([kind for kind, _ in calls if kind == "post"]) == 1
+    assert len([kind for kind, _ in calls if kind == "put"]) == 2

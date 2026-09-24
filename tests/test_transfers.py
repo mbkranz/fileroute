@@ -1,5 +1,6 @@
 """End-to-end planning and dispatch without authentication or network I/O."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,8 +9,7 @@ from typer.testing import CliRunner
 from sharedrive.cli import app
 from sharedrive.descriptor import save
 from sharedrive.models import Catalog, Resource, Location
-from sharedrive.transfer import plan_push
-from sharedrive.transfer import plan_pull, pull
+from sharedrive.transfer import PushEntry, plan_push, push, plan_pull, pull
 
 REMOTE = "https://tenant.sharepoint.com/sites/dev/Docs"
 
@@ -257,3 +257,91 @@ def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
     before = plan_push(path, root=tmp_path)
     save(resolve(load(path)), path)
     assert plan_push(path, root=tmp_path) == before
+
+
+def _descriptor(root: Path) -> Path:
+    descriptor = root / "config" / "sharedrive.yaml"
+    descriptor.parent.mkdir()
+    descriptor.write_text(
+        "$schema: sharedrive-catalog\n"
+        "catalogs:\n  - name: documentation\n"
+        "    path: docs/_output\n"
+        "    targets:\n      - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n"
+        "        serviceType: SharePoint\n"
+    )
+    return descriptor
+
+
+def test_plan_nested_and_dry_run_does_not_authenticate(tmp_path, monkeypatch):
+    descriptor = _descriptor(tmp_path)
+    directory = tmp_path / "docs" / "_output"
+    (directory / "surveys").mkdir(parents=True)
+    (directory / "index.docx").write_bytes(b"doc")
+    (directory / "surveys" / "catalog.xlsx").write_bytes(b"xls")
+    files = plan_push(descriptor, root=tmp_path)
+    assert [f.relative.as_posix() for f in files] == [
+        "index.docx",
+        "surveys/catalog.xlsx",
+    ]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated on dry run"),
+    )
+    result = CliRunner().invoke(app, ["push", str(descriptor), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "surveys/catalog.xlsx" in result.output
+
+
+def test_missing_or_symlink_fails_before_transfer(tmp_path):
+    descriptor = _descriptor(tmp_path)
+    with pytest.raises(ValueError, match="missing"):
+        plan_push(descriptor, root=tmp_path)
+    directory = tmp_path / "docs" / "_output"
+    directory.mkdir(parents=True)
+    (directory / "ok.docx").write_bytes(b"ok")
+    (directory / "escape").symlink_to(tmp_path / "docs", target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        plan_push(descriptor, root=tmp_path)
+
+
+def test_placeholder_cannot_trigger_authentication(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
+    )
+    with pytest.raises(ValueError, match="placeholder"):
+        push((
+            PushEntry(
+                tmp_path / "a",
+                "https://your-tenant.sharepoint.com/sites/YOUR-SITE/Docs",
+                Path("a"),
+                "SharePoint",
+            ),
+        ))
+
+
+def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
+    (tmp_path / "local.docx").write_bytes(b"document")
+    descriptor = tmp_path / "sharedrive.yaml"
+    descriptor.write_text(
+        "$schema: sharedrive-catalog\nresources:\n  - name: guide\n"
+        "    path: local.docx\n    targets:\n"
+        "      - path: https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
+    )
+    files = plan_push(descriptor, root=tmp_path)
+    calls = []
+    client = SimpleNamespace(upload_to_folder=lambda *args: calls.append(args))
+    monkeypatch.setattr(
+        "sharedrive.clients.sharepoint.SharepointClient.build_default", lambda: client
+    )
+    push(files)
+    assert calls == [
+        (
+            "https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs",
+            Path("published.docx"),
+            tmp_path / "local.docx",
+        )
+    ]
+
+
