@@ -9,14 +9,19 @@ theme:
 
 nav:
   - Home: index.md
-  - Descriptors: descriptors.md
-  - Use cases: use-cases.md
-  - Transfers: transfers.md
-  - Descriptor Diagrams: diagram.md
-  - Google Auth Credentials: google-auth.md
-  - CLI Reference: cli.md
-  - Python API: api.md
-  - Contributing and Releases: contributing.md
+  - Workflows:
+      - Use cases: use-cases.md
+      - Descriptors: descriptors.md
+      - Transfers: transfers.md
+      - Diagrams: diagram.md
+  - Authentication:
+      - Provider setup: authentication.md
+      - Google Drive: google-auth.md
+  - Reference:
+      - CLI: cli.md
+      - Python API: api.md
+  - Development:
+      - Contributing and releases: contributing.md
 
 plugins:
   - search
