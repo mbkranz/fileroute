@@ -24,7 +24,17 @@ For ad hoc use outside a project environment, the same command works through uv'
 uvx fileroute diagram config/fileroute.yaml
 ```
 
-When running directly from the Git repository before an index release, use the explicit Git source documented in the README.
+Mermaid source is available for embedding directly in GitHub Markdown:
+
+```bash
+uvx fileroute diagram config/fileroute.yaml -o workflow.mmd
+```
+
+Place the `.mmd` content inside a fenced `mermaid` block in a README. GitHub
+Markdown does not embed an external `.mmd` file as a diagram. The four README
+examples are saved under `examples/use-cases/`; run
+`uv run python scripts/update_readme_diagrams.py` after editing the descriptors
+to regenerate their `.mmd` files and inline blocks. Use `--check` to verify them.
 
 Diagram generation is offline. It does not authenticate, inspect remote permissions, or execute transfers. Known SharePoint, Google Drive, and S3 URLs are resolved to their `ServiceType` metadata in memory; the descriptor is not rewritten.
 

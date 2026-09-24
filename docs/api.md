@@ -73,6 +73,8 @@ Auto-generated from source signatures and docstrings.
   - Load references, resolve provider metadata offline, and build a graph.
 - `def render_svg(graph: DescriptorGraph, output: Path | str) -> Path`
   - Render a compact left-to-right SVG with no optional runtime dependency.
+- `def render_mermaid(graph: DescriptorGraph, output: Path | str) -> Path`
+  - Write Mermaid flowchart source from the same resolved descriptor graph.
 
 ### Classes
 

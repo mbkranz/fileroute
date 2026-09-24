@@ -1,0 +1,9 @@
+resources:
+  - name: guide
+    path: docs/_output/guide.docx
+    sources:
+      - path: docs/guide.qmd
+    targets:
+      - path: https://contoso.sharepoint.com/sites/docs/Shared%20Documents/guide.docx
+      - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
+      - path: s3://example-docs/guide.docx

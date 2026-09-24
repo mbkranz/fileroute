@@ -1,0 +1,8 @@
+resources:
+  - name: monthly-report
+    path: artifacts/monthly-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv
+    targets:
+      - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/monthly-report.csv
+      - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv

@@ -1,0 +1,8 @@
+resources:
+  - name: partner-report
+    path: artifacts/partner-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
+    targets:
+      - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/partner-report.csv
+      - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
