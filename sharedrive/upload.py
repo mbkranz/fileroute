@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from sharedrive.models import Catalog, CatalogReference, Entity, Location, local_path
+from sharedrive.models import Catalog, Resource, Location
 from sharedrive.clients import get_provider
-from sharedrive.descriptor import resolve
+from sharedrive.descriptor import load, resolve, local_path
 from sharedrive.models import ServiceType
 
 
@@ -42,7 +42,7 @@ def plan_upload(
     entityType is Directory/Container.
     """
     root = (root or Path.cwd()).resolve()
-    document = resolve(Catalog.from_path(descriptor.resolve()))
+    document = resolve(load(descriptor, resolve_references=True))
     entries: list[UploadFile] = []
     destinations: dict[str, Path] = {}
 
@@ -92,7 +92,7 @@ def plan_upload(
         entries.append(entry)
 
     def visit(
-        entity: Entity, inherited: list[Location], anchor: Path, seen: frozenset[Path]
+        entity: Catalog | Resource, inherited: list[Location], anchor: Path
     ) -> None:
         explicit = entity.targets is not None
         targets = entity.targets if explicit else inherited
@@ -102,10 +102,6 @@ def plan_upload(
             else None
         )
         if isinstance(entity, Catalog):
-            if entity._origin is not None:
-                if entity._origin in seen:
-                    raise ValueError(f"Cyclic catalog reference: {entity._origin}")
-                seen = seen | {entity._origin}
             if any(target.entity_type == "File" for target in targets or []):
                 raise ValueError("Catalog targets must be folders, not files")
             if explicit:
@@ -113,9 +109,7 @@ def plan_upload(
             children = [*entity.resources, *entity.catalogs]
             if children:
                 for child in children:
-                    if isinstance(child, CatalogReference):
-                        child = resolve(child.load())
-                    visit(child, targets or [], anchor, seen)
+                    visit(child, targets or [], anchor)
                 return
             if not targets:
                 return
@@ -143,7 +137,7 @@ def plan_upload(
                 )
                 add(local, target, relative)
 
-    visit(document, [], root, frozenset())
+    visit(document, [], root)
     if not entries:
         raise ValueError("Upload needs at least one local file with targets")
     return tuple(entries)

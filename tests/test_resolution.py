@@ -10,7 +10,12 @@ from sharedrive.models import Catalog, Location, Resource, ServiceType
 def test_service_alias_is_enum(alias):
     location = Location(path="https://drive.google.com/file/d/123", service_type=alias)
     assert location.service_type is ServiceType.GOOGLE_DRIVE
-    assert location.to_dict()["serviceType"] == "GoogleDrive"
+    assert (
+        location.model_dump(mode="json", by_alias=True, exclude_unset=True)[
+            "serviceType"
+        ]
+        == "GoogleDrive"
+    )
 
 
 def test_resolution_preserves_clickable_urls_and_local_provenance():

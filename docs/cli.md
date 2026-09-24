@@ -19,7 +19,6 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `upload`: Publish artifact paths to targets; alias...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
-* `migrate`: Write canonical path/sources/targets to a...
 * `update`: Update descriptor-root or resource...
 * `checkout`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
@@ -93,26 +92,6 @@ $ sharedrive pull [OPTIONS] [DESCRIPTOR]
 **Options**:
 
 * `--dry-run`: Plan without authenticating or writing.
-* `--help`: Show this message and exit.
-
-## `sharedrive migrate`
-
-Write canonical path/sources/targets to a new file; keep the original.
-
-**Usage**:
-
-```console
-$ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
-```
-
-**Arguments**:
-
-* `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New canonical descriptor to write.  [required]
-
-**Options**:
-
-* `--direction TEXT`: Interpret legacy URLs as pull sources or push targets.  [default: pull]
 * `--help`: Show this message and exit.
 
 ## `sharedrive update`

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from sharedrive.models import Catalog, Resource, local_path
+from sharedrive.models import Catalog, Resource
 from sharedrive.clients import get_provider
-from sharedrive.descriptor import resolve
+from sharedrive.descriptor import load, walk, resolve, local_path
 from sharedrive.models import ServiceType
 
 
@@ -29,9 +29,9 @@ def plan_download(
     not a download instruction. Targets are never used for retrieval.
     """
     root = (root or Path.cwd()).resolve()
-    document = resolve(Catalog.from_path(descriptor.resolve()))
+    document = resolve(load(descriptor, resolve_references=True))
     entries = []
-    for row in document.iter_entity_paths(include_self=True):
+    for row in walk(document, include_self=True):
         entity = row.model
         if isinstance(entity, Catalog) and (entity.resources or entity.catalogs):
             continue

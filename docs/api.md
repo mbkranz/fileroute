@@ -43,12 +43,32 @@ Auto-generated from source signatures and docstrings.
   - `directory: bool`
 
 
-## `sharedrive.migration`
+## `sharedrive.descriptor`
 
 ### Functions
 
-- `def migrate_descriptor(path: Path, *, direction: Literal['pull', 'push'] = 'pull') -> Catalog`
-  - Read a legacy descriptor and return canonical models, inlining references.
+- `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
+  - Load YAML/JSON; optionally expand $ref relative to each containing file.
+- `def save(catalog: Catalog, path: Path | str) -> None`
+  - Atomically save canonical metadata, including authored defaults/extensions.
+- `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
+  - Walk typed metadata only; no file I/O. Reject duplicate named paths.
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
+  - Find one entity by name/dot-path, optionally restricting its model kind.
+- `def resolve(catalog: Catalog) -> Catalog`
+  - Return resolved metadata without mutating input, URLs, files, or references.
+- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
+  - Resolve a local artifact inside root; never accept URLs or escapes.
+
+### Classes
+
+#### `EntityPath`
+- Fields:
+  - `name_path: str`
+  - `model: Catalog | Resource | CatalogReference`
+  - `json_pointer: str`
+- Methods:
+  - `def entity_type(self) -> str`
 
 
 ## `sharedrive.helpers`
@@ -88,14 +108,6 @@ Auto-generated from source signatures and docstrings.
 
 ### Functions
 
-- `def walk_entities(root: Any, prefix: str = '', pointer: str = '') -> Iterator[EntityPath]`
-  - One structural walker for models and authored mappings; no I/O.
-- `def read_descriptor(path: Path) -> dict[str, Any]`
-  - Read JSON/YAML without discarding authored extension metadata.
-- `def write_descriptor(path: Path, document: dict[str, Any]) -> None`
-  - Write JSON/YAML, preserving fields but not YAML comments/formatting.
-- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
-  - Resolve a local artifact inside root; never accept URLs or escapes.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
 
@@ -109,15 +121,8 @@ Auto-generated from source signatures and docstrings.
   - `profile: str`
   - `resources: list[Resource]`
   - `catalogs: list[Catalog | CatalogReference]`
-  - `_origin: Path | None`
 - Methods:
   - `def identify_references(cls, children: Any) -> Any`
-  - `def from_path(cls, path: str | Path) -> Self`
-  - `def iter_entity_paths(self, *, include_self: bool = False, traverse_references: bool = True, _seen: frozenset[Path] = frozenset()) -> Iterator[EntityPath]`
-  - `def assert_valid_entity_paths(self) -> None`
-  - `def get_resource(self, name: str) -> Resource`
-  - `def get_catalog(self, name: str) -> Catalog`
-  - `def dereference(self, _seen: frozenset[Path] = frozenset()) -> Self`
 
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
@@ -134,20 +139,10 @@ Auto-generated from source signatures and docstrings.
   - `entity_type: EntityTypeValue | None`
 
 #### `CatalogReference`
-- Lazy reference to another local descriptor; resolved beside its document.
+- Reference to another local descriptor; descriptor.load owns resolution.
 - Fields:
   - `name: str | None`
   - `path: str`
-  - `_basepath: Path`
-- Methods:
-  - `def load(self) -> Catalog`
-
-#### `EntityPath`
-- Fields:
-  - `name_path: str`
-  - `model: Entity | CatalogReference`
-  - `json_pointer: str`
-  - `entity_type: str`
 
 
 ## `sharedrive.item`

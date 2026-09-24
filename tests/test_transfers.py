@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from sharedrive.cli import app
+from sharedrive.descriptor import save
 from sharedrive.models import Catalog, Resource, Location
 from sharedrive.upload import plan_upload
 from sharedrive.download import plan_download, download
@@ -15,7 +16,7 @@ REMOTE = "https://tenant.sharepoint.com/sites/dev/Docs"
 
 def descriptor(tmp_path, **kwargs):
     path = tmp_path / "config/catalog.yaml"
-    Catalog(**kwargs).to_path(path)
+    save(Catalog(**kwargs), path)
     return path
 
 
@@ -120,11 +121,14 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
     (tmp_path / "out").mkdir()
     (tmp_path / "out/guide #1.docx").write_text("doc")
     child = tmp_path / "child.yaml"
-    Catalog(
-        path="out",
-        targets=[Location(path=REMOTE)],
-        resources=[Resource(path="out/guide #1.docx")],
-    ).to_path(child)
+    save(
+        Catalog(
+            path="out",
+            targets=[Location(path=REMOTE)],
+            resources=[Resource(path="out/guide #1.docx")],
+        ),
+        child,
+    )
     path = tmp_path / "root.yaml"
     path.write_text("catalogs:\n - $ref: child.yaml\n")
     monkeypatch.chdir(tmp_path)
