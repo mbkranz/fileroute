@@ -308,10 +308,10 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(f"Updated {target_label}: {change}")
 
     @app.command(
-        "checkout",
-        epilog=examples_epilog("sharedrive checkout resources/descriptor.yaml"),
+        "activate",
+        epilog=examples_epilog("sharedrive activate resources/descriptor.yaml"),
     )
-    def checkout_command(
+    def activate_command(
         descriptor: Path = typer.Argument(
             ..., help="Descriptor path to activate for later commands."
         ),
@@ -321,7 +321,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             descriptor_path = set_active_descriptor(descriptor)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        typer.echo(f"Checked out descriptor: {descriptor_path}")
+        typer.echo(f"Activated descriptor: {descriptor_path}")
 
     @app.command(
         "list",

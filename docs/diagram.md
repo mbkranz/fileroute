@@ -12,7 +12,7 @@ The default output is `sharedrive-diagram.svg` in the current working directory.
 sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.svg
 ```
 
-Like `pull`, `push`, and `resolve`, the descriptor argument is optional. After selecting a descriptor with `sharedrive checkout`, this is enough:
+Like `pull`, `push`, and `resolve`, the descriptor argument is optional. After selecting a descriptor with `sharedrive activate`, this is enough:
 
 ```bash
 sharedrive diagram

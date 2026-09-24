@@ -130,42 +130,40 @@ def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
     assert "title" not in updated["resources"][0]
 
 
-def test_update_resource_uses_checked_out_descriptor(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_update_resource_uses_active_descriptor(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     descriptor = tmp_path / "resources" / "descriptor.yaml"
     descriptor.parent.mkdir(parents=True, exist_ok=True)
     _write_descriptor(descriptor)
 
-    checkout_result = RUNNER.invoke(
-        app, ["checkout", "resources/descriptor.yaml"], prog_name="sharedrive"
+    activate_result = RUNNER.invoke(
+        app, ["activate", "resources/descriptor.yaml"], prog_name="sharedrive"
     )
-    assert checkout_result.exit_code == 0
+    assert activate_result.exit_code == 0
 
     result = RUNNER.invoke(
         app,
-        ["update", "--name", "spec-workbook", "--title", "Checked out title"],
+        ["update", "--name", "spec-workbook", "--title", "Active title"],
         prog_name="sharedrive",
     )
 
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert document["resources"][0]["title"] == "Checked out title"
+    assert document["resources"][0]["title"] == "Active title"
 
 
 def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
-    checked_out = tmp_path / "resources" / "descriptor.yaml"
-    checked_out.parent.mkdir(parents=True, exist_ok=True)
-    _write_descriptor(checked_out)
+    active = tmp_path / "resources" / "descriptor.yaml"
+    active.parent.mkdir(parents=True, exist_ok=True)
+    _write_descriptor(active)
     override = tmp_path / "override.yaml"
     _write_descriptor(override)
 
-    checkout_result = RUNNER.invoke(
-        app, ["checkout", "resources/descriptor.yaml"], prog_name="sharedrive"
+    activate_result = RUNNER.invoke(
+        app, ["activate", "resources/descriptor.yaml"], prog_name="sharedrive"
     )
-    assert checkout_result.exit_code == 0
+    assert activate_result.exit_code == 0
 
     result = RUNNER.invoke(
         app,
@@ -181,10 +179,10 @@ def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -
         prog_name="sharedrive",
     )
 
-    checked_out_doc = yaml.safe_load(checked_out.read_text(encoding="utf-8"))
+    active_doc = yaml.safe_load(active.read_text(encoding="utf-8"))
     override_doc = yaml.safe_load(override.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert "title" not in checked_out_doc["resources"][0]
+    assert "title" not in active_doc["resources"][0]
     assert override_doc["resources"][0]["title"] == "Override title"
 
 
