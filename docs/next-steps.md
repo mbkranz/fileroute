@@ -15,6 +15,10 @@ Future work should follow concrete demand:
 - Add provider upload capabilities for Google Drive/S3 when required.
 - Add SharePoint upload sessions if publication needs files larger than 250 MB.
 - Add automatic descriptor discovery only when its operator workflow is defined.
+- Add an optional `fileroute diagram --terminal` view for quick CLI inspection.
+  Use Rich's tree to group each artifact with its sources and targets, and keep
+  the current SVG default and file output formats. Show descriptor intent,
+  without implying that a transfer ran or that a target supports upload.
 
 Keep transformation/authoring tools such as Quarto outside Fileroute. Sources
 can document those inputs, but Fileroute does not execute transformations.
