@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sharedrive.models import ServiceType
 
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,6 @@ from botocore.exceptions import ClientError
 
 from sharedrive.clients.base import AdapterCapabilities, BaseClient
 from sharedrive.item import ServiceItem
-from sharedrive.registry import provider
 
 
 def check_s3_credentials() -> None:
@@ -63,7 +63,6 @@ def _parse_s3_source_url(
     return bucket, key
 
 
-@provider("s3")
 class S3Client(BaseClient):
     auth_methods = ["aws_credentials"]
     capabilities = AdapterCapabilities(
@@ -187,8 +186,8 @@ class S3Item(ServiceItem):
         return self.key
 
     @property
-    def service_type(self) -> str:
-        return "S3"
+    def service_type(self) -> ServiceType:
+        return ServiceType.S3
 
     @property
     def source_url(self) -> str:

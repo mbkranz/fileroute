@@ -17,8 +17,8 @@ API_MODULES = [
     {"module": "sharedrive.models", "path": ROOT / "sharedrive" / "models.py"},
     {"module": "sharedrive.item", "path": ROOT / "sharedrive" / "item.py"},
     {
-        "module": "sharedrive.clients.aws",
-        "path": ROOT / "sharedrive" / "clients" / "aws.py",
+        "module": "sharedrive.clients.s3",
+        "path": ROOT / "sharedrive" / "clients" / "s3.py",
     },
     {
         "module": "sharedrive.clients.googledrive",

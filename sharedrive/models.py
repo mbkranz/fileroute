@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional, Self, cast
-from urllib.parse import urlparse
+from typing import Annotated, Any, Self, cast
 
-import pydantic
 import yaml
 from pydantic import (
     BaseModel,
@@ -21,18 +20,24 @@ from pydantic import (
 
 CATALOG_PROFILE = "sharedrive-catalog"
 
-SERVICE_TYPE_ALIASES = {
-    "google": "GoogleDrive",
-    "googledrive": "GoogleDrive",
-    "google_drive": "GoogleDrive",
-    "google-drive": "GoogleDrive",
-    "drive": "GoogleDrive",
-    "sharepoint": "SharePoint",
-    "share_point": "SharePoint",
-    "share-point": "SharePoint",
-    "s3": "S3",
-}
-SUPPORTED_SERVICE_TYPES = {"GoogleDrive", "SharePoint", "S3"}
+
+class ServiceType(StrEnum):
+    GOOGLE_DRIVE = "GoogleDrive"
+    SHAREPOINT = "SharePoint"
+    S3 = "S3"
+
+
+def _service_alias(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    key = value.strip().casefold().replace("_", "").replace("-", "").replace(" ", "")
+    return {
+        "google": ServiceType.GOOGLE_DRIVE,
+        "drive": ServiceType.GOOGLE_DRIVE,
+        "gdrive": ServiceType.GOOGLE_DRIVE,
+        **{item.value.casefold(): item for item in ServiceType},
+    }.get(key, value)
+
 
 ENTITY_TYPE_ALIASES = {
     "file": "File",
@@ -59,16 +64,6 @@ def _require_non_empty(value: str, field_name: str) -> str:
     return normalized
 
 
-def normalize_service_type(value: str | None) -> str | None:
-    """Normalize OpenMetadata-style drive/storage service names."""
-    if value is None:
-        return None
-
-    normalized = _require_non_empty(value, "serviceType")
-    key = normalized.replace(" ", "").replace(".", "").lower()
-    return SERVICE_TYPE_ALIASES.get(key, normalized)
-
-
 def normalize_entity_type(value: str | None) -> str | None:
     """Normalize OpenMetadata-style drive/storage entity names."""
     if value is None:
@@ -79,80 +74,7 @@ def normalize_entity_type(value: str | None) -> str | None:
     return ENTITY_TYPE_ALIASES.get(key, normalized[:1].upper() + normalized[1:])
 
 
-def infer_service_type(locator: str) -> str:
-    """Infer a supported serviceType from a remote locator."""
-    normalized = _require_non_empty(locator, "locator")
-    parsed = urlparse(normalized)
-    scheme = parsed.scheme.lower()
-    host = parsed.netloc.lower()
-
-    if scheme == "s3":
-        return "S3"
-    if host == "sharepoint.com" or host.endswith(".sharepoint.com"):
-        return "SharePoint"
-    if host in {"drive.google.com", "docs.google.com"}:
-        return "GoogleDrive"
-
-    raise NotImplementedError(
-        f"Could not infer serviceType from '{normalized}'. "
-        "Pass service_type explicitly."
-    )
-
-
-def resolve_service_type(locator: str, service_type: str | None = None) -> str:
-    """Return a supported canonical serviceType, inferring it when omitted."""
-    normalized = (
-        infer_service_type(locator)
-        if service_type is None
-        else normalize_service_type(service_type)
-    )
-
-    if normalized not in SUPPORTED_SERVICE_TYPES:
-        raise NotImplementedError(f"Service type '{normalized}' is not implemented.")
-
-    return normalized
-
-
-def adapter_from_service_type(service_type: str | None) -> str | None:
-    """Map supported serviceType values to registry adapter names."""
-    normalized = normalize_service_type(service_type)
-
-    if normalized == "GoogleDrive":
-        return "googledrive"
-    if normalized == "SharePoint":
-        return "sharepoint"
-    if normalized == "S3":
-        return "s3"
-
-    return None
-
-
-GDriveKind = Annotated[
-    Literal["drive", "file"], BeforeValidator(lambda v: v.replace("drive#", ""))
-]
-GDriveParents = Annotated[list[str], Field(default_factory=list)]
-
-
-class GDriveApiFile(pydantic.BaseModel, validate_assignment=True):
-    model_config = pydantic.ConfigDict()
-
-    kind: Annotated[GDriveKind, Literal["file"]] = "file"
-    id: Optional[str] = None
-    name: Optional[str] = None
-    mimeType: Optional[str] = None
-    parents: GDriveParents
-    webViewLink: Optional[str] = None
-    driveId: Optional[str] = None
-
-
-class GDriveApiDrive(pydantic.BaseModel, validate_assignment=True):
-    kind: Annotated[GDriveKind, Literal["drive"]] = "drive"
-    id: Optional[str] = None
-    name: Optional[str] = None
-
-
-ServiceId = str
-ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]
+ServiceTypeField = Annotated[ServiceType, BeforeValidator(_service_alias)]
 EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]
 
 
@@ -227,9 +149,9 @@ class Location(DescriptorModel):
     """
 
     path: str = Field(min_length=1)
-    serviceType: ServiceTypeValue | None = None
-    serviceId: str | None = None
-    entityType: EntityTypeValue | None = None
+    service_type: ServiceTypeField | None = Field(default=None, alias="serviceType")
+    service_id: str | None = Field(default=None, alias="serviceId")
+    entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
 
 
 class Entity(DescriptorModel):
@@ -240,7 +162,7 @@ class Entity(DescriptorModel):
     sources: list[Location] = Field(default_factory=list)
     # None inherits catalog targets; [] explicitly disables publication.
     targets: list[Location] | None = None
-    entityType: EntityTypeValue | None = None
+    entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
 
     @model_validator(mode="before")
     @classmethod
@@ -437,6 +359,7 @@ class Catalog(Entity):
 
 
 __all__ = [
+    "ServiceType",
     "Catalog",
     "Resource",
     "Location",
@@ -447,14 +370,6 @@ __all__ = [
     "write_descriptor",
     "local_path",
     "CATALOG_PROFILE",
-    "ServiceId",
-    "ServiceTypeValue",
     "EntityTypeValue",
-    "GDriveApiFile",
-    "GDriveApiDrive",
-    "normalize_service_type",
     "normalize_entity_type",
-    "infer_service_type",
-    "resolve_service_type",
-    "adapter_from_service_type",
 ]

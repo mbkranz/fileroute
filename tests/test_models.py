@@ -118,7 +118,7 @@ def test_explicit_migration_translates_packages_and_legacy_locations(
     resource = catalog.get_resource("archive.file")
     assert resource.path == "out.csv"
     assert getattr(resource, field)[0].path == "s3://bucket/file.csv"
-    assert getattr(resource, field)[0].serviceType == "S3"
+    assert getattr(resource, field)[0].service_type == "S3"
     assert resource.to_dict()["custom"] == 42
     assert "packages" not in catalog.to_dict()
 

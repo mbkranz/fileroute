@@ -109,7 +109,8 @@ def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
             stream.truncate(250_000_001)
     path = descriptor(tmp_path, resources=resources)
     monkeypatch.setattr(
-        "sharedrive.upload.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     with pytest.raises(ValueError):
         plan_upload(path, root=tmp_path)
@@ -128,7 +129,8 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
     path.write_text("catalogs:\n - $ref: child.yaml\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.upload.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["push", str(path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -151,7 +153,7 @@ def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
         is_directory=False, download=lambda target: calls.append(target)
     )
     client = SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item)
-    monkeypatch.setattr("sharedrive.download.get_client", lambda _: client)
+    monkeypatch.setattr("sharedrive.clients.s3.S3Client.build_default", lambda: client)
     entries = plan_download(path, root=tmp_path)
     download(entries)
     assert calls == ["s3://bucket/source.csv", tmp_path / "download/file.csv"]
@@ -181,7 +183,8 @@ def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.download.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.s3.S3Client.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     result = CliRunner().invoke(app, ["pull", str(path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -207,8 +210,8 @@ def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monke
         path="root", is_directory=True, iter_files=lambda: iter(children)
     )
     monkeypatch.setattr(
-        "sharedrive.download.get_client",
-        lambda _: SimpleNamespace(get_from_weburl=lambda url: item),
+        "sharedrive.clients.s3.S3Client.build_default",
+        lambda: SimpleNamespace(get_from_weburl=lambda url: item),
     )
     with pytest.raises(ValueError, match="outside"):
         download(plan_download(path, root=tmp_path))

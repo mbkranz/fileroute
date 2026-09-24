@@ -5,21 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from sharedrive.models import (
-    Catalog,
-    Resource,
-    adapter_from_service_type,
-    local_path,
-    resolve_service_type,
-)
-from sharedrive.registry import get_client, get_provider
+from sharedrive.models import Catalog, Resource, local_path
+from sharedrive.clients import get_provider
+from sharedrive.descriptor import resolve
+from sharedrive.models import ServiceType
 
 
 @dataclass(frozen=True)
 class Download:
     local: Path
     remote: str
-    service: str
+    service: ServiceType
     directory: bool = False
 
 
@@ -33,7 +29,7 @@ def plan_download(
     not a download instruction. Targets are never used for retrieval.
     """
     root = (root or Path.cwd()).resolve()
-    document = Catalog.from_path(descriptor.resolve())
+    document = resolve(Catalog.from_path(descriptor.resolve()))
     entries = []
     for row in document.iter_entity_paths(include_self=True):
         entity = row.model
@@ -50,8 +46,12 @@ def plan_download(
                 f"{entity.name}: set path for the local artifact before pulling"
             )
         source = entity.sources[0]
-        service = resolve_service_type(source.path, source.serviceType)
-        provider = get_provider(adapter_from_service_type(service) or "")
+        service = source.service_type
+        if service is None:
+            raise ValueError(
+                f"Set serviceType for remote source {source.path!r}; local provenance cannot be pulled"
+            )
+        provider = get_provider(service)
         if provider is None or not provider.capabilities.supports_download:
             raise ValueError(f"Download is not implemented for {service}")
         local = local_path(entity.path, root, reject_symlinks=True)
@@ -82,9 +82,7 @@ def download(entries: tuple[Download, ...]) -> None:
     destinations = set()
     for entry in entries:
         if entry.service not in clients:
-            clients[entry.service] = get_client(
-                adapter_from_service_type(entry.service) or ""
-            )
+            clients[entry.service] = get_provider(entry.service).build_default()
         item = clients[entry.service].get_from_weburl(entry.remote)
         if item.is_directory != entry.directory:
             raise ValueError(

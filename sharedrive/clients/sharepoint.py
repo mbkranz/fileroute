@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sharedrive.models import ServiceType
 
 import json
 import mimetypes
@@ -12,13 +13,11 @@ import requests
 from sharedrive.clients.base import AdapterCapabilities, BaseClient
 from sharedrive.exceptions import GraphApiDriveError, GraphApiSiteError
 from sharedrive.item import ServiceItem
-from sharedrive.registry import provider
 
 if TYPE_CHECKING:
     from sharedrive.auth.microsoft import MicrosoftAuth
 
 
-@provider("sharepoint")
 class SharepointClient(BaseClient):
     """SharePoint / OneDrive client backed by the Microsoft Graph API.
 
@@ -38,9 +37,7 @@ class SharepointClient(BaseClient):
     production code.
 
     The class is registered as the ``"sharepoint"`` provider via the
-    :func:`~sharedrive.registry.provider` decorator; use
-    :func:`~sharedrive.registry.build_service_registry` to obtain a
-    :class:`~sharedrive.registry.ServiceAdapter` for it.
+    Selected by ServiceType through sharedrive.clients.get_provider.
 
     Microsoft Graph API reference:
         https://learn.microsoft.com/en-us/graph/api/resources/onedrive?view=graph-rest-1.0
@@ -536,7 +533,9 @@ class SharepointClient(BaseClient):
         if relative.is_absolute() or ".." in relative.parts or not relative.name:
             raise ValueError(f"Unsafe relative upload path: {relative}")
         if local.stat().st_size > 250_000_000:
-            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}")
+            raise ValueError(
+                f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}"
+            )
 
         destination = self._resolve_weburl(folder_url)
         drive_id = destination["drive_id"]
@@ -556,11 +555,20 @@ class SharepointClient(BaseClient):
                 try:
                     response = requests.post(
                         f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{parent_id}/children",
-                        headers={**self.auth_header, "Content-Type": "application/json"},
-                        json={"name": part, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"},
+                        headers={
+                            **self.auth_header,
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "name": part,
+                            "folder": {},
+                            "@microsoft.graph.conflictBehavior": "fail",
+                        },
                     )
                 except requests.exceptions.RequestException as error:
-                    raise GraphApiDriveError(f"Failed to create folder {folder_path}: {error}") from error
+                    raise GraphApiDriveError(
+                        f"Failed to create folder {folder_path}: {error}"
+                    ) from error
                 if response.status_code == 409:
                     child = self.get_item_metadata(drive_id, item_path=folder_path)
                 elif response.status_code == 201:
@@ -656,8 +664,8 @@ class SharepointItem(ServiceItem):
         return self._path or ""
 
     @property
-    def service_type(self) -> str:
-        return "SharePoint"
+    def service_type(self) -> ServiceType:
+        return ServiceType.SHAREPOINT
 
     @property
     def source_url(self) -> str:

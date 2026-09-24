@@ -18,7 +18,7 @@ Auto-generated from source signatures and docstrings.
   - `local: Path`
   - `remote: str`
   - `relative: Path`
-  - `service: str`
+  - `service: ServiceType`
   - `direct_file: bool`
 - Methods:
   - `def destination(self) -> str`
@@ -39,7 +39,7 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `local: Path`
   - `remote: str`
-  - `service: str`
+  - `service: ServiceType`
   - `directory: bool`
 
 
@@ -84,8 +84,6 @@ Auto-generated from source signatures and docstrings.
 ### Constants
 
 - `CATALOG_PROFILE = 'sharedrive-catalog'`
-- `ServiceId = str`
-- `ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]`
 - `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
 
 ### Functions
@@ -98,18 +96,12 @@ Auto-generated from source signatures and docstrings.
   - Write JSON/YAML, preserving fields but not YAML comments/formatting.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
-- `def normalize_service_type(value: str | None) -> str | None`
-  - Normalize OpenMetadata-style drive/storage service names.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
-- `def infer_service_type(locator: str) -> str`
-  - Infer a supported serviceType from a remote locator.
-- `def resolve_service_type(locator: str, service_type: str | None = None) -> str`
-  - Return a supported canonical serviceType, inferring it when omitted.
-- `def adapter_from_service_type(service_type: str | None) -> str | None`
-  - Map supported serviceType values to registry adapter names.
 
 ### Classes
+
+#### `ServiceType`
 
 #### `Catalog`
 - Nested groups of resources and catalogs.
@@ -137,9 +129,9 @@ Auto-generated from source signatures and docstrings.
 - Upstream input or downstream destination, with optional provider metadata.
 - Fields:
   - `path: str`
-  - `serviceType: ServiceTypeValue | None`
-  - `serviceId: str | None`
-  - `entityType: EntityTypeValue | None`
+  - `service_type: ServiceTypeField | None`
+  - `service_id: str | None`
+  - `entity_type: EntityTypeValue | None`
 
 #### `CatalogReference`
 - Lazy reference to another local descriptor; resolved beside its document.
@@ -157,22 +149,6 @@ Auto-generated from source signatures and docstrings.
   - `json_pointer: str`
   - `entity_type: str`
 
-#### `GDriveApiFile`
-- Fields:
-  - `kind: Annotated[GDriveKind, Literal['file']]`
-  - `id: Optional[str]`
-  - `name: Optional[str]`
-  - `mimeType: Optional[str]`
-  - `parents: GDriveParents`
-  - `webViewLink: Optional[str]`
-  - `driveId: Optional[str]`
-
-#### `GDriveApiDrive`
-- Fields:
-  - `kind: Annotated[GDriveKind, Literal['drive']]`
-  - `id: Optional[str]`
-  - `name: Optional[str]`
-
 
 ## `sharedrive.item`
 
@@ -181,17 +157,17 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceItem`
 - Base interface for files and directories in a remote service.
 - Methods:
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def refresh(self, *, include_children: bool = True) -> 'ServiceItem'`
     - Refresh this runtime item from its backing service.
   - `def children(self) -> list['ServiceItem']`
     - Direct child items for directories; always empty for files.
-  - `def parent_id(self) -> ServiceId | None`
+  - `def parent_id(self) -> str | None`
     - Best-known parent identifier for this item, when available.
   - `def parent(self) -> 'ServiceItem' | None`
     - Best-known parent item from the active traversal snapshot.
@@ -207,7 +183,7 @@ Auto-generated from source signatures and docstrings.
     - Export local artifact paths and remote provenance as owned models.
 
 
-## `sharedrive.clients.aws`
+## `sharedrive.clients.s3`
 
 ### Functions
 
@@ -232,7 +208,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['S3Item']`
@@ -288,12 +264,12 @@ Auto-generated from source signatures and docstrings.
   - `def mime_type(self) -> Optional[str]`
   - `def children(self) -> list['ServiceItem']`
     - Direct children of this directory; empty list for files.
-  - `def id(self) -> ServiceId`
+  - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
-  - `def service_type(self) -> ServiceTypeValue`
+  - `def service_type(self) -> ServiceType`
   - `def refresh(self, *, include_children: bool = True) -> 'GDriveItem'`
     - Re-fetch raw metadata (and optionally children) from the API.
   - `def export(self, target_mime_type: Optional[str] = None, output_path: Optional[str] = None) -> Union[bytes, str]`
@@ -439,7 +415,7 @@ Auto-generated from source signatures and docstrings.
   - `def id(self) -> str`
   - `def name(self) -> str`
   - `def path(self) -> str`
-  - `def service_type(self) -> str`
+  - `def service_type(self) -> ServiceType`
   - `def source_url(self) -> str`
   - `def is_directory(self) -> bool`
   - `def children(self) -> list['SharepointItem']`

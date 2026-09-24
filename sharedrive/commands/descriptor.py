@@ -24,7 +24,7 @@ from sharedrive.models import (
     write_descriptor,
     walk_entities,
     normalize_entity_type,
-    normalize_service_type,
+    Location,
 )
 
 
@@ -268,7 +268,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             }.get(property_name, property_name)
             value = raw_value
             if property_path == "serviceType":
-                value = normalize_service_type(value)
+                value = Location(path="metadata", service_type=value).service_type
             elif property_path == "entityType":
                 value = normalize_entity_type(value)
             field_target = target
@@ -371,7 +371,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             nodes[reference.name_path] = node
             details = []
             resource_path = getattr(item, "path", None)
-            entity_type = getattr(item, "entityType", None)
+            entity_type = getattr(item, "entity_type", None)
             if resource_path:
                 details.append(f"path={resource_path}")
             for field in ("sources", "targets"):

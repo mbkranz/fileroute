@@ -6,16 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from sharedrive.models import (
-    Catalog,
-    CatalogReference,
-    Entity,
-    Location,
-    local_path,
-    adapter_from_service_type,
-    resolve_service_type,
-)
-from sharedrive.registry import get_client, get_provider
+from sharedrive.models import Catalog, CatalogReference, Entity, Location, local_path
+from sharedrive.clients import get_provider
+from sharedrive.descriptor import resolve
+from sharedrive.models import ServiceType
 
 
 @dataclass(frozen=True)
@@ -23,7 +17,7 @@ class UploadFile:
     local: Path
     remote: str
     relative: Path
-    service: str
+    service: ServiceType
     direct_file: bool = False
 
     @property
@@ -48,13 +42,13 @@ def plan_upload(
     entityType is Directory/Container.
     """
     root = (root or Path.cwd()).resolve()
-    document = Catalog.from_path(descriptor.resolve())
+    document = resolve(Catalog.from_path(descriptor.resolve()))
     entries: list[UploadFile] = []
     destinations: dict[str, Path] = {}
 
     def add(local: Path, target: Location, relative: Path | None) -> None:
-        service = resolve_service_type(target.path, target.serviceType)
-        provider = get_provider(adapter_from_service_type(service) or "")
+        service = target.service_type
+        provider = get_provider(service)
         if provider is None or not provider.capabilities.supports_upload:
             raise ValueError(f"Upload is not implemented for {service}")
         url = urlparse(target.path)
@@ -112,7 +106,7 @@ def plan_upload(
                 if entity._origin in seen:
                     raise ValueError(f"Cyclic catalog reference: {entity._origin}")
                 seen = seen | {entity._origin}
-            if any(target.entityType == "File" for target in targets or []):
+            if any(target.entity_type == "File" for target in targets or []):
                 raise ValueError("Catalog targets must be folders, not files")
             if explicit:
                 anchor = local or root
@@ -120,7 +114,7 @@ def plan_upload(
             if children:
                 for child in children:
                     if isinstance(child, CatalogReference):
-                        child = child.load()
+                        child = resolve(child.load())
                     visit(child, targets or [], anchor, seen)
                 return
             if not targets:
@@ -141,7 +135,7 @@ def plan_upload(
                 relative = (
                     (
                         Path(local.name)
-                        if target.entityType in {"Directory", "Container"}
+                        if target.entity_type in {"Directory", "Container"}
                         else None
                     )
                     if explicit
@@ -165,9 +159,7 @@ def upload(files: tuple[UploadFile, ...]) -> None:
     clients = {}
     for file in files:
         if file.service not in clients:
-            clients[file.service] = get_client(
-                adapter_from_service_type(file.service) or ""
-            )
+            clients[file.service] = get_provider(file.service).build_default()
         folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
         clients[file.service].upload_to_folder(folder, file.relative, file.local)
 

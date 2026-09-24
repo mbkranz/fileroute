@@ -38,8 +38,8 @@ def test_plan_nested_and_dry_run_does_not_authenticate(tmp_path, monkeypatch):
     ]
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "sharedrive.upload.get_client",
-        lambda _: pytest.fail("authenticated on dry run"),
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated on dry run"),
     )
     result = CliRunner().invoke(app, ["upload", str(descriptor), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -60,7 +60,8 @@ def test_missing_or_symlink_fails_before_transfer(tmp_path):
 
 def test_placeholder_cannot_trigger_authentication(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "sharedrive.upload.get_client", lambda _: pytest.fail("authenticated")
+        "sharedrive.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("authenticated"),
     )
     with pytest.raises(ValueError, match="placeholder"):
         upload((
@@ -84,7 +85,9 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     files = plan_upload(descriptor, root=tmp_path)
     calls = []
     client = SimpleNamespace(upload_to_folder=lambda *args: calls.append(args))
-    monkeypatch.setattr("sharedrive.upload.get_client", lambda adapter: client)
+    monkeypatch.setattr(
+        "sharedrive.clients.sharepoint.SharepointClient.build_default", lambda: client
+    )
     upload(files)
     assert calls == [
         (
