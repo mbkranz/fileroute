@@ -1,0 +1,86 @@
+name: Version, tag, and publish
+
+on:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# Both branches share the version/tag namespace.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+          version: "0.12.17"
+      - run: uvx --from poethepoet==0.48.0 poe release-check
+      - name: Prepare release
+        id: release
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: uvx --from poethepoet==0.48.0 poe release --branch "$BRANCH" --source "$SOURCE_SHA"
+      - name: Save distributions before pushing the release
+        if: steps.release.outputs.reused == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          # A previous attempt may have saved files but failed its atomic push.
+          overwrite: true
+      - name: Push release commit and tag together
+        if: steps.release.outputs.reused == 'false'
+        env:
+          BRANCH: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: git push --atomic origin "$RELEASE_SHA:refs/heads/$BRANCH" "refs/tags/$TAG"
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.12.17"
+      - run: uv publish --trusted-publishing always
+
+  release:
+    needs: [prepare, publish]
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create stable GitHub release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi
