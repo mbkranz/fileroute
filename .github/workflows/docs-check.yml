@@ -14,6 +14,5 @@ jobs:
         with:
           python-version: "3.12"
           version: "0.12.17"
-      - run: uv tool install poethepoet==0.48.0
-      - run: poe docs-check
-      - run: poe check
+      - run: uvx --from poethepoet==0.48.0 poe docs-check
+      - run: uvx --from poethepoet==0.48.0 poe check
