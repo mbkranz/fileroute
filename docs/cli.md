@@ -19,6 +19,7 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
 * `resolve`: Preview inferred provider metadata,...
+* `migrate`: Convert a legacy descriptor to...
 * `update`: Update descriptor-root or resource...
 * `checkout`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
@@ -82,6 +83,36 @@ $ sharedrive resolve [OPTIONS] [DESCRIPTOR]
 
 * `--write`: Save resolved metadata back to this descriptor.
 * `--help`: Show this message and exit.
+
+## `sharedrive migrate`
+
+Convert a legacy descriptor to path/sources/targets in a new file.
+
+**Usage**:
+
+```console
+$ sharedrive migrate [OPTIONS] DESCRIPTOR OUTPUT
+```
+
+**Arguments**:
+
+* `DESCRIPTOR`: Legacy descriptor to read.  [required]
+* `OUTPUT`: New canonical descriptor to write.  [required]
+
+**Options**:
+
+* `--direction TEXT`: Interpret legacy remote URLs as pull sources or push targets.  [default: pull]
+* `--help`: Show this message and exit.
+
+**Examples**
+
+```bash
+sharedrive migrate old.yaml new.yaml --direction pull
+```
+
+```bash
+sharedrive migrate old.yaml new.yaml --direction push
+```
 
 ## `sharedrive update`
 

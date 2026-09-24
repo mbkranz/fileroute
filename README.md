@@ -101,6 +101,7 @@ sharedrive checkout config/sharedrive.yaml
 sharedrive update --name documentation --title "Published documentation"
 sharedrive resolve config/sharedrive.yaml
 sharedrive resolve config/sharedrive.yaml --write
+sharedrive migrate old.yaml new.yaml --direction push
 sharedrive pull config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml --dry-run
 sharedrive push config/sharedrive.yaml
@@ -201,6 +202,7 @@ The core has one module per responsibility:
 - `models.py`: declarative `Catalog`, `Resource`, `Location`, `CatalogReference`
   and `ServiceType` validation.
 - `descriptor.py`: `load`, `save`, `walk`, `find`, and offline `resolve`.
+- `migration.py`: explicit one-way conversion of legacy descriptors.
 - `transfer.py`: `plan_pull` / `plan_push`, then `pull` / `push` execution.
 - `item.py`: runtime `ServiceItem` hierarchy.
 - `clients/sharepoint.py`, `clients/googledrive.py`, `clients/s3.py`: provider APIs.
@@ -225,15 +227,16 @@ a snapshot until refresh or mutation invalidates it.
 
 Use the four models above and the functions in `descriptor` and `transfer`.
 Model I/O and traversal methods, `upload.py`, `download.py`, `helpers.py`, the
-provider registry, and the migration utility have been removed. The CLI has no
-`upload` alias, `set` command, or `migrate` command. Run `checkout` again to select
+provider registry have been removed. The CLI has no `upload` alias or `set`
+command. Run `checkout` again to select
 a descriptor using the new single-path selection file; obsolete saved workflow
 defaults are no longer read.
 
 Legacy `Drive*` classes, packages, `_cache`, and artifact-level provider fields
 are unsupported. Update authored descriptors to `path`, `sources`, `targets`,
-`resources`, and `catalogs`; provider metadata belongs on a location. There are
-no compatibility shims or automatic legacy conversions.
+`resources`, and `catalogs`; provider metadata belongs on a location. Normal loading has no compatibility shims or automatic legacy conversion. Use
+`sharedrive migrate OLD NEW --direction pull|push` for an explicit, one-way
+conversion that preserves the input file.
 
 ## Development
 

@@ -145,6 +145,38 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
+    @app.command(
+        "migrate",
+        help="Convert a legacy descriptor to path/sources/targets in a new file.",
+        epilog=examples_epilog(
+            "sharedrive migrate old.yaml new.yaml --direction pull",
+            "sharedrive migrate old.yaml new.yaml --direction push",
+        ),
+    )
+    def migrate_command(
+        descriptor: Path = typer.Argument(..., help="Legacy descriptor to read."),
+        output: Path = typer.Argument(..., help="New canonical descriptor to write."),
+        direction: str = typer.Option(
+            "pull",
+            "--direction",
+            help="Interpret legacy remote URLs as pull sources or push targets.",
+        ),
+    ) -> None:
+        """Convert a legacy descriptor without overwriting its input."""
+        if direction not in {"pull", "push"}:
+            raise typer.BadParameter("--direction must be pull or push")
+        if output.exists() or output.resolve() == descriptor.resolve():
+            raise typer.BadParameter(
+                "Choose a new output file; migrate does not overwrite files"
+            )
+        try:
+            from sharedrive.migration import migrate_descriptor
+
+            save(migrate_descriptor(descriptor, direction=direction), output)
+        except (OSError, ValueError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        typer.echo(f"Migrated {descriptor} -> {output}")
+
     @clone_app.command(
         "descriptor",
         epilog=examples_epilog(
