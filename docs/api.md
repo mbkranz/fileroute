@@ -88,6 +88,7 @@ Auto-generated from source signatures and docstrings.
   - `source: str`
   - `target: str`
   - `kind: str`
+  - `inherited_from: str | None`
 
 #### `DiagramNode`
 - One artifact, source, target, or unresolved catalog reference.
@@ -98,6 +99,18 @@ Auto-generated from source signatures and docstrings.
   - `path: str | None`
   - `service_type: ServiceType | None`
   - `entity_type: str | None`
+  - `anchor: str`
+  - `metadata: dict[str, Any]`
+
+
+## `sharedrive.diagram_reports`
+
+### Functions
+
+- `def render_html(graph: DescriptorGraph, output: Path | str, *, detail: Detail = 'summary') -> Path`
+  - Write a self-contained searchable SVG and metadata inspector, usable offline.
+- `def render_markdown(graph: DescriptorGraph, output: Path | str, *, detail: Detail = 'summary') -> Path`
+  - Write a file dictionary and companion SVG; dictionary anchors are portable.
 
 
 ## `sharedrive.models`

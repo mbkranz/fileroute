@@ -8,7 +8,8 @@ Descriptors use `Catalog`, `Resource`, `Location`, and `CatalogReference`:
 `path` identifies the artifact, `sources` records upstream inputs, and `targets`
 identifies publication destinations. `pull` reads sources; `push`
 writes targets. Both support offline `--dry-run` planning. `diagram` turns the
-same resolved descriptor relationships into a standalone SVG without
+same resolved descriptor relationships into SVG, an offline HTML inspector, or a
+Markdown file dictionary without
 contacting a remote service.
 
 ```bash
@@ -30,6 +31,7 @@ target inheritance, path rules, and URL resolution. See
 - `models.py`: four declarative Pydantic models and `ServiceType`.
 - `descriptor.py`: load, save, walk, find, and offline URL/provider resolution.
 - `diagram.py`: provider-neutral descriptor graph plus dependency-free SVG rendering.
+- `diagram_reports.py`: offline HTML inspector and Markdown dictionary.
 - `transfer.py`: plan pull/push, then dispatch through the resolved provider enum.
 - `item.py`: live provider-backed items and runtime hierarchy snapshots.
 - `clients/` and `auth/`: provider API and credential behavior.
@@ -49,11 +51,14 @@ resolves known provider URLs in memory but does not authenticate or transfer dat
 - [Next steps](next-steps.md)
 
 ```bash
-uv run python scripts/update_docs_markdown.py
-uv run python scripts/update_docs_markdown.py --check
-uv sync --extra docs
-uv run mkdocs serve
+poe docs-update
+poe docs-check
+poe docs-build
+poe docs-serve
 ```
+
+Install Poe with `uv tool install poethepoet==0.48.0`, or run a task using
+`uvx --from poethepoet==0.48.0 poe <task>`.
 
 ## Package releases
 

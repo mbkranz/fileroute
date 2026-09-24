@@ -4,8 +4,8 @@ Sharedrive describes where project artifacts come from, where they live locally,
 and where they should be published. A small YAML or JSON catalog connects local
 files with SharePoint, Google Drive, and S3 URLs, so a document or data export
 can keep its provenance and multiple destinations in one place. The CLI can
-preview changes without credentials, visualize descriptor workflows as SVG,
-pull remote inputs, and push supported outputs; the same descriptor, graph, and
+preview changes without credentials, visualize descriptor workflows as SVG, HTML,
+or Markdown, pull remote inputs, and push supported outputs; the same descriptor, graph, and
 transfer APIs are available from Python. Use it inside a project for repeatable,
 versioned workflows, or run it as a standalone tool to inspect and retrieve
 individual files. Python 3.11 or newer is required.
@@ -232,7 +232,16 @@ It does not require Graphviz or another rendering dependency.
 ```bash
 sharedrive diagram config/sharedrive.yaml
 sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.svg
+sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.html
+sharedrive diagram config/sharedrive.yaml --output docs/sharedrive-workflow.md --detail full
 ```
+
+HTML provides a searchable offline file dictionary linked to diagram nodes; Markdown
+writes an anchored dictionary and companion SVG. `--detail summary` exports curated
+metadata; `--detail full` includes custom fields and service IDs. Inherited targets
+identify their declaring catalog. Reports link to HTTP(S) locations but do not
+preview file contents or authenticate. See the diagram guide for anchor stability
+and duplicate-identity behavior.
 
 The descriptor argument follows the same saved/default selection behavior as
 `pull`, `push`, and `resolve`, so after `sharedrive activate` you can simply run
@@ -357,6 +366,7 @@ The core has one module per responsibility:
   and `ServiceType` validation.
 - `descriptor.py`: `load`, `save`, `walk`, `find`, and offline `resolve`.
 - `diagram.py`: semantic descriptor graphs and dependency-free SVG rendering.
+- `diagram_reports.py`: offline HTML inspector and Markdown file dictionary.
 - `migration.py`: explicit one-way conversion of legacy descriptors.
 - `transfer.py`: `plan_pull` / `plan_push`, then `pull` / `push` execution.
 - `item.py`: runtime `ServiceItem` hierarchy.
@@ -396,13 +406,16 @@ conversion that preserves the input file.
 ## Development
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run python scripts/update_docs_markdown.py
-uv run python scripts/update_docs_markdown.py --check
-uv sync --extra docs
-uv run mkdocs serve
+poe check
+poe docs-check
+poe docs-update
+poe docs-build
+poe docs-serve
 ```
+
+Install the task runner with `uv tool install poethepoet==0.48.0`, or use
+`uvx --from poethepoet==0.48.0 poe <task>` for a one-off run. `poe docs-build`
+installs the documentation extra through `uv run`.
 
 Provider tests use mocks; they do not prove live tenant permissions or transfers.
 
