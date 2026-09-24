@@ -6,12 +6,7 @@ from pathlib import Path
 from typing import Iterator
 
 from sharedrive.exceptions import AmbiguousPathError
-from sharedrive.models import (
-    DriveRemoteCatalog,
-    DriveRemoteResource,
-    ServiceId,
-    ServiceTypeValue,
-)
+from sharedrive.models import Catalog, Resource, Location, ServiceId, ServiceTypeValue
 
 
 def _index_path(path: str | Path) -> str:
@@ -294,40 +289,40 @@ class ServiceItem(ABC):
             "Concrete subclasses must override download()."
         )
 
-    def to_catalog(self) -> DriveRemoteCatalog | DriveRemoteResource:
-        """Convert to a descriptor resource, package, or catalog entry.
+    def to_catalog(self) -> Catalog | Resource:
+        """Export local artifact paths and remote provenance as owned models.
 
-        - Files → :class:`~sharedrive.models.DriveResource` with the remote URL
-          in ``path`` and the relative materialized path in ``_cache``.
-        - Directories → :class:`~sharedrive.models.DriveCatalog` with the remote
-          folder URL in ``accessURL``.
+        Provider ServiceItem traversal remains independent of descriptor traversal.
         """
+        source = Location(
+            path=self.source_url,
+            serviceId=self.id,
+            serviceType=self.service_type,
+            entityType="Directory" if self.is_directory else "File",
+        )
         if not self.is_directory:
             format_str = None
             if "." in self.name:
                 format_str = self.name.rsplit(".", 1)[-1].lower()
-            return DriveRemoteResource(
+            return Resource(
                 name=self.path,
-                path=self.source_url,
-                cache=self.path,
-                serviceId=self.id,
-                serviceType=self.service_type,
+                path=self.path,
+                sources=[source],
                 entityType="File",
                 format=format_str,
             )
-        resources: list[DriveRemoteResource] = []
-        catalogs: list[DriveRemoteCatalog] = []
+        resources: list[Resource] = []
+        catalogs: list[Catalog] = []
         for child in self.children:
             entry = child.to_catalog()
-            if isinstance(entry, DriveRemoteCatalog):
+            if isinstance(entry, Catalog):
                 catalogs.append(entry)
-            elif isinstance(entry, DriveRemoteResource):
+            elif isinstance(entry, Resource):
                 resources.append(entry)
-        return DriveRemoteCatalog(
+        return Catalog(
             name=self.path,
-            accessUrl=self.source_url,
-            serviceId=self.id,
-            serviceType=self.service_type,
+            path=self.path,
+            sources=[source],
             entityType="Directory",
             resources=resources,
             catalogs=catalogs,

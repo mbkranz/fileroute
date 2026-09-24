@@ -2,6 +2,55 @@
 
 Auto-generated from source signatures and docstrings.
 
+## `sharedrive.upload`
+
+### Functions
+
+- `def plan_upload(descriptor: Path, *, root: Path | None = None) -> tuple[UploadFile, ...]`
+  - Publish path to targets, never sources; validate everything before auth.
+- `def upload(files: tuple[UploadFile, ...]) -> None`
+  - Transfer a prepared plan; remote files outside it are never deleted.
+
+### Classes
+
+#### `UploadFile`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `relative: Path`
+  - `service: str`
+  - `direct_file: bool`
+- Methods:
+  - `def destination(self) -> str`
+
+
+## `sharedrive.download`
+
+### Functions
+
+- `def plan_download(descriptor: Path, *, root: Path | None = None) -> tuple[Download, ...]`
+  - Plan remote sources to local paths, offline.
+- `def download(entries: tuple[Download, ...]) -> None`
+  - Resolve remote items, check their paths, then download planned files.
+
+### Classes
+
+#### `Download`
+- Fields:
+  - `local: Path`
+  - `remote: str`
+  - `service: str`
+  - `directory: bool`
+
+
+## `sharedrive.migration`
+
+### Functions
+
+- `def migrate_descriptor(path: Path, *, direction: Literal['pull', 'push'] = 'pull') -> Catalog`
+  - Read a legacy descriptor and return canonical models, inlining references.
+
+
 ## `sharedrive.helpers`
 
 ### Constants
@@ -12,8 +61,6 @@ Auto-generated from source signatures and docstrings.
 
 - `def descriptor_scope_key(descriptor: Path | str) -> str`
   - Return the stable key used for descriptor-scoped defaults.
-- `def get_checked_out_entity() -> str | None`
-  - Return the currently checked-out entity dot-path, or None if no entity is active.
 - `def get_saved_params_for_descriptor(descriptor: Path | str | None = None) -> dict[str, Any]`
   - Return merged global and descriptor-scoped saved params.
 - `def has_saved_global_descriptor() -> bool`
@@ -24,100 +71,107 @@ Auto-generated from source signatures and docstrings.
   - Return the first existing default descriptor path.
 - `def resolve_descriptor_path(descriptor: Path | str | None = None) -> Path`
   - Resolve descriptor path from explicit input, saved defaults, or standard locations.
-- `def resolve_output_dir(output_dir: Path | str | None = None, *, descriptor: Path | str | None = None) -> Path`
-  - Resolve output_dir from explicit input, saved defaults, or the standard path.
 - `def save_params_for_scope(parsed: dict[str, Any], descriptor: Path | str | None, *, global_scope: bool) -> str`
   - Save reusable CLI params to the global or descriptor-specific scope.
 - `def save_descriptor_defaults_store(data: dict[str, Any]) -> None`
   - Persist descriptor defaults store to disk.
-- `def set_active_descriptor(descriptor_path: Path, *, entity: str | None = None) -> Path`
-  - Persist the active descriptor and optional checked-out entity.
+- `def set_active_descriptor(descriptor_path: Path) -> Path`
+  - Persist the active descriptor.
 
 
 ## `sharedrive.models`
 
 ### Constants
 
-- `CATALOG_PROFILE = 'data-package-catalog'`
-- `ENTITY_TYPE_ALIASES = {'file': 'File', 'object': 'File', 'blob': 'File', 'document': 'File', 'spreadsheet': 'File', 'directory': 'Directory', 'folder': 'Directory', 'container': 'Container', 'bucket': 'Container'}`
-- `SERVICE_TYPE_ALIASES = {'google': 'GoogleDrive', 'googledrive': 'GoogleDrive', 'google_drive': 'GoogleDrive', 'google-drive': 'GoogleDrive', 'drive': 'GoogleDrive', 'sharepoint': 'SharePoint', 'share_point': 'SharePoint', 'share-point': 'SharePoint', 's3': 'S3'}`
-- `SUPPORTED_SERVICE_TYPES = {'GoogleDrive', 'SharePoint', 'S3'}`
-- `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
+- `CATALOG_PROFILE = 'sharedrive-catalog'`
+- `ServiceId = str`
 - `ServiceTypeValue = Annotated[str, BeforeValidator(normalize_service_type)]`
+- `EntityTypeValue = Annotated[str, BeforeValidator(normalize_entity_type)]`
 
 ### Functions
 
-- `def adapter_from_locator(locator: str) -> str`
-  - Infer a registry adapter name from a remote locator.
-- `def adapter_from_service_type(service_type: str | None) -> str | None`
-  - Map supported serviceType values to registry adapter names.
-- `def infer_entity_type(locator: str, *, service_type: str) -> str`
-  - Infer whether a locator points at a file, directory, or container.
-- `def infer_service_type(locator: str) -> str`
-  - Infer a supported serviceType from a remote locator.
-- `def normalize_entity_type(value: str | None) -> str | None`
-  - Normalize OpenMetadata-style drive/storage entity names.
+- `def walk_entities(root: Any, prefix: str = '', pointer: str = '') -> Iterator[EntityPath]`
+  - One structural walker for models and authored mappings; no I/O.
+- `def read_descriptor(path: Path) -> dict[str, Any]`
+  - Read JSON/YAML without discarding authored extension metadata.
+- `def write_descriptor(path: Path, document: dict[str, Any]) -> None`
+  - Write JSON/YAML, preserving fields but not YAML comments/formatting.
+- `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
+  - Resolve a local artifact inside root; never accept URLs or escapes.
 - `def normalize_service_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage service names.
-- `def resolve_cache_path(cache: str | None, basepath: str | None)`
-- `def resolve_entity_type(locator: str, *, service_type: str, entity_type: str | None = None) -> str`
-  - Return the declared or inferred entity type.
+- `def normalize_entity_type(value: str | None) -> str | None`
+  - Normalize OpenMetadata-style drive/storage entity names.
+- `def infer_service_type(locator: str) -> str`
+  - Infer a supported serviceType from a remote locator.
 - `def resolve_service_type(locator: str, service_type: str | None = None) -> str`
   - Return a supported canonical serviceType, inferring it when omitted.
+- `def adapter_from_service_type(service_type: str | None) -> str | None`
+  - Map supported serviceType values to registry adapter names.
 
 ### Classes
 
-#### `CatalogSelector`
-- Normalized selector for catalog/package/resource lookup.
-- Methods:
-  - `def matches(self, model: Model, *, path: str | None = None) -> bool`
-    - Return True if this selector matches a model name or dot-path.
-
-#### `DriveCatalog`
-- A registry, library, or folder containing independent data entities.
+#### `Catalog`
+- Nested groups of resources and catalogs.
 - Fields:
   - `profile: str`
-  - `basepath: Optional[str]`
-  - `name: Optional[str]`
-  - `title: Optional[str]`
-  - `description: Optional[str]`
-  - `resources: list[DriveResourceChild]`
-  - `packages: list[DrivePackageChild]`
-  - `catalogs: list[DriveCatalogChild]`
+  - `resources: list[Resource]`
+  - `catalogs: list[Catalog | CatalogReference]`
+  - `_origin: Path | None`
 - Methods:
-  - `def model_post_init(self, _) -> None`
-  - `def assert_valid_entity_paths(self)`
-  - `def get_package(self, name: str) -> DrivePackageChild`
-    - Get a package by name or dot-path, traversing catalog references lazily.
-  - `def get_resource(self, name: str) -> DriveResourceChild`
-    - Get a resource by name or dot-path, traversing catalog references lazily.
-  - `def get_catalog(self, name: str) -> DriveCatalog | DriveCatalogReference | DriveRemoteCatalog`
-    - Get a catalog by name or dot-path.
-  - `def dereference(self) -> 'DriveCatalog'`
-  - `def from_path_dereferenced(cls, path: str) -> 'DriveCatalog'`
+  - `def identify_references(cls, children: Any) -> Any`
+  - `def from_path(cls, path: str | Path) -> Self`
+  - `def iter_entity_paths(self, *, include_self: bool = False, traverse_references: bool = True, _seen: frozenset[Path] = frozenset()) -> Iterator[EntityPath]`
+  - `def assert_valid_entity_paths(self) -> None`
+  - `def get_resource(self, name: str) -> Resource`
+  - `def get_catalog(self, name: str) -> Catalog`
+  - `def dereference(self, _seen: frozenset[Path] = frozenset()) -> Self`
 
-#### `DriveCatalogReference`
-- Unresolved reference to an external DriveCatalog document.
+#### `Resource`
+- A materialized artifact and its provenance/publication locations.
 - Fields:
-  - `conformsTo: type[DriveCatalogChild]`
+  - `path: str`
+  - `format: str | None`
 
-#### `DriveRemotePackage`
-- Data Package package with shared-drive adapter metadata.
+#### `Location`
+- Upstream input or downstream destination, with optional provider metadata.
 - Fields:
-  - `accessUrl: AnyUrl`
-  - `cache: Optional[str]`
-  - `serviceType: Optional[ServiceTypeValue]`
-  - `serviceId: Optional[str]`
-  - `entityType: Optional[EntityTypeValue]`
+  - `path: str`
+  - `serviceType: ServiceTypeValue | None`
+  - `serviceId: str | None`
+  - `entityType: EntityTypeValue | None`
 
-#### `DriveRemoteResource`
-- Data Package resource with shared-drive adapter metadata.
+#### `CatalogReference`
+- Lazy reference to another local descriptor; resolved beside its document.
 - Fields:
-  - `path: AnyUrl`
-  - `serviceType: Optional[ServiceTypeValue]`
-  - `serviceId: Optional[str]`
-  - `entityType: Optional[EntityTypeValue]`
-  - `cache: Optional[str]`
+  - `name: str | None`
+  - `path: str`
+  - `_basepath: Path`
+- Methods:
+  - `def load(self) -> Catalog`
+
+#### `EntityPath`
+- Fields:
+  - `name_path: str`
+  - `model: Entity | CatalogReference`
+  - `json_pointer: str`
+  - `entity_type: str`
+
+#### `GDriveApiFile`
+- Fields:
+  - `kind: Annotated[GDriveKind, Literal['file']]`
+  - `id: Optional[str]`
+  - `name: Optional[str]`
+  - `mimeType: Optional[str]`
+  - `parents: GDriveParents`
+  - `webViewLink: Optional[str]`
+  - `driveId: Optional[str]`
+
+#### `GDriveApiDrive`
+- Fields:
+  - `kind: Annotated[GDriveKind, Literal['drive']]`
+  - `id: Optional[str]`
+  - `name: Optional[str]`
 
 
 ## `sharedrive.item`
@@ -149,8 +203,8 @@ Auto-generated from source signatures and docstrings.
     - Yield file descendants, excluding directories and the starting item.
   - `def download(self, target: Path | str) -> None`
     - Download this item to *target*.
-  - `def to_catalog(self) -> DriveRemoteCatalog | DriveRemoteResource`
-    - Convert to a descriptor resource, package, or catalog entry.
+  - `def to_catalog(self) -> Catalog | Resource`
+    - Export local artifact paths and remote provenance as owned models.
 
 
 ## `sharedrive.clients.aws`

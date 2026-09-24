@@ -16,13 +16,10 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "typer>=0.24.1",
     "boto3>=1.42.55",
-    # TODO: Move below dependencies to own groups? Make separate packages for each type of tool?
-    "GitPython>=3.1.44",
     "google-auth-oauthlib>=1.2.1",
-    "google>=3.0.0",
-    # TODO: add to dedicated lib
+    "google-auth>=2.0",
+    "rich>=13.0",
     "msal>=1.33.0",
-    "dplib-py",
 ]   
 
 [project.scripts]
@@ -33,9 +30,6 @@ sharedrive = "sharedrive.cli:main"
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.1",
-]
-dev-datamgmt = [
-    "frictionless"
 ]
 
 

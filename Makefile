@@ -4,7 +4,7 @@ PYTHON ?= python
 UV ?= uv
 UVX ?= uvx
 DESCRIPTOR ?= resources/descriptor.yaml
-SHAREDRIVE_ARGS ?= download $(DESCRIPTOR)
+SHAREDRIVE_ARGS ?= pull $(DESCRIPTOR)
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Useful commands:\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -16,7 +16,7 @@ sync: ## Install runtime dependencies.
 	$(UV) sync
 
 sync-dev: ## Install development and test dependencies.
-	$(UV) sync --extra dev --extra test
+	$(UV) sync --group dev --group test
 
 lint: ## Run Ruff lint checks.
 	$(UV) run ruff check .
@@ -30,7 +30,7 @@ test: ## Run the test suite.
 check: lint test ## Run lint and tests.
 
 docs-sync: ## Install documentation dependencies.
-	$(UV) sync --group docs
+	$(UV) sync --extra docs
 
 docs-update: ## Regenerate CLI/API markdown docs.
 	$(UV) run $(PYTHON) scripts/update_docs_markdown.py
