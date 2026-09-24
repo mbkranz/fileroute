@@ -50,7 +50,7 @@ commands.
 
 ## Release model
 
-- `.github/workflows/publish-to-pypi.yml` coordinates prepare, publish, and stable GitHub Release jobs. `scripts/release.py` owns local version/build/tag preparation through `poe release`.
+- `.github/workflows/publish-to-pypi.yaml` coordinates prepare, publish, and stable GitHub Release jobs. `scripts/release.py` owns local version/build/tag preparation through `poe release`.
 - A push to `dev` creates or advances the next patch development series (`X.Y.Z.devN`) using `uv version`.
 - A push to `main` promotes a development version to stable; a direct stable-version push to `main` advances the patch version.
 - The workflow commits the `pyproject.toml` and `uv.lock` version change as `chore(release): vX.Y.Z...` and tags that release commit.

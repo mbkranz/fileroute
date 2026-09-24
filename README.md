@@ -430,7 +430,7 @@ then run `poe release-check` for validation and `poe build` for a local wheel
 and source distribution. One-off usage is
 `uvx --from poethepoet==0.48.0 poe release-check`.
 
-The `publish-to-pypi.yml` workflow has three jobs: **prepare**, **publish**, and
+The `publish-to-pypi.yaml` workflow has three jobs: **prepare**, **publish**, and
 **release**. Pushes to `dev` start or increment a patch development version
 (`1.0.0 → 1.0.1.dev1 → 1.0.1.dev2`). Pushes to `main` promote a prerelease to
 stable, or increment the patch when the source already has a stable version.
@@ -449,9 +449,10 @@ newer work. Rapid pushes may supersede pending runs; the latest source should
 be released. Workflow pushes use `GITHUB_TOKEN` and do not recursively trigger
 another push workflow.
 
-PyPI publication uses the `pypi` GitHub environment and Trusted Publishing bound
-to this repository and **`publish-to-pypi.yml`**. No long-lived PyPI token is
-needed. Only stable `main` versions get a GitHub Release, after PyPI succeeds.
+PyPI publication uses Trusted Publishing bound to this repository and
+**`publish-to-pypi.yaml`**. No long-lived PyPI token is needed, and the publish
+job does not require a GitHub environment unless the PyPI publisher is configured
+to expect one. Only stable `main` versions get a GitHub Release, after PyPI succeeds.
 The branch rules must permit the workflow's version commit; rejected pushes
 leave both remote refs unchanged.
 
