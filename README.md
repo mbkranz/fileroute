@@ -459,7 +459,8 @@ For a failed publish, use **Re-run failed jobs** on the original Actions run.
 The publish job downloads the saved wheel and source distribution without
 rebuilding. Identical PyPI uploads can be retried, including a partially
 completed upload. A full rerun recognizes the tagged source/branch before
-calculating a version and reuses its original artifact. Existing GitHub Releases
+calculating a version and finds its unexpired artifact in the original workflow
+run by source commit. Existing GitHub Releases
 are left intact. If preparation failed before the atomic push, a fresh attempt
 can rebuild and replace that run's unpublished artifact. If the original
 artifact has expired or been deleted after the push, stop and recover those

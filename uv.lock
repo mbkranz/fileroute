@@ -312,6 +312,64 @@ wheels = [
 ]
 
 [[package]]
+name = "fileroute"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "boto3" },
+    { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
+    { name = "msal" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "ruamel-yaml" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", specifier = ">=1.42.55" },
+    { name = "google-auth", specifier = ">=2.0" },
+    { name = "google-auth-oauthlib", specifier = ">=1.2.1" },
+    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.1" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.7.1" },
+    { name = "msal", specifier = ">=1.33.0" },
+    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pydantic-settings", specifier = ">=2.7.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "rich", specifier = ">=13.0" },
+    { name = "ruamel-yaml", specifier = ">=0.19.1,<0.20" },
+    { name = "typer", specifier = ">=0.24.1" },
+]
+provides-extras = ["docs"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest" },
+    { name = "ruff", specifier = ">=0.11.5" },
+]
+test = [{ name = "pytest" }]
+
+[[package]]
 name = "ghp-import"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1033,64 +1091,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/05/04/74127fc843314818e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/51/727abb13f44c1fcf6d145979e1535a35794db0f6e450a0cb46aa24732fe2/s3transfer-0.16.0-py3-none-any.whl", hash = "sha256:18e25d66fed509e3868dc1572b3f427ff947dd2c56f844a5bf09481ad3f3b2fe", size = 86830, upload-time = "2025-12-01T02:30:57.729Z" },
 ]
-
-[[package]]
-name = "fileroute"
-version = "1.0.1.dev1"
-source = { editable = "." }
-dependencies = [
-    { name = "boto3" },
-    { name = "google-auth" },
-    { name = "google-auth-oauthlib" },
-    { name = "msal" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "ruamel-yaml" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-docs = [
-    { name = "mkdocs" },
-    { name = "mkdocs-material" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-test = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3", specifier = ">=1.42.55" },
-    { name = "google-auth", specifier = ">=2.0" },
-    { name = "google-auth-oauthlib", specifier = ">=1.2.1" },
-    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.1" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.7.1" },
-    { name = "msal", specifier = ">=1.33.0" },
-    { name = "pydantic", specifier = ">=2.10.6" },
-    { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "ruamel-yaml", specifier = ">=0.19.1,<0.20" },
-    { name = "typer", specifier = ">=0.24.1" },
-]
-provides-extras = ["docs"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest" },
-    { name = "ruff", specifier = ">=0.11.5" },
-]
-test = [{ name = "pytest" }]
 
 [[package]]
 name = "shellingham"
