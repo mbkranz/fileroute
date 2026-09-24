@@ -1,0 +1,197 @@
+name: Version, tag, and publish
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+          version: "0.12.17"
+
+      - name: Run release checks
+        run: uvx --from poethepoet==0.48.0 poe release-check
+
+  version:
+    name: Version and tag
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+
+    steps:
+      - name: Checkout source commit with history and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+          version: "0.12.17"
+
+      - name: Compute, commit, and tag release version
+        id: release
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          current_version="$({ python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as project_file:
+              print(tomllib.load(project_file)["project"]["version"])
+          PY
+          } | tr -d '\r')"
+
+          case "$BRANCH" in
+            dev)
+              if [[ "$current_version" == *.dev* ]]; then
+                base_version="${current_version%%.dev*}"
+                if git rev-parse -q --verify "refs/tags/v${base_version}^{commit}" >/dev/null; then
+                  uv version --bump patch --bump dev --no-sync
+                else
+                  uv version --bump dev --no-sync
+                fi
+              else
+                uv version --bump patch --bump dev --no-sync
+              fi
+              prerelease=true
+              ;;
+            main)
+              if [[ "$current_version" == *.dev* ]] || [[ "$current_version" =~ (a|b|rc)[0-9]+ ]]; then
+                uv version --bump stable --no-sync
+              else
+                uv version --bump patch --no-sync
+              fi
+              prerelease=false
+              ;;
+            *)
+              echo "Unsupported release branch: $BRANCH" >&2
+              exit 1
+              ;;
+          esac
+
+          version="$({ python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as project_file:
+              print(tomllib.load(project_file)["project"]["version"])
+          PY
+          } | tr -d '\r')"
+          tag="v${version}"
+
+          existing_tag_commit="$(git rev-parse -q --verify "refs/tags/${tag}^{commit}" 2>/dev/null || true)"
+          if [[ -n "$existing_tag_commit" ]]; then
+            existing_parent="$(git rev-parse "${existing_tag_commit}^")"
+            existing_version="$(git show "${existing_tag_commit}:pyproject.toml" | python -c 'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])')"
+            if [[ "$existing_parent" != "$SOURCE_SHA" || "$existing_version" != "$version" ]]; then
+              echo "Tag $tag already exists but does not belong to this source commit." >&2
+              exit 1
+            fi
+            release_sha="$existing_tag_commit"
+            echo "Reusing existing release commit $release_sha for $tag."
+          else
+            git fetch --force origin "$BRANCH:refs/remotes/origin/$BRANCH"
+            remote_tip="$(git rev-parse "refs/remotes/origin/$BRANCH")"
+
+            if [[ "$remote_tip" != "$SOURCE_SHA" ]]; then
+              remote_parent="$(git rev-parse "${remote_tip}^" 2>/dev/null || true)"
+              remote_version="$(git show "${remote_tip}:pyproject.toml" 2>/dev/null | python -c 'import sys, tomllib; data=sys.stdin.read(); print(tomllib.loads(data)["project"]["version"] if data else "")')"
+              if [[ "$remote_parent" != "$SOURCE_SHA" || "$remote_version" != "$version" ]]; then
+                echo "Branch $BRANCH advanced while this release was running; refusing to rewrite newer work." >&2
+                exit 1
+              fi
+              release_sha="$remote_tip"
+              git tag -a "$tag" "$release_sha" -m "$tag"
+              git push origin "$tag"
+              echo "Recovered existing release commit $release_sha and created missing tag $tag."
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add pyproject.toml uv.lock
+              git commit -m "chore(release): ${tag}"
+              release_sha="$(git rev-parse HEAD)"
+              git tag -a "$tag" -m "$tag"
+              git push origin "HEAD:${BRANCH}"
+              git push origin "$tag"
+            fi
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "release_sha=$release_sha"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Build and publish to PyPI
+    needs: version
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+          version: "0.12.17"
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Publish distributions
+        run: uv publish
+
+  release:
+    name: Create stable GitHub release
+    needs:
+      - version
+      - publish
+    if: needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
