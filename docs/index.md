@@ -1,6 +1,8 @@
 # sharedrive
 
-Sharedrive retrieves and publishes files through SharePoint, Google Drive, and S3.
+Sharedrive catalogs local artifacts, their sources, and their publication
+destinations across SharePoint, Google Drive, and S3. Pull supports all three
+providers; push currently publishes to SharePoint targets only.
 
 Descriptors use `Catalog`, `Resource`, `Location`, and `CatalogReference`:
 `path` identifies the artifact, `sources` records upstream inputs, and `targets`
@@ -15,7 +17,9 @@ sharedrive list config/publication.yaml --format json
 ```
 
 See the [README](https://github.com/mbkranz/sharedrive#readme) for descriptor
-examples, target inheritance, path rules, and URL resolution.
+examples, [project and standalone usage](https://github.com/mbkranz/sharedrive#choose-how-to-run-it),
+[multi-destination use cases](https://github.com/mbkranz/sharedrive#common-use-cases),
+target inheritance, path rules, and URL resolution.
 
 ## Architecture
 

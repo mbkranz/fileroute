@@ -1,14 +1,54 @@
 # sharedrive
 
-Experimental file retrieval and publication for SharePoint, Google Drive, and S3.
-Python 3.11 or newer is required.
+Sharedrive describes where project artifacts come from, where they live locally,
+and where they should be published. A small YAML or JSON catalog connects local
+files with SharePoint, Google Drive, and S3 URLs, so a document or data export
+can keep its provenance and multiple destinations in one place. The CLI can
+preview changes without credentials, pull remote inputs, and push supported
+outputs; the same descriptor and transfer planners are available from Python.
+Use it inside a project for repeatable, versioned workflows, or run it as a
+standalone tool to inspect and retrieve individual files. Python 3.11 or newer
+is required.
 
-## Install
+## Choose how to run it
+
+**Within a project:** add Sharedrive to that project's dependencies, commit its
+`uv.lock` and descriptor, and run commands from the project root. `uv run` uses
+the project's environment and resolves its declared dependencies before running
+the command. This is the better fit for automation and Python API imports.
 
 ```bash
-uv tool install .                 # CLI from a checkout
-uv add ./path/to/sharedrive       # Python dependency in another project
-uv sync                          # Develop this repository
+uv add git+https://github.com/mbkranz/sharedrive.git@dev
+uv run sharedrive pull config/sharedrive.yaml --dry-run
+uv run sharedrive push config/sharedrive.yaml --dry-run
+```
+
+Use a commit SHA instead of `dev` in the Git dependency for a fixed revision,
+or `uv add ./path/to/sharedrive` when developing against a local checkout. See
+uv's [project command guide](https://docs.astral.sh/uv/concepts/projects/run/)
+and [dependency guide](https://docs.astral.sh/uv/concepts/projects/dependencies/).
+
+**As a standalone tool:** `uvx` (an alias for `uv tool run`) runs Sharedrive in
+its own cached, disposable environment, separate from any project environment.
+It reads descriptor paths and files from your current working directory, but it
+does not add Sharedrive to the project's dependencies or make it importable by
+that project's Python code. Use this for ad hoc CLI operations:
+
+```bash
+uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive list config/sharedrive.yaml
+uvx --from git+https://github.com/mbkranz/sharedrive.git@dev sharedrive pull config/sharedrive.yaml --dry-run
+```
+
+Once the intended Sharedrive distribution is available from your package index,
+the shorter form is `uvx sharedrive list config/sharedrive.yaml` (or
+`uvx sharedrive --help`). For a fixed tool version, pin the package version or
+Git commit. See uv's [tool guide](https://docs.astral.sh/uv/concepts/tools/).
+
+To develop this repository itself:
+
+```bash
+uv sync
+uv run sharedrive --help
 ```
 
 Configure credentials using `.env-sample`. SharePoint uses the `AZURE_*` and
@@ -91,6 +131,92 @@ are round-trip edited where practical, retaining comments and authored styles.
 This is a Sharedrive format inspired by Data Package
 and DCAT, not a full implementation of either standard. `$schema` is an optional
 profile label; loading does not fetch a schema from the network.
+
+## Common use cases
+
+Each resource has one local artifact `path`. Its `sources` record where the
+artifact came from; its `targets` list every intended publication destination.
+One resource can have multiple targets. `pull` downloads **one remote source**
+to `path`, and `push` uploads the file at `path` to **all targets**. Run them as
+separate steps; Sharedrive does not stream directly between cloud providers or
+convert source formats. These examples can be saved as `config/sharedrive.yaml`.
+
+### One SharePoint source and two SharePoint targets
+
+Retrieve a report to the project, then publish copies to two SharePoint sites:
+
+```yaml
+resources:
+  - name: monthly-report
+    path: artifacts/monthly-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv
+    targets:
+      - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/monthly-report.csv
+      - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv
+```
+
+For this supported combination, run `sharedrive pull config/sharedrive.yaml`
+and then `sharedrive push config/sharedrive.yaml`, with `--dry-run` on either
+command to inspect its plan first. Each SharePoint site needs working access.
+
+### SharePoint source and Google Drive target
+
+Describe retrieval from SharePoint and intended publication to Google Drive:
+
+```yaml
+resources:
+  - name: partner-report
+    path: artifacts/partner-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
+    targets:
+      - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
+```
+
+### SharePoint source, SharePoint and Google Drive targets
+
+Use the same local copy for a supported SharePoint publication and a planned
+Google Drive publication:
+
+```yaml
+resources:
+  - name: partner-report
+    path: artifacts/partner-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
+    targets:
+      - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/partner-report.csv
+      - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
+```
+
+### Local authoring source with SharePoint, Google Drive, and S3 targets
+
+Keep the input document as provenance while publishing its rendered output:
+
+```yaml
+resources:
+  - name: guide
+    path: docs/_output/guide.docx
+    sources:
+      - path: docs/guide.qmd
+    targets:
+      - path: https://contoso.sharepoint.com/sites/docs/Shared%20Documents/guide.docx
+      - path: https://drive.google.com/file/d/GOOGLE_FILE_ID/view
+      - path: s3://example-docs/guide.docx
+```
+
+Render `docs/guide.qmd` to `docs/_output/guide.docx` with Quarto before
+publishing. A local source is provenance; `pull` does not render or copy it.
+
+**Current transfer support:** SharePoint, Google Drive, and S3 remote sources
+can be pulled; only SharePoint targets can be pushed. A descriptor with a Google
+Drive or S3 target is valid metadata, but `push` **and `push --dry-run` fail at
+planning** until upload support is implemented. If you need the SharePoint
+destination now, put it in a separate descriptor (or remove the unsupported
+targets) for that run. `resolve` can still infer providers and preview the
+descriptor without authentication. Source and target URLs above are examples;
+replace them with your own accessible files and sites.
 
 ## Commands
 
