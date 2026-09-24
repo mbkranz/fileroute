@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from sharedrive.descriptor import local_path
 from sharedrive.models import CATALOG_PROFILE, Catalog
@@ -22,9 +23,9 @@ def _read_mapping(path: Path) -> dict[str, Any]:
         value = (
             json.loads(content)
             if path.suffix.lower() == ".json"
-            else yaml.safe_load(content)
+            else YAML(typ="safe").load(content)
         )
-    except (ValueError, yaml.YAMLError) as exc:
+    except (ValueError, YAMLError) as exc:
         raise ValueError(f"Invalid legacy descriptor '{path}': {exc}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"Legacy descriptor '{path}' must contain a mapping")
