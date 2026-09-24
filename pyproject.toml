@@ -83,20 +83,36 @@ help = "Run the checks required before an automated release."
 cmd = "uv sync --extra docs"
 help = "Install documentation dependencies."
 
-[tool.poe.tasks.docs-update]
+[tool.poe.tasks.docs-reference-update]
 cmd = "uv run python scripts/update_docs_markdown.py"
 help = "Regenerate CLI and API Markdown documentation."
 
-[tool.poe.tasks.docs-check]
+[tool.poe.tasks.docs-reference-check]
 cmd = "uv run python scripts/update_docs_markdown.py --check"
 help = "Check that generated CLI and API Markdown documentation is current."
+
+[tool.poe.tasks.docs-examples-update]
+cmd = "uv run python scripts/update_docs_examples.py"
+help = "Regenerate use-case YAML and Mermaid blocks from saved descriptors."
+
+[tool.poe.tasks.docs-examples-check]
+cmd = "uv run python scripts/update_docs_examples.py --check"
+help = "Check saved use cases against their documentation and Mermaid files."
+
+[tool.poe.tasks.docs-update]
+sequence = ["docs-reference-update", "docs-examples-update"]
+help = "Regenerate API, CLI, and use-case documentation."
+
+[tool.poe.tasks.docs-check]
+sequence = ["docs-reference-check", "docs-examples-check"]
+help = "Check that all generated documentation is current."
 
 [tool.poe.tasks.docs-serve]
 cmd = "uv run --extra docs mkdocs serve"
 help = "Serve documentation locally."
 
 [tool.poe.tasks.docs-build]
-cmd = "uv run --extra docs mkdocs build"
+cmd = "uv run --extra docs mkdocs build --strict"
 help = "Build the documentation site."
 
 [tool.poe.tasks.docs]

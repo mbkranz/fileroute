@@ -6,7 +6,6 @@ on:
     paths:
       - "fileroute/**"
       - "pyproject.toml"
-      - "README.md"
       - "LICENSE*"
 
 permissions:

@@ -30,11 +30,11 @@ Mermaid source is available for embedding directly in GitHub Markdown:
 uvx fileroute diagram config/fileroute.yaml -o workflow.mmd
 ```
 
-Place the `.mmd` content inside a fenced `mermaid` block in a README. GitHub
-Markdown does not embed an external `.mmd` file as a diagram. The four README
-examples are saved under `examples/use-cases/`; run
-`uv run python scripts/update_readme_diagrams.py` after editing the descriptors
-to regenerate their `.mmd` files and inline blocks. Use `--check` to verify them.
+Place the `.mmd` content inside a fenced `mermaid` block in Markdown. GitHub
+Markdown does not embed an external `.mmd` file as a diagram. The four
+[use cases](use-cases.md) are saved under `examples/use-cases/`; run
+`poe docs-update` after editing a descriptor to regenerate its `.mmd` file,
+displayed YAML, and inline diagram. Use `poe docs-check` to verify them.
 
 Diagram generation is offline. It does not authenticate, inspect remote permissions, or execute transfers. Known SharePoint, Google Drive, and S3 URLs are resolved to their `ServiceType` metadata in memory; the descriptor is not rewritten.
 
