@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import boto3
 from botocore.exceptions import ClientError
 
-from sharedrive.clients.base import AdapterCapabilities, BaseClient
+from sharedrive.clients.base import BaseClient
 from sharedrive.item import ServiceItem
 
 
@@ -65,12 +65,6 @@ def _parse_s3_source_url(
 
 class S3Client(BaseClient):
     auth_methods = ["aws_credentials"]
-    capabilities = AdapterCapabilities(
-        supports_fetch=True,
-        supports_download=True,
-        supports_auth_check=True,
-        supports_write=False,
-    )
 
     def __init__(self, *, client: Any = None) -> None:
         self.client = client or boto3.client("s3")

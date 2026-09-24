@@ -12,7 +12,7 @@ from sharedrive.commands.toolkit import (
     OutputFormat,
     echo_json,
     examples_epilog,
-    parse_set_args,
+    parse_field_args,
     prepare_descriptor_path,
 )
 from sharedrive.exceptions import GoogleApiError, GraphApiError
@@ -243,7 +243,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ),
     ) -> None:
         """Update descriptor-root or resource properties using flag-style field edits."""
-        parsed = parse_set_args(list(ctx.args))
+        parsed = parse_field_args(list(ctx.args))
         if not parsed:
             raise typer.BadParameter("Provide one or more field values to update.")
 
@@ -296,7 +296,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             return
 
         document = Catalog.model_validate(
-            document.model_dump(exclude_unset=True, warnings=False)
+            document.model_dump(by_alias=True, exclude_unset=True, warnings=False)
         )
         if dry_run:
             for change in changed_properties:
@@ -421,7 +421,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             active_descriptor() is not None
         )
 
-        parsed = parse_set_args(list(ctx.args))
+        parsed = parse_field_args(list(ctx.args))
 
         try:
             _add_resource_to_descriptor(

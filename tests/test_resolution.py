@@ -78,7 +78,7 @@ def test_explicit_provider_allows_nonstandard_remote_locator():
 
 def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     import json
-    import yaml
+    import yaml_support as yaml
     from typer.testing import CliRunner
     from sharedrive.cli import app
 

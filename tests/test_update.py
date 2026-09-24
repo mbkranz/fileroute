@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+import yaml_support as yaml
 from typer.testing import CliRunner
 
 from sharedrive.cli import app

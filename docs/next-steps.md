@@ -1,7 +1,7 @@
 # Next steps
 
 The descriptor simplification is implemented: Sharedrive owns four Pydantic
-models, packages use ordinary catalogs, and sources/targets express transfer
+models, nested groups use ordinary catalogs, and sources/targets express transfer
 direction. `dplib-py`, unused GitPython, and the unrelated `google` package are
 removed. The lockfile no longer contains their exclusive transitive dependencies.
 

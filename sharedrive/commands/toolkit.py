@@ -49,32 +49,7 @@ def prepare_descriptor_path(
     return descriptor_path
 
 
-def run_microsoft_login(
-    auth_mode: Optional[str],
-    host_url: Optional[str],
-    scope: Optional[list[str]],
-    env_file: Optional[Path],
-) -> None:
-    from sharedrive.auth.settings import MicrosoftAuthConfig, MicrosoftAuthMode
-
-    load_env_file(env_file)
-
-    config_kwargs: dict[str, Any] = {}
-    if auth_mode is not None:
-        config_kwargs["auth_mode"] = MicrosoftAuthMode(auth_mode)
-    if host_url is not None:
-        config_kwargs["host_url"] = host_url
-    if scope is not None:
-        config_kwargs["scopes"] = scope
-
-    config = MicrosoftAuthConfig(**config_kwargs)
-    config.to_auth()
-    typer.echo(
-        f"Microsoft login succeeded using {config.auth_mode.value} mode for {config.host_url}"
-    )
-
-
-def coerce_set_value(raw: str) -> Any:
+def coerce_field_value(raw: str) -> Any:
     value = raw.strip()
     lower = value.lower()
     if lower == "true":
@@ -100,7 +75,7 @@ def coerce_set_value(raw: str) -> Any:
         return raw
 
 
-def parse_set_args(args: list[str]) -> dict[str, Any]:
+def parse_field_args(args: list[str]) -> dict[str, Any]:
     parsed: dict[str, Any] = {}
     if not args:
         return parsed
@@ -120,7 +95,7 @@ def parse_set_args(args: list[str]) -> dict[str, Any]:
             key, raw_value = key_token.split("=", 1)
             if not key:
                 raise typer.BadParameter("Invalid empty parameter name.")
-            parsed[key] = coerce_set_value(raw_value)
+            parsed[key] = coerce_field_value(raw_value)
             idx += 1
             continue
 
@@ -132,7 +107,7 @@ def parse_set_args(args: list[str]) -> dict[str, Any]:
         raw_value = args[idx]
         if raw_value.startswith("--"):
             raise typer.BadParameter(f"Missing value for --{key}.")
-        parsed[key] = coerce_set_value(raw_value)
+        parsed[key] = coerce_field_value(raw_value)
         idx += 1
 
     return parsed
@@ -149,12 +124,11 @@ def exit_if_descriptor_missing(descriptor_path: Path) -> None:
 __all__ = [
     "DESCRIPTOR_DEFAULT_HELP",
     "OutputFormat",
-    "coerce_set_value",
+    "coerce_field_value",
     "echo_json",
     "examples_epilog",
     "exit_if_descriptor_missing",
     "load_env_file",
-    "parse_set_args",
+    "parse_field_args",
     "prepare_descriptor_path",
-    "run_microsoft_login",
 ]

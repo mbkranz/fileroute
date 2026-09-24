@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
+import yaml_support as yaml
 
 from sharedrive.commands.descriptor import _add_resource_to_descriptor
 from sharedrive.models import Catalog, Location
