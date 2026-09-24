@@ -16,7 +16,8 @@ def test_activate_selects_descriptor(monkeypatch, tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Activated descriptor:" in result.output
-    assert (tmp_path / ".sharedrive" / "descriptor").read_text(encoding="utf-8").strip() == "descriptor.yaml"
+    selected = (tmp_path / ".sharedrive" / "descriptor").read_text(encoding="utf-8").strip()
+    assert selected == str(descriptor.resolve())
 
 
 def test_checkout_command_is_removed() -> None:
