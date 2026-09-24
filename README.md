@@ -406,13 +406,16 @@ conversion that preserves the input file.
 ## Development
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run python scripts/update_docs_markdown.py
-uv run python scripts/update_docs_markdown.py --check
-uv sync --extra docs
-uv run mkdocs serve
+poe check
+poe docs-check
+poe docs-update
+poe docs-build
+poe docs-serve
 ```
+
+Install the task runner with `uv tool install poethepoet==0.48.0`, or use
+`uvx --from poethepoet==0.48.0 poe <task>` for a one-off run. `poe docs-build`
+installs the documentation extra through `uv run`.
 
 Provider tests use mocks; they do not prove live tenant permissions or transfers.
 
