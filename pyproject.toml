@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sharedrive"
-version = "1.0.0"
+version = "1.0.1.dev1"
 description = "Convenient connectors to make interoperating and collaborating across multiple content management systems easier"
 readme = "README.md"
 requires-python = ">=3.11"
