@@ -3,6 +3,11 @@ name: Version, tag, and publish
 on:
   push:
     branches: [dev, main]
+    paths:
+      - "fileroute/**"
+      - "pyproject.toml"
+      - "README.md"
+      - "LICENSE*"
 
 permissions:
   contents: read
