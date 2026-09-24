@@ -71,6 +71,14 @@ help = "Run the test suite."
 sequence = ["lint", "test"]
 help = "Run lint and tests."
 
+[tool.poe.tasks.build]
+cmd = "uv build"
+help = "Build the source distribution and wheel."
+
+[tool.poe.tasks.release-check]
+sequence = ["check", "docs-check", "build"]
+help = "Run the checks required before an automated release."
+
 [tool.poe.tasks.docs-sync]
 cmd = "uv sync --extra docs"
 help = "Install documentation dependencies."
