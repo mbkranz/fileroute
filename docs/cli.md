@@ -21,7 +21,7 @@ $ sharedrive [OPTIONS] COMMAND [ARGS]...
 * `resolve`: Preview inferred provider metadata,...
 * `migrate`: Convert a legacy descriptor to...
 * `update`: Update descriptor-root or resource...
-* `checkout`: Activate a descriptor for later commands.
+* `activate`: Activate a descriptor for later commands.
 * `list`: List local descriptor entities, paths, and...
 * `add`: Add a standards-aligned resource or...
 * `diagram`: Render descriptor sources, artifacts, and...
@@ -146,14 +146,14 @@ sharedrive update --name file1 --title "Hello" --description "hello"
 sharedrive update --descriptor resources/descriptor.yaml --name file1 --title "Hello"
 ```
 
-## `sharedrive checkout`
+## `sharedrive activate`
 
 Activate a descriptor for later commands.
 
 **Usage**:
 
 ```console
-$ sharedrive checkout [OPTIONS] DESCRIPTOR
+$ sharedrive activate [OPTIONS] DESCRIPTOR
 ```
 
 **Arguments**:
@@ -167,7 +167,7 @@ $ sharedrive checkout [OPTIONS] DESCRIPTOR
 **Examples**
 
 ```bash
-sharedrive checkout resources/descriptor.yaml
+sharedrive activate resources/descriptor.yaml
 ```
 
 ## `sharedrive list`
