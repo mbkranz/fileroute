@@ -14,5 +14,5 @@ jobs:
         with:
           python-version: "3.12"
           version: "0.12.17"
-      - run: uv run --locked --no-dev python scripts/update_docs_markdown.py --check
-      - run: make check
+      - run: uvx --from poethepoet==0.48.0 poe docs-check
+      - run: uvx --from poethepoet==0.48.0 poe check
