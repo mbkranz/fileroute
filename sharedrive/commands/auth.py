@@ -5,11 +5,33 @@ from typing import Any, Optional
 
 import typer
 
-from sharedrive.commands.toolkit import (
-    examples_epilog,
-    load_env_file,
-    run_microsoft_login,
-)
+from sharedrive.commands.toolkit import examples_epilog, load_env_file
+
+
+def _run_microsoft_login(
+    auth_mode: Optional[str],
+    host_url: Optional[str],
+    scope: Optional[list[str]],
+    env_file: Optional[Path],
+) -> None:
+    from sharedrive.auth.settings import MicrosoftAuthConfig, MicrosoftAuthMode
+
+    load_env_file(env_file)
+
+    config_kwargs: dict[str, Any] = {}
+    if auth_mode is not None:
+        config_kwargs["auth_mode"] = MicrosoftAuthMode(auth_mode)
+    if host_url is not None:
+        config_kwargs["host_url"] = host_url
+    if scope is not None:
+        config_kwargs["scopes"] = scope
+
+    config = MicrosoftAuthConfig(**config_kwargs)
+    config.to_auth()
+    typer.echo(
+        f"Microsoft login succeeded using {config.auth_mode.value} mode for {config.host_url}"
+    )
+
 
 def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -> None:
     @auth_login_app.command(
@@ -99,7 +121,7 @@ def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -
         ),
     ) -> None:
         """Validate Microsoft authentication used by SharePoint workflows."""
-        run_microsoft_login(auth_mode, host_url, scope, env_file)
+        _run_microsoft_login(auth_mode, host_url, scope, env_file)
 
     @auth_login_app.command(
         "sharepoint",
@@ -128,7 +150,7 @@ def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -
         ),
     ) -> None:
         """Validate SharePoint authentication using the configured auth mode."""
-        run_microsoft_login(auth_mode, host_url, scope, env_file)
+        _run_microsoft_login(auth_mode, host_url, scope, env_file)
 
 
 __all__ = ["register_auth_commands"]

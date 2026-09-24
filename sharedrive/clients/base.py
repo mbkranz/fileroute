@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
@@ -9,11 +10,9 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class AdapterCapabilities:
-    supports_fetch: bool = True
+class ClientCapabilities:
     supports_download: bool = True
-    supports_auth_check: bool = True
-    supports_write: bool = False
+    supports_upload: bool = False
 
 
 class BaseClient(ABC):
@@ -22,7 +21,7 @@ class BaseClient(ABC):
     Concrete providers define:
 
     - ``auth_methods``: supported auth-mode identifiers.
-    - ``capabilities``: supported adapter operations.
+    - ``capabilities``: supported transfer operations.
 
     Implementations must provide:
 
@@ -32,7 +31,7 @@ class BaseClient(ABC):
     """
 
     auth_methods: ClassVar[list[str]] = []
-    capabilities: ClassVar[AdapterCapabilities] = AdapterCapabilities()
+    capabilities: ClassVar[ClientCapabilities] = ClientCapabilities()
 
     @classmethod
     @abstractmethod
@@ -48,5 +47,13 @@ class BaseClient(ABC):
     def get_from_weburl(self, url: str) -> ServiceItem:
         raise NotImplementedError
 
+    def upload_to_folder(
+        self, folder_url: str, relative_path: Path, local_file_path: str | Path
+    ) -> ServiceItem:
+        """Create or replace a file relative to a remote directory URL."""
+        raise NotImplementedError(
+            f"Directory uploads are not supported by {type(self).__name__}"
+        )
 
-__all__ = ["AdapterCapabilities", "BaseClient"]
+
+__all__ = ["ClientCapabilities", "BaseClient"]

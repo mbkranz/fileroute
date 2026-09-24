@@ -15,3 +15,4 @@ jobs:
           python-version: "3.12"
           version: "0.12.17"
       - run: uv run --locked --no-dev python scripts/update_docs_markdown.py --check
+      - run: make check

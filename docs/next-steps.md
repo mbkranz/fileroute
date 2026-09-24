@@ -1,34 +1,20 @@
-# Next steps after the working release
+# Next steps
 
-## Simplify catalog models
+The descriptor simplification is implemented: Sharedrive owns four Pydantic
+models, nested groups use ordinary catalogs, and sources/targets express transfer
+direction. `dplib-py`, unused GitPython, and the unrelated `google` package are
+removed. The lockfile no longer contains their exclusive transitive dependencies.
 
-After the traversal changes are merged into `dev`, the developer workflow is
-validated, and a working version reaches `main`, evaluate replacing `dplib-py`
-with Sharedrive-owned Pydantic descriptor models. This is a separate change;
-the traversal work does not depend on it.
+Before release, exercise canonical descriptors against development SharePoint,
+Google Drive, and S3 credentials. Offline regression tests cover model round
+trips, reference loading, URL resolution/write-back, target inheritance/overrides, provider
+contracts, and mocked transfers. They do not validate live tenant access.
 
-`sharedrive.models` currently subclasses `dplib` models while adding remote
-resources and packages, catalogs and references, service and entity types,
-selectors, basepaths, cache resolution, and catalog traversal. Owning the
-smaller descriptor model could make loading, validation, and serialization
-easier to understand. Preserve the existing serialized descriptor format and
-public Sharedrive model contracts while evaluating the change. Compatibility
-with Data Package concepts does not require Python inheritance from `dplib`.
+Future work should follow concrete demand:
 
-Start with a focused inventory of the descriptors and behaviors actually used.
-Prefer small local `Resource`, `Package`, `Catalog`, and `CatalogReference`
-models with explicit loading, saving, traversal, reference, basepath, and path
-validation helpers where needed. Avoid rebuilding all of `dplib`.
+- Add provider upload capabilities for Google Drive/S3 when required.
+- Add SharePoint upload sessions if publication needs files larger than 250 MB.
+- Add automatic descriptor discovery only when its operator workflow is defined.
 
-The descriptor clone and update failures were fixed in PR #11 without replacing
-the model layer. Clone and update now preserve authored descriptor fields,
-including `$schema`. Keep the broader model replacement separate from the
-working release unless a new required workflow exposes a concrete blocker.
-
-Until then, avoid adding direct `dplib` imports outside `sharedrive.models`;
-`sharedrive.commands.descriptor` already imports its `Error` type, which the
-migration should also remove. Move this
-work ahead of the working release only if installation, descriptor round trips,
-required model representation, or required workflows are concretely blocked by
-`dplib` behavior. Cover existing descriptor fixtures and round trips before
-removing the dependency.
+Keep transformation/authoring tools such as Quarto outside Sharedrive. Sources
+can document those inputs, but Sharedrive does not execute transformations.

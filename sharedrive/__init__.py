@@ -1,12 +1,13 @@
-from .registry import get_client, get_provider, list_providers, provider
-from .models import DriveCatalog
+from .clients import get_provider
+from .models import Catalog, Resource, Location, CatalogReference, ServiceType
 from .exceptions import AmbiguousPathError
 
 __all__ = [
-    "get_client",
-    "provider",
-    "list_providers",
+    "ServiceType",
     "get_provider",
-    "DriveCatalog",
+    "Catalog",
+    "Resource",
+    "Location",
+    "CatalogReference",
     "AmbiguousPathError",
 ]

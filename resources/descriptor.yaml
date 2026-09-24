@@ -1,4 +1,4 @@
-"$schema": https://github.com/frictionlessdata/datapackage/blob/main/profiles/dataresource.json
+"$schema": sharedrive-catalog
 resources:
   - name: placeholder
     path: background/.gitkeep

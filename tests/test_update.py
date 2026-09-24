@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+import yaml_support as yaml
 from typer.testing import CliRunner
 
 from sharedrive.cli import app
@@ -14,14 +14,13 @@ def _write_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
             {
-                "$schema": "data-package-catalog",
+                "$schema": "sharedrive-catalog",
                 "title": "Original title",
                 "description": "Original description",
                 "resources": [
                     {
                         "name": "spec-workbook",
                         "path": "background/specs/spec-workbook.xlsx",
-                        "syncTarget": "path",
                         "sources": [
                             {
                                 "path": "https://tenant.sharepoint.com/sites/Test/Shared%20Documents/spec.xlsx",
@@ -33,7 +32,6 @@ def _write_descriptor(path: Path) -> None:
                     {
                         "name": "other-resource",
                         "path": "background/specs/other-resource.xlsx",
-                        "syncTarget": "path",
                         "sources": [
                             {
                                 "path": "https://tenant.sharepoint.com/sites/Test/Shared%20Documents/other-resource.xlsx",
@@ -43,7 +41,6 @@ def _write_descriptor(path: Path) -> None:
                         ],
                     },
                 ],
-                "packages": [],
                 "catalogs": [],
             },
             sort_keys=False,
@@ -101,8 +98,8 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
     assert document["resources"][0]["title"] == "Updated title"
     assert document["resources"][0]["description"] == "Updated description"
     assert "title" not in document["resources"][1]
-    assert document["$schema"] == "data-package-catalog"
-    assert document["resources"][0]["syncTarget"] == "path"
+    assert document["$schema"] == "sharedrive-catalog"
+    assert document["resources"][0]["path"] == "background/specs/spec-workbook.xlsx"
 
 
 def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
@@ -110,7 +107,7 @@ def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
     _write_descriptor(descriptor)
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     nested = document["resources"].pop(0)
-    document["packages"] = [{"name": "archive", "resources": [nested]}]
+    document["catalogs"] = [{"name": "archive", "resources": [nested]}]
     descriptor.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
     result = RUNNER.invoke(
@@ -129,7 +126,7 @@ def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     updated = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
-    assert updated["packages"][0]["resources"][0]["title"] == "Nested"
+    assert updated["catalogs"][0]["resources"][0]["title"] == "Nested"
     assert "title" not in updated["resources"][0]
 
 

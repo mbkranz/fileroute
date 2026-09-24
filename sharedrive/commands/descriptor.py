@@ -6,82 +6,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
-import yaml
-from dplib.error import Error
 
 from sharedrive.commands.toolkit import (
     DESCRIPTOR_DEFAULT_HELP,
     OutputFormat,
     echo_json,
     examples_epilog,
-    parse_set_args,
+    parse_field_args,
     prepare_descriptor_path,
 )
 from sharedrive.exceptions import GoogleApiError, GraphApiError
-from sharedrive.helpers import has_saved_global_descriptor, set_active_descriptor
-from sharedrive.models import (
-    DriveCatalog,
-    DriveRemoteResource,
-    normalize_entity_type,
-    normalize_service_type,
-    resolve_entity_type,
-    resolve_service_type,
-)
-
-
-def _read_descriptor(path: Path) -> dict[str, Any]:
-    """Read the authored document without stripping defaults or unknown fields."""
-    content = path.read_text(encoding="utf-8")
-    document = (
-        json.loads(content)
-        if path.suffix.lower() == ".json"
-        else yaml.safe_load(content)
-    )
-    if not isinstance(document, dict):
-        raise ValueError(f"Descriptor '{path}' must contain an object.")
-    return document
-
-
-def _write_descriptor(path: Path, document: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.suffix.lower() == ".json":
-        content = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
-    else:
-        content = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
-    path.write_text(content, encoding="utf-8")
-
-
-def _find_descriptor_entity(
-    document: dict[str, Any], name: str
-) -> tuple[dict[str, Any], str]:
-    """Find a unique named entity by its name or dot-path in this document."""
-    matches: list[tuple[dict[str, Any], str]] = []
-
-    def walk(parent: dict[str, Any], prefix: str = "") -> None:
-        for collection in ("resources", "packages", "catalogs"):
-            for child in parent.get(collection, []) or []:
-                if not isinstance(child, dict):
-                    continue
-                child_name = child.get("name")
-                path = f"{prefix}.{child_name}" if prefix else child_name
-                if isinstance(path, str) and (
-                    path.casefold() == name.casefold()
-                    or (
-                        isinstance(child_name, str)
-                        and child_name.casefold() == name.casefold()
-                    )
-                ):
-                    matches.append((child, path))
-                walk(child, path if isinstance(path, str) else prefix)
-
-    walk(document)
-    if not matches:
-        raise typer.BadParameter(f'Entity selector "{name}" was not found.')
-    if len(matches) > 1:
-        raise typer.BadParameter(
-            f'Entity selector "{name}" is ambiguous; use a dot-path.'
-        )
-    return matches[0]
+from sharedrive.commands.config import active_descriptor, set_active_descriptor
+from sharedrive.descriptor import load, save, walk, find, resolve
+from sharedrive.models import Catalog, Resource, normalize_entity_type, Location
 
 
 def _add_resource_to_descriptor(
@@ -90,7 +27,6 @@ def _add_resource_to_descriptor(
     name: str,
     create_if_missing: bool = False,
     catalog: bool = False,
-    package: bool = False,
     **kwargs: Any,
 ) -> dict[str, Any]:
     descriptor_path = Path(descriptor)
@@ -99,74 +35,147 @@ def _add_resource_to_descriptor(
         raise ValueError("name must be a non-empty string")
 
     if descriptor_path.exists():
-        document = DriveCatalog.from_path(str(descriptor_path))
+        document = load(str(descriptor_path))
     elif create_if_missing:
-        document = DriveCatalog()
+        document = Catalog()
     else:
         raise FileNotFoundError(f"Descriptor '{descriptor_path}' does not exist.")
 
     normalized_name = entity_name.lower()
-    top_level_entries = [*document.resources, *document.packages, *document.catalogs]
+    top_level_entries = [*document.resources, *document.catalogs]
     if any(
         str(getattr(entry, "name", "") or "").strip().lower() == normalized_name
         for entry in top_level_entries
     ):
         raise ValueError(f"Entity '{entity_name}' already exists in the descriptor")
 
-    # Map legacy aliases
     if "source" in kwargs:
-        url = kwargs.pop("source")
-        if catalog:
-            kwargs.setdefault("accessURL", url)
-        else:
-            kwargs.setdefault("path", url)
-            kwargs.setdefault("cache", url)
-    if "access_url" in kwargs:
-        kwargs.setdefault("accessURL", kwargs.pop("access_url"))
-
-    url = kwargs.get("accessURL") if catalog else kwargs.get("path")
-    if not url:
-        raise ValueError(
-            "A source URL must be provided via --path, --accessURL, or --source"
-        )
-
-    resolved_service_type = resolve_service_type(
-        url, service_type=kwargs.get("serviceType")
-    )
-
-    kwargs["entityType"] = resolve_entity_type(
-        url, service_type=resolved_service_type, entity_type=kwargs.get("entityType")
-    )
-
-    kwargs["serviceType"] = resolved_service_type
+        kwargs.setdefault("sources", [{"path": kwargs.pop("source")}])
+    if "target" in kwargs:
+        kwargs.setdefault("targets", [{"path": kwargs.pop("target")}])
     kwargs["name"] = entity_name
-
     if catalog:
-        if kwargs["entityType"] not in {"Directory", "Container"}:
-            raise ValueError(
-                "Catalog entries must use entityType Directory or Container."
-            )
-        entry = DriveCatalog.model_validate(kwargs)
-        document.catalogs.append(entry)
+        entry = Catalog.model_validate(kwargs)
+        document.catalogs = [*document.catalogs, entry]
     else:
-        if kwargs["entityType"] != "File":
-            raise ValueError(
-                "Non-file drive entries should be added as catalogs with accessURL."
-            )
-
-        # Backward compatibility translation of cache mapped correctly in BaseModel
-        if "_cache" not in kwargs and "cache" in kwargs:
-            kwargs["_cache"] = kwargs.pop("cache")
-
-        entry = DriveRemoteResource.model_validate(kwargs)
-        document.resources.append(entry)
+        entry = Resource.model_validate(kwargs)
+        document.resources = [*document.resources, entry]
 
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
-    document.to_path(str(descriptor_path))
-    return entry.to_dict()
+    save(document, descriptor_path)
+    return entry.model_dump(mode="json", by_alias=True, exclude_unset=True)
 
 
 def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> None:
+
+    @app.command(
+        "push",
+        help="Publish artifact paths to targets; create or replace, never delete.",
+    )
+    def push_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="List files without authenticating or writing."
+        ),
+    ) -> None:
+        """Publish artifact paths to targets; create or replace files."""
+        from sharedrive.transfer import plan_push, push
+
+        try:
+            files = plan_push(prepare_descriptor_path(descriptor))
+            for file in files:
+                target = file.destination
+                typer.echo(
+                    f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}"
+                )
+            if not dry_run:
+                push(files)
+        except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+    @app.command("pull")
+    def pull_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Plan without authenticating or writing."
+        ),
+    ) -> None:
+        """Materialize a single remote source into each artifact's path."""
+        from sharedrive.transfer import plan_pull, pull
+
+        try:
+            entries = plan_pull(prepare_descriptor_path(descriptor))
+            for entry in entries:
+                typer.echo(
+                    f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"
+                )
+            if not dry_run:
+                pull(entries)
+        except (
+            OSError,
+            ValueError,
+            NotImplementedError,
+            GoogleApiError,
+            GraphApiError,
+        ) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+    @app.command("resolve")
+    def resolve_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        write: bool = typer.Option(
+            False, "--write", help="Save resolved metadata back to this descriptor."
+        ),
+    ) -> None:
+        """Preview inferred provider metadata, preserving URLs; no network access."""
+        try:
+            path = prepare_descriptor_path(descriptor)
+            # Editing one document never rewrites or expands referenced files.
+            catalog = resolve(load(path))
+            if write:
+                save(catalog, path)
+                typer.echo(f"Resolved descriptor: {path}")
+            else:
+                echo_json(
+                    catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
+                )
+        except (OSError, ValueError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+    @app.command(
+        "migrate",
+        help="Convert a legacy descriptor to path/sources/targets in a new file.",
+        epilog=examples_epilog(
+            "sharedrive migrate old.yaml new.yaml --direction pull",
+            "sharedrive migrate old.yaml new.yaml --direction push",
+        ),
+    )
+    def migrate_command(
+        descriptor: Path = typer.Argument(..., help="Legacy descriptor to read."),
+        output: Path = typer.Argument(..., help="New canonical descriptor to write."),
+        direction: str = typer.Option(
+            "pull",
+            "--direction",
+            help="Interpret legacy remote URLs as pull sources or push targets.",
+        ),
+    ) -> None:
+        """Convert a legacy descriptor without overwriting its input."""
+        if direction not in {"pull", "push"}:
+            raise typer.BadParameter("--direction must be pull or push")
+        if output.exists() or output.resolve() == descriptor.resolve():
+            raise typer.BadParameter(
+                "Choose a new output file; migrate does not overwrite files"
+            )
+        try:
+            from sharedrive.migration import migrate_descriptor
+
+            save(migrate_descriptor(descriptor, direction=direction), output)
+        except (OSError, ValueError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        typer.echo(f"Migrated {descriptor} -> {output}")
 
     @clone_app.command(
         "descriptor",
@@ -204,12 +213,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
 
         # Validate the source, then copy its authored fields without the model's
         # exclude-defaults serialization dropping $schema or empty collections.
-        DriveCatalog.from_path(str(source_descriptor))
+        load(str(source_descriptor))
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if source_descriptor.suffix.lower() == target_path.suffix.lower():
             shutil.copyfile(source_descriptor, target_path)
         else:
-            _write_descriptor(target_path, _read_descriptor(source_descriptor))
+            save(load(source_descriptor), target_path)
         typer.echo(f"Cloned descriptor: {source_descriptor} -> {target_path}")
 
     @app.command(
@@ -234,46 +243,50 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ),
     ) -> None:
         """Update descriptor-root or resource properties using flag-style field edits."""
-        parsed = parse_set_args(list(ctx.args))
+        parsed = parse_field_args(list(ctx.args))
         if not parsed:
             raise typer.BadParameter("Provide one or more field values to update.")
 
         descriptor_path = prepare_descriptor_path(descriptor)
 
-        document = _read_descriptor(descriptor_path)
-        DriveCatalog.from_dict(document)
+        document = load(descriptor_path)
         target_label = str(descriptor_path)
-        target: dict[str, Any] = document
+        target = document
         if name is not None:
-            target, entity_path = _find_descriptor_entity(document, name)
-            target_label = f"{entity_path} in {descriptor_path}"
+            try:
+                target = find(document, name)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            target_label = f"{name} in {descriptor_path}"
 
         changed_properties: list[str] = []
         for property_name, raw_value in parsed.items():
             property_path = {
-                "service-type": "serviceType",
-                "entity-type": "entityType",
-                "access-url": "accessURL",
+                "service-type": "service_type",
+                "serviceType": "service_type",
+                "entity-type": "entity_type",
+                "entityType": "entity_type",
+                "$schema": "profile",
             }.get(property_name, property_name)
             value = raw_value
-            if property_path == "serviceType":
-                value = normalize_service_type(value)
-            elif property_path == "entityType":
+            if property_path == "service_type":
+                value = Location(path="metadata", service_type=value).service_type
+            elif property_path == "entity_type":
                 value = normalize_entity_type(value)
             field_target = target
             if (
-                property_path == "serviceType"
+                property_path == "service_type"
                 and name is not None
-                and target.get("sources")
+                and getattr(target, "sources", None)
             ):
-                sources = target["sources"]
-                if len(sources) != 1 or not isinstance(sources[0], dict):
+                sources = target.sources
+                if len(sources) != 1:
                     raise typer.BadParameter(
                         "--service-type requires exactly one source for this entity."
                     )
                 field_target = sources[0]
-            if field_target.get(property_path) != value:
-                field_target[property_path] = value
+            if getattr(field_target, property_path, None) != value:
+                setattr(field_target, property_path, value)
                 changed_properties.append(
                     f"{property_path} -> {json.dumps(value, default=str)}"
                 )
@@ -282,42 +295,33 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo("No changes needed.")
             return
 
+        document = Catalog.model_validate(
+            document.model_dump(by_alias=True, exclude_unset=True, warnings=False)
+        )
         if dry_run:
             for change in changed_properties:
                 typer.echo(f"Would update {target_label}: {change}")
             return
 
-        DriveCatalog.from_dict(document)
-        _write_descriptor(descriptor_path, document)
+        save(document, descriptor_path)
         for change in changed_properties:
             typer.echo(f"Updated {target_label}: {change}")
 
     @app.command(
         "checkout",
-        epilog=examples_epilog(
-            "sharedrive checkout resources/descriptor.yaml",
-            "sharedrive checkout resources/descriptor.yaml research",
-            "sharedrive checkout resources/descriptor.yaml research.archive",
-        ),
+        epilog=examples_epilog("sharedrive checkout resources/descriptor.yaml"),
     )
     def checkout_command(
         descriptor: Path = typer.Argument(
             ..., help="Descriptor path to activate for later commands."
         ),
-        entity: Optional[str] = typer.Argument(
-            None,
-            help="Entity dot-path within the descriptor to set as the active scope for fetch/download commands.",
-        ),
     ) -> None:
-        """Activate a descriptor and optionally an entity within it for later commands."""
+        """Activate a descriptor for later commands."""
         try:
-            descriptor_path = set_active_descriptor(descriptor, entity=entity)
+            descriptor_path = set_active_descriptor(descriptor)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        if entity and entity.strip():
-            typer.echo(f"Checked out entity '{entity.strip()}' in {descriptor_path}")
-        else:
-            typer.echo(f"Checked out descriptor: {descriptor_path}")
+        typer.echo(f"Checked out descriptor: {descriptor_path}")
 
     @app.command(
         "list",
@@ -339,17 +343,21 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         descriptor_path = prepare_descriptor_path(descriptor)
 
         try:
-            model = DriveCatalog.from_path(str(descriptor_path))
-            model.assert_valid_entity_paths()
-            references = model.iter_entity_paths(include_self=False)
-        except (FileNotFoundError, ValueError, Error) as exc:
+            model = load(descriptor_path, resolve_references=True)
+            references = list(walk(model))
+        except (OSError, ValueError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
         if output_format == OutputFormat.JSON:
             echo_json({
                 "descriptor": descriptor_path.as_posix(),
-                "entities": [reference.model.__dict__ for reference in references],
+                "entities": [
+                    reference.model.model_dump(
+                        mode="json", by_alias=True, exclude_unset=True
+                    )
+                    for reference in references
+                ],
             })
             return
 
@@ -371,18 +379,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             nodes[reference.name_path] = node
             details = []
             resource_path = getattr(item, "path", None)
-            cache = getattr(item, "cache", None)
-            access_url = getattr(item, "accessURL", None)
-            service_type = getattr(item, "serviceType", None)
-            entity_type = getattr(item, "entityType", None)
+            entity_type = getattr(item, "entity_type", None)
             if resource_path:
                 details.append(f"path={resource_path}")
-            if cache:
-                details.append(f"_cache={cache}")
-            if access_url:
-                details.append(f"accessURL={access_url}")
-            if service_type:
-                details.append(f"serviceType={service_type}")
+            for field in ("sources", "targets"):
+                for location in getattr(item, field, None) or []:
+                    details.append(f"{field}={location.path}")
             if entity_type:
                 details.append(f"entityType={entity_type}")
             if details:
@@ -394,8 +396,8 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         "add",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         epilog=examples_epilog(
-            "sharedrive add my-resource --path https://drive.google.com/file/d/123... --cache downloads/file.csv",
-            "sharedrive add my-folder --catalog --accessURL https://drive.google.com/drive/folders/abc...",
+            "sharedrive add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...",
+            "sharedrive add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published",
         ),
     )
     def add(
@@ -404,7 +406,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             ..., help="Resource name to store in the descriptor."
         ),
         catalog: bool = typer.Option(
-            False, "--catalog", help="Treat as a catalog with accessURL."
+            False, "--catalog", help="Treat as a catalog of resources or a directory."
         ),
         descriptor: Optional[Path] = typer.Option(
             None, "--descriptor", help=DESCRIPTOR_DEFAULT_HELP
@@ -413,11 +415,13 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         """Add a standards-aligned resource or catalog entry to a descriptor."""
         descriptor_path = prepare_descriptor_path(
             descriptor,
-            require_exists=descriptor is not None or has_saved_global_descriptor(),
+            require_exists=descriptor is not None or (active_descriptor() is not None),
         )
-        explicit_descriptor = descriptor is not None or has_saved_global_descriptor()
+        explicit_descriptor = descriptor is not None or (
+            active_descriptor() is not None
+        )
 
-        parsed = parse_set_args(list(ctx.args))
+        parsed = parse_field_args(list(ctx.args))
 
         try:
             _add_resource_to_descriptor(
