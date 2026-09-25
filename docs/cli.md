@@ -129,7 +129,7 @@ $ fileroute update [OPTIONS]
 **Options**:
 
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-* `--name, --select TEXT`: Entity or location by name, dot-path, JSON Pointer, or exact JSONPath. Defaults to the descriptor root.
+* `--name, --select TEXT`: Entity or location by name, dot-path, JSON Pointer, or exact JSONPath (optional $). Defaults to the descriptor root. Use 'fileroute list' to see exact JSONPaths.
 * `--dry-run`: Show what would be updated without writing files.
 * `--help`: Show this message and exit.
 
@@ -188,7 +188,7 @@ $ fileroute list [OPTIONS] [DESCRIPTOR]
 **Options**:
 
 * `--format [text|json]`: Output format.  [default: text]
-* `--select TEXT`: Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath.
+* `--select TEXT`: Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath (optional $). Use 'fileroute list' to see exact JSONPaths.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -227,7 +227,7 @@ $ fileroute add [OPTIONS] NAME
 
 * `--catalog`: Treat as a catalog of resources or a directory.
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-* `--parent TEXT`: Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath; defaults to root.
+* `--parent TEXT`: Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath (optional $); defaults to root. Use 'fileroute list' to see exact JSONPaths.
 * `--help`: Show this message and exit.
 
 **Examples**

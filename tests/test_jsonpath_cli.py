@@ -28,16 +28,25 @@ def test_jsonpath_and_pointer_select_named_unnamed_and_location():
         ]
     )
     assert find(document, "$.catalogs[0].resources[0]").path == "one.csv"
+    assert find(document, "catalogs[0].resources[0]").path == "one.csv"
+    assert find(document, ".catalogs[0].resources[0]").path == "one.csv"
+    assert find(document, '["catalogs"][0]["resources"][1]').path == "two.csv"
     assert find(document, '$["catalogs"][0]["resources"][1]').path == "two.csv"
     assert (
         find(document, "/catalogs/0/resources/0/sources/0").path
         == "s3://bucket/one.csv"
     )
     assert find(document, "$.catalogs[0].resources[0].sources[0]").service_type is None
+    assert (
+        find(document, "catalogs[0].resources[0].sources[0]").path
+        == "s3://bucket/one.csv"
+    )
     assert find(document, "$") is document
     assert list(walk(document))[1].json_path == "$.catalogs[0].resources[0]"
     with pytest.raises(ValueError, match="no wildcards or filters"):
         find(document, "$.catalogs[*]")
+    with pytest.raises(ValueError, match="no wildcards or filters"):
+        find(document, "catalogs[*]")
     with pytest.raises(ValueError, match="final step"):
         find(document, "$.resources[0].sources[0].targets[0]")
 
@@ -77,7 +86,7 @@ def test_cli_selectors_edit_and_inspect_nested_location(tmp_path, suffix):
             "--descriptor",
             str(path),
             "--select",
-            selector,
+            selector.removeprefix("$"),
             "--drive-id",
             "drive-123",
             "--siteId",
@@ -85,7 +94,7 @@ def test_cli_selectors_edit_and_inspect_nested_location(tmp_path, suffix):
         ],
     )
     assert result.exit_code == 0, result.output
-    target = find(load(path), selector)
+    target = find(load(path), selector.removeprefix("$."))
     assert isinstance(target, Location)
     assert (target.drive_id, target.site_id) == ("drive-123", "site-456")
     assert find(load(path), "$.catalogs[0].resources[0]").path == "report.csv"
@@ -95,7 +104,8 @@ def test_cli_selectors_edit_and_inspect_nested_location(tmp_path, suffix):
     data = json.loads(listing.output)
     assert selector in [entry["jsonPath"] for entry in data["locations"]]
     selected = RUNNER.invoke(
-        app, ["list", str(path), "--select", selector, "--format", "json"]
+        app,
+        ["list", str(path), "--select", selector.removeprefix("$."), "--format", "json"],
     )
     selected_data = json.loads(selected.output)
     assert selected_data["entities"] == []
@@ -115,7 +125,7 @@ def test_add_under_nested_catalog_and_reject_reference_parent(tmp_path):
             "--descriptor",
             str(path),
             "--parent",
-            "$.catalogs[0]",
+            "catalogs[0]",
             "--path",
             "guide.docx",
         ],

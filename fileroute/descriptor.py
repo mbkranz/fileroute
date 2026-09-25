@@ -209,17 +209,23 @@ def find(
 ) -> Catalog | Resource | CatalogReference | Location:
     """Find by name, dot-path, JSON Pointer, or exact JSONPath.
 
-    JSONPath here is an address (``$.catalogs[0].resources[1].sources[0]``),
-    not a query language: wildcards and filters are unsupported.
+    JSONPath here is an address (``$.catalogs[0].resources[1].sources[0]``);
+    the leading ``$`` and following dot may be omitted. Wildcards and filters
+    are unsupported. Run ``fileroute list`` to see exact JSONPaths for entries
+    and locations.
     """
     if name == "$":
         if kind is None or isinstance(catalog, kind):
             return catalog
         raise ValueError(f'Entity selector "{name}" was not found')
-    pointer = _json_path_pointer(name) if name.startswith("$") else name
+    is_json_path = (
+        name.startswith(("$", ".", "["))
+        or re.match(r"^(?:resources|catalogs|sources|targets)\[", name) is not None
+    )
+    pointer = _json_path_pointer(name) if is_json_path else name
     matches = []
     for row in walk(catalog, include_self=True):
-        if name.startswith(("$", "/")):
+        if is_json_path or name.startswith("/"):
             if row.json_pointer == pointer and (kind is None or isinstance(row.model, kind)):
                 matches.append(row.model)
             if isinstance(row.model, CatalogReference):
@@ -248,7 +254,9 @@ _JSON_PATH_STEP = re.compile(
 
 
 def _json_path_pointer(path: str) -> str:
-    """Convert an exact JSONPath entity address to an existing walk pointer."""
+    """Convert an exact JSONPath address, with optional root, to a pointer."""
+    if not path.startswith("$"):
+        path = "$" + (path if path.startswith((".", "[")) else "." + path)
     if path == "$":
         return ""
     cursor = 1

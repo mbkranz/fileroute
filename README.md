@@ -95,6 +95,8 @@ for nested folders, shared drives, and ambiguous names.
 
 The descriptor `path` is a local artifact for transfers. `sources` are
 upstream inputs or provenance; `targets` are publication destinations.
+For nested edits, `fileroute list` shows exact JSONPath selectors; the leading
+`$` is optional when passing one to `list`, `update`, or `add --parent`.
 Diagrams show intent, not a completed transfer. Use `fileroute --help` for
 commands and options. To develop this repository, run `uv sync` and see the
 [contributor guide](docs/contributing.md).
