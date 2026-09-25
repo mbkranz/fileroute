@@ -56,7 +56,7 @@ cmd = "uv sync --group dev"
 help = "Install development and test dependency groups."
 
 [tool.poe.tasks.lint]
-cmd = "uv run ruff check ."
+cmd = "uv run --frozen ruff check ."
 help = "Run Ruff lint checks."
 
 [tool.poe.tasks.format]
@@ -64,7 +64,7 @@ cmd = "uv run ruff format ."
 help = "Format Python files with Ruff."
 
 [tool.poe.tasks.test]
-cmd = "uv run pytest"
+cmd = "uv run --frozen pytest"
 help = "Run the test suite."
 
 [tool.poe.tasks.check]
@@ -76,27 +76,27 @@ cmd = "uv build"
 help = "Build the source distribution and wheel."
 
 [tool.poe.tasks.release-check]
-sequence = ["check", "docs-check"]
+sequence = ["check", "docs-validate"]
 help = "Run the checks required before an automated release."
 
 [tool.poe.tasks.docs-sync]
-cmd = "uv sync --extra docs"
+cmd = "uv sync --frozen --extra docs"
 help = "Install documentation dependencies."
 
 [tool.poe.tasks.docs-reference-update]
-cmd = "uv run python scripts/update_docs_markdown.py"
+cmd = "uv run --frozen python scripts/update_docs_markdown.py"
 help = "Regenerate CLI and API Markdown documentation."
 
 [tool.poe.tasks.docs-reference-check]
-cmd = "uv run python scripts/update_docs_markdown.py --check"
+cmd = "uv run --frozen python scripts/update_docs_markdown.py --check"
 help = "Check that generated CLI and API Markdown documentation is current."
 
 [tool.poe.tasks.docs-examples-update]
-cmd = "uv run python scripts/update_docs_examples.py"
+cmd = "uv run --frozen python scripts/update_docs_examples.py"
 help = "Regenerate use-case YAML and Mermaid blocks from saved descriptors."
 
 [tool.poe.tasks.docs-examples-check]
-cmd = "uv run python scripts/update_docs_examples.py --check"
+cmd = "uv run --frozen python scripts/update_docs_examples.py --check"
 help = "Check saved use cases against their documentation and Mermaid files."
 
 [tool.poe.tasks.docs-update]
@@ -108,16 +108,20 @@ sequence = ["docs-reference-check", "docs-examples-check"]
 help = "Check that all generated documentation is current."
 
 [tool.poe.tasks.docs-serve]
-cmd = "uv run --extra docs mkdocs serve"
+cmd = "uv run --frozen --extra docs mkdocs serve"
 help = "Serve documentation locally."
 
 [tool.poe.tasks.docs-build]
-cmd = "uv run --extra docs mkdocs build --strict"
+cmd = "uv run --frozen --extra docs mkdocs build --strict"
 help = "Build the documentation site."
 
 [tool.poe.tasks.docs]
 sequence = ["docs-update", "docs-build"]
 help = "Regenerate and build documentation."
+
+[tool.poe.tasks.docs-validate]
+sequence = ["docs-check", "docs-build"]
+help = "Check generated documentation and build the site without regenerating sources."
 
 [tool.poe.tasks.dry-run]
 cmd = "uv run fileroute ${action} ${descriptor} --dry-run"

@@ -1,7 +1,14 @@
-name: Check generated docs
+name: Documentation and CI checks
 
 on:
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docs:
@@ -12,6 +19,4 @@ jobs:
         with:
           python-version: "3.12"
           version: "0.12.17"
-      - run: uvx --from poethepoet==0.48.0 poe docs-check
-      - run: uvx --from poethepoet==0.48.0 poe docs-build
-      - run: uvx --from poethepoet==0.48.0 poe check
+      - run: uvx --from poethepoet==0.48.0 poe release-check

@@ -37,8 +37,7 @@ jobs:
         with:
           python-version: "3.12"
           version: "0.12.17"
-      - run: uvx --from poethepoet==0.48.0 poe docs-check
-      - run: uvx --from poethepoet==0.48.0 poe docs-build
+      - run: uvx --from poethepoet==0.48.0 poe docs-validate
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
