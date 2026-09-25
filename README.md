@@ -7,8 +7,8 @@ credentials, visualize the relationships, pull remote inputs, and publish to
 supported targets through the CLI or Python API. Python 3.11+ is required.
 
 **Current transfer support:** SharePoint, Google Drive, and S3 can be pulled;
-only SharePoint can be pushed. Google Drive and S3 targets can be described and
-diagrammed, but even `push --dry-run` rejects them until upload support exists.
+SharePoint and Google Drive can be pushed. S3 targets can be described and
+diagrammed, but `push --dry-run` rejects them until upload support exists.
 Fileroute does not transform files or transfer directly between cloud providers.
 
 ## Get started
@@ -68,6 +68,21 @@ dry runs also work without provider access; `--online` and actual transfers
 require credentials. Configure credentials using
 [.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
 provider setup.
+
+To publish a new file to Google Drive, target an existing folder; Fileroute
+creates or replaces the file below it. An exact file URL instead replaces that
+file by ID and preserves its existing name:
+
+```yaml
+resources:
+  - path: artifacts/report.csv
+    targets:
+      - path: https://drive.google.com/drive/folders/FOLDER_ID
+      - path: https://drive.google.com/file/d/EXISTING_FILE_ID/view
+```
+
+The two targets receive separate copies. See [Transfers](docs/transfers.md)
+for nested folders, shared drives, and ambiguous names.
 
 ## Documentation
 

@@ -1,8 +1,12 @@
 from __future__ import annotations
 import json
+import mimetypes
+from io import BytesIO
 from pathlib import Path
 import re
+import time
 from urllib.parse import urlparse
+from uuid import uuid4
 from enum import Enum
 from typing import Any, ClassVar, Dict, Literal, Optional, Union, cast
 import requests
@@ -10,7 +14,7 @@ from google.auth.credentials import Credentials
 from fileroute.item import ServiceItem
 
 from fileroute.auth.google import GoogleAuth
-from fileroute.clients.base import BaseClient
+from fileroute.clients.base import BaseClient, ClientCapabilities
 from fileroute.exceptions import GoogleApiError, GoogleDriveError
 from fileroute.models import Location, ServiceType
 from fileroute.resolution import ResolvedLocation, relative_path
@@ -231,6 +235,9 @@ class GoogleDriveClient(GoogleBaseClient):
 
     api_error_cls = GoogleDriveError
     file_fields = list(GDriveApiFile.model_fields.keys())
+    capabilities = ClientCapabilities(supports_download=True, supports_upload=True)
+    _multipart_limit = 5 * 1024 * 1024
+    _upload_chunk_size = 8 * 1024 * 1024  # Drive requires multiples of 256 KiB.
 
     def __init__(
         self,
@@ -466,144 +473,206 @@ class GoogleDriveClient(GoogleBaseClient):
         self,
         name: str,
         parent_id: str,
-        content: bytes,
+        content: bytes | Path,
         mime_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         supports_all_drives: bool = True,
         **kwargs,
     ) -> GDriveItem:
-        def build_metadata():
-            file_metadata = {"name": name, "parents": [parent_id]}
-            if metadata:
-                file_metadata.update(metadata)
-            return file_metadata
+        """Create a binary file in a folder, including an empty file.
 
-        def build_multipart_body(media, file_metadata, mime_type):
-            boundary = "END_OF_PART_1234567890"
-            headers = {
-                **self._hdrs,
-                "Content-Type": f"multipart/related; boundary={boundary}",
-            }
-
-            body = (
-                (
-                    f"--{boundary}\r\n"
-                    "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-                    f"{json.dumps(file_metadata)}\r\n"
-                    f"--{boundary}\r\n"
-                    f"Content-Type: {mime_type}\r\n\r\n"
-                ).encode("utf-8")
-                + media
-                + f"\r\n--{boundary}--\r\n".encode("utf-8")
-            )
-
-            return headers, body
-
-        def build_params():
-            return {
-                "uploadType": "multipart",
-                "supportsAllDrives": str(supports_all_drives).lower(),
-            }
-
-        if not content:
-            raise ValueError("Must provide content")
-
-        mime_type = mime_type or "application/octet-stream"
-        file_metadata = build_metadata()
-        headers, body = build_multipart_body(content, file_metadata, mime_type)
-        params = build_params()
-
-        response = self._request(
-            "POST", UPLOAD_URL, headers=headers, params=params, data=body
+        Multipart uploads handle small files; larger files stream through a
+        resumable Drive session. ``content`` can be a Path to avoid loading a
+        published artifact into memory.
+        """
+        file_metadata = {"name": name, "parents": [parent_id], **(metadata or {})}
+        response = self._upload_content(
+            content,
+            mime_type or "application/octet-stream",
+            file_metadata,
+            supports_all_drives=supports_all_drives,
         )
-        api_metadata = GDriveApiFile(**response.json())
-        return GDriveItem._from_api_response(api_metadata=api_metadata, client=self)
+        return GDriveItem._from_api_response(GDriveApiFile(**response), self)
 
     def update_file(
         self,
         id: str,
         params: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        file_in_bytes_or_path: Optional[Union[str, bytes]] = None,
+        file_in_bytes_or_path: str | Path | bytes | None = None,
         mime_type: Optional[str] = None,
         **kwargs,
     ) -> GDriveItem:
+        """Replace content by file ID, or patch metadata/move without content."""
+        if file_in_bytes_or_path is None:
+            if not metadata and not params:
+                raise ValueError("Provide content, metadata, or update parameters")
+            response = self._request(
+                "PATCH",
+                f"{DRIVE_URL}/files/{id}",
+                json=metadata or {},
+                params={
+                    "supportsAllDrives": "true",
+                    "fields": ",".join(self.file_fields),
+                    **(params or {}),
+                },
+            ).json()
+        else:
+            content = (
+                Path(file_in_bytes_or_path)
+                if isinstance(file_in_bytes_or_path, str)
+                else file_in_bytes_or_path
+            )
+            response = self._upload_content(
+                content,
+                mime_type or "application/octet-stream",
+                metadata,
+                file_id=id,
+                params=params,
+            )
+        return GDriveItem._from_api_response(GDriveApiFile(**response), self)
 
-        def params_metadata_and_media(
-            media,
-            metadata,
-            mime_type,
-            upload_type: Literal["multipart", "resumable"] = "multipart",
-        ):
-            boundary = "END_OF_PART_1234567890"
-            headers = {
-                **self._hdrs,
-                "Content-Type": f"multipart/related; boundary={boundary}",
-            }
+    def _upload_content(
+        self,
+        content: bytes | Path,
+        mime_type: str,
+        metadata: dict[str, Any] | None,
+        *,
+        file_id: str | None = None,
+        params: dict[str, Any] | None = None,
+        supports_all_drives: bool = True,
+    ) -> dict[str, Any]:
+        size = len(content) if isinstance(content, bytes) else content.stat().st_size
+        method = "PATCH" if file_id else "POST"
+        url = f"{UPLOAD_URL}/{file_id}" if file_id else UPLOAD_URL
+        query = {
+            "supportsAllDrives": str(supports_all_drives).lower(),
+            "fields": ",".join(self.file_fields),
+            **(params or {}),
+        }
 
-            data = (
+        if size > self._multipart_limit:
+            return self._upload_resumable(
+                method, url, content, size, mime_type, metadata, query
+            )
+
+        media = content if isinstance(content, bytes) else content.read_bytes()
+        if metadata is None:
+            response = self._request(
+                method,
+                url,
+                data=media,
+                headers={"Content-Type": mime_type},
+                params={**query, "uploadType": "media"},
+            )
+        else:
+            boundary = f"fileroute-{uuid4().hex}"
+            body = (
                 (
-                    f"--{boundary}\r\n"
-                    "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-                    f"{json.dumps(metadata)}\r\n"
-                    f"--{boundary}\r\n"
+                    f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+                    f"{json.dumps(metadata)}\r\n--{boundary}\r\n"
                     f"Content-Type: {mime_type}\r\n\r\n"
                 ).encode("utf-8")
                 + media
                 + f"\r\n--{boundary}--\r\n".encode("utf-8")
             )
-
-            params = {"uploadType": upload_type, "supportsAllDrives": True}
-            return {"headers": headers, "data": data, "params": params}
-
-        def params_metadata_only(metadata):
-            headers = {**self._hdrs, "Content-Type": "application/json"}
-            return {
-                "headers": headers,
-                "json": metadata,
-                "params": {"supportsAllDrives": True},
-            }
-
-        def params_media_only(media, mime_type):
-            headers = {**self._hdrs, "Content-Type": mime_type}
-            return {
-                "headers": headers,
-                "data": media,
-                "params": {"supportsAllDrives": True, "uploadType": "media"},
-            }
-
-        def params_default():
-            headers = {**self._hdrs}
-            return {"headers": headers, "params": {"supportsAllDrives": True}}
-
-        file_in_bytes: bytes | None = None
-        if isinstance(file_in_bytes_or_path, str):
-            with open(file_in_bytes_or_path, "rb") as handle:
-                file_in_bytes = handle.read()
-        elif isinstance(file_in_bytes_or_path, bytes):
-            file_in_bytes = file_in_bytes_or_path
-
-        if file_in_bytes and metadata:
-            mime_type = mime_type or "application/octet-stream"
-            request_params = params_metadata_and_media(
-                file_in_bytes, metadata, mime_type
+            response = self._request(
+                method,
+                url,
+                data=body,
+                headers={"Content-Type": f"multipart/related; boundary={boundary}"},
+                params={**query, "uploadType": "multipart"},
             )
-        elif file_in_bytes and not metadata:
-            mime_type = mime_type or "application/octet-stream"
-            request_params = params_media_only(file_in_bytes, mime_type)
-        elif file_in_bytes is None and metadata:
-            request_params = params_metadata_only(metadata)
-        else:
-            request_params = params_default()
+        return response.json()
 
-        if request_params.get("params", {}).get("fields") is None:
-            request_params["params"]["fields"] = ",".join(self.file_fields)
+    def _upload_resumable(
+        self,
+        method: str,
+        url: str,
+        content: bytes | Path,
+        size: int,
+        mime_type: str,
+        metadata: dict[str, Any] | None,
+        query: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Stream chunks through Drive's upload session; probe after lost replies.
 
-        if params:
-            request_params["params"].update(params)
-        response = self._request("PATCH", f"{UPLOAD_URL}/{id}", **request_params)
-        api_metadata = GDriveApiFile(**response.json())
-        return GDriveItem._from_api_response(api_metadata=api_metadata, client=self)
+        Drive's 308 Range reports the last stored byte. A retry seeks to that
+        offset rather than blindly resending a possibly completed create.
+        See https://developers.google.com/workspace/drive/api/guides/manage-uploads.
+        """
+        initiation = self._request(
+            method,
+            url,
+            json=metadata or {},
+            params={**query, "uploadType": "resumable"},
+            headers={
+                "X-Upload-Content-Type": mime_type,
+                "X-Upload-Content-Length": str(size),
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+        )
+        session_url = initiation.headers.get("Location")
+        parsed_session = urlparse(session_url or "")
+        if (
+            parsed_session.scheme != "https"
+            or parsed_session.hostname != "www.googleapis.com"
+        ):
+            raise GoogleDriveError("Drive did not return a valid resumable upload URL")
+
+        stream = BytesIO(content) if isinstance(content, bytes) else content.open("rb")
+        with stream:
+            offset = 0
+            failures = 0
+            while offset < size:
+                stream.seek(offset)
+                chunk = stream.read(min(self._upload_chunk_size, size - offset))
+                end = offset + len(chunk) - 1
+                try:
+                    response = self._request(
+                        "PUT",
+                        session_url,
+                        data=chunk,
+                        headers={
+                            "Content-Type": mime_type,
+                            "Content-Range": f"bytes {offset}-{end}/{size}",
+                        },
+                    )
+                except GoogleDriveError as exc:
+                    if exc.status_code is not None and exc.status_code not in {
+                        429,
+                        500,
+                        502,
+                        503,
+                        504,
+                    }:
+                        raise
+                    if failures >= 3:
+                        raise
+                    failures += 1
+                    time.sleep(min(2**failures, 8))
+                    response = self._request(
+                        "PUT",
+                        session_url,
+                        headers={
+                            "Content-Length": "0",
+                            "Content-Range": f"bytes */{size}",
+                        },
+                    )
+                if response.status_code in {200, 201}:
+                    return response.json()
+                if response.status_code != 308:
+                    raise GoogleDriveError(
+                        f"Unexpected resumable upload response: {response.status_code}"
+                    )
+                stored = response.headers.get("Range")
+                match = re.fullmatch(r"bytes=0-(\d+)", stored or "")
+                next_offset = int(match.group(1)) + 1 if match else 0
+                if next_offset > size or (next_offset <= offset and failures == 0):
+                    raise GoogleDriveError("Drive resumable upload made no progress")
+                offset = next_offset
+                failures = 0
+        raise GoogleDriveError("Drive resumable upload ended without file metadata")
 
     def create_folder(self, parent_folder_id: str, name: str) -> GDriveItem:
         headers = {**self._hdrs, "Content-Type": "application/json; charset=UTF-8"}
@@ -612,11 +681,88 @@ class GoogleDriveClient(GoogleBaseClient):
             "POST",
             f"{DRIVE_URL}/files",
             headers=headers,
-            params={"supportsAllDrives": "true"},
+            params={"supportsAllDrives": "true", "fields": ",".join(self.file_fields)},
             data=json.dumps(payload),
         )
         api_metadata = GDriveApiFile(**response.json())
         return GDriveItem._from_api_response(api_metadata=api_metadata, client=self)
+
+    def upload_to_folder(
+        self, folder_url: str, relative_path: Path, local_file_path: str | Path
+    ) -> GDriveItem:
+        """Create or replace a binary file below an existing Drive folder URL."""
+        return self.upload_to_location(
+            Location(path=folder_url, serviceType=ServiceType.GOOGLE_DRIVE),
+            relative_path,
+            local_file_path,
+        )
+
+    def upload_to_location(
+        self, location: Location, relative_path: Path, local_file_path: str | Path
+    ) -> GDriveItem:
+        """Publish beneath a folder ID, URL, or scoped Drive path.
+
+        Only missing *child* folders are created. Names are not unique in
+        Drive, so an ambiguous folder or file name is never chosen arbitrarily.
+        See https://developers.google.com/workspace/drive/api/reference/rest/v3/files.
+        """
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts or not relative.name:
+            raise ValueError(f"Unsafe relative upload path: {relative}")
+        local = Path(local_file_path)
+        folder = self.get_from_location(location)
+        if not folder.is_directory:
+            raise ValueError(
+                f"Publication destination is not a folder: {location.path}"
+            )
+        parent_id = folder.id
+        drive_id = folder._drive_id or location.drive_id
+        for part in relative.parts[:-1]:
+            matches = self.list_children(parent_id, drive_id=drive_id, name=part)
+            if len(matches) > 1:
+                raise ValueError(
+                    f"Ambiguous Google Drive folder {part!r} under {parent_id}"
+                )
+            if matches:
+                if matches[0].mimeType != FOLDER_MIME:
+                    raise ValueError(f"Upload path is occupied by a file: {part}")
+                parent_id = str(matches[0].id)
+            else:
+                parent_id = self.create_folder(parent_id, part).id
+
+        matches = self.list_children(parent_id, drive_id=drive_id, name=relative.name)
+        if len(matches) > 1:
+            raise ValueError(
+                f"Ambiguous Google Drive file {relative.name!r} under {parent_id}; use an exact file URL"
+            )
+        mime_type = mimetypes.guess_type(relative.name)[0] or "application/octet-stream"
+        if matches:
+            match = matches[0]
+            self._require_binary_file(match.mimeType, match.name or relative.name)
+            return self.update_file(
+                str(match.id), file_in_bytes_or_path=local, mime_type=mime_type
+            )
+        return self.create_file(relative.name, parent_id, local, mime_type=mime_type)
+
+    def upload_to_file(
+        self, location: Location, local_file_path: str | Path
+    ) -> GDriveItem:
+        """Replace the content of an exact file target by its stable Drive ID."""
+        item = self.get_from_location(location)
+        self._require_binary_file(item.mime_type, item.name)
+        mime_type = mimetypes.guess_type(item.name)[0] or "application/octet-stream"
+        return self.update_file(
+            item.id, file_in_bytes_or_path=Path(local_file_path), mime_type=mime_type
+        )
+
+    @staticmethod
+    def _require_binary_file(mime_type: str | None, name: str) -> None:
+        if mime_type == FOLDER_MIME or (mime_type or "").startswith(
+            "application/vnd.google-apps."
+        ):
+            raise ValueError(
+                f"Cannot replace Google Workspace file, shortcut, or folder {name!r} with binary content"
+            )
 
     def get_from_weburl(self, url: str) -> GDriveItem:
         """Resolve a Google Drive file or folder URL."""
@@ -632,28 +778,43 @@ class GoogleDriveClient(GoogleBaseClient):
     @classmethod
     def parse_location(cls, location: Location) -> ResolvedLocation:
         parsed = urlparse(location.path)
-        context = {key: value for key in ("drive", "drive_id")
-                   if (value := getattr(location, key)) is not None}
+        context = {
+            key: value
+            for key in ("drive", "drive_id")
+            if (value := getattr(location, key)) is not None
+        }
         if cls.recognizes_url(location.path):
             item_id = cls._extract_id_from_url(location.path)
-            return ResolvedLocation(ServiceType.GOOGLE_DRIVE, service_id=item_id,
-                                    context=context)
+            return ResolvedLocation(
+                ServiceType.GOOGLE_DRIVE, service_id=item_id, context=context
+            )
         if parsed.scheme:
             if parsed.scheme not in {"http", "https"}:
-                raise ValueError(f"Google Drive requires a URL or scoped path: {location.path}")
+                raise ValueError(
+                    f"Google Drive requires a URL or scoped path: {location.path}"
+                )
             return ResolvedLocation(ServiceType.GOOGLE_DRIVE, context=context)
         if not (location.drive or location.drive_id or location.service_id):
-            raise ValueError(f"Google Drive path requires drive or driveId: {location.path}")
-        return ResolvedLocation(ServiceType.GOOGLE_DRIVE, relative_path(location.path),
-                                context=context)
+            raise ValueError(
+                f"Google Drive path requires drive or driveId: {location.path}"
+            )
+        return ResolvedLocation(
+            ServiceType.GOOGLE_DRIVE, relative_path(location.path), context=context
+        )
 
     def get_from_location(self, location: Location) -> GDriveItem:
         if location.service_id:
             return self.get_from_id(location.service_id)
         if location.drive_id:
-            root = GDriveItem(client=self, path="", id=location.drive_id,
-                              name=location.drive or "", mime_type=FOLDER_MIME,
-                              drive_id=location.drive_id, container_id=location.drive_id)
+            root = GDriveItem(
+                client=self,
+                path="",
+                id=location.drive_id,
+                name=location.drive or "",
+                mime_type=FOLDER_MIME,
+                drive_id=location.drive_id,
+                container_id=location.drive_id,
+            )
             return root.get_path(location.remote_path or "")
         if location.drive:
             return self.get_from_path(location.drive, location.remote_path or "")
@@ -661,12 +822,20 @@ class GoogleDriveClient(GoogleBaseClient):
 
     def resolve_location(self, location: Location) -> ResolvedLocation:
         item = self.get_from_location(location)
-        context = {key: value for key in ("drive", "drive_id")
-                   if (value := getattr(location, key)) is not None}
+        context = {
+            key: value
+            for key in ("drive", "drive_id")
+            if (value := getattr(location, key)) is not None
+        }
         if item._drive_id:
             context["drive_id"] = item._drive_id
-        return ResolvedLocation(ServiceType.GOOGLE_DRIVE, location.remote_path,
-                                item.id, "Directory" if item.is_directory else "File", context)
+        return ResolvedLocation(
+            ServiceType.GOOGLE_DRIVE,
+            location.remote_path,
+            item.id,
+            "Directory" if item.is_directory else "File",
+            context,
+        )
 
     def get_from_id(self, file_id: str) -> GDriveItem:
         """Resolve a Google Drive item ID."""

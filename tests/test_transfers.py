@@ -262,14 +262,28 @@ def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
 def test_pull_prefers_saved_id_to_url(tmp_path, monkeypatch):
     from fileroute.clients.s3 import S3Client
 
-    path = descriptor(tmp_path, resources=[Resource(
-        path="download.csv", sources=[Location(path="s3://bucket/file.csv", serviceId="bucket:file.csv")]
-    )])
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="download.csv",
+                sources=[
+                    Location(path="s3://bucket/file.csv", serviceId="bucket:file.csv")
+                ],
+            )
+        ],
+    )
     calls = []
-    item = SimpleNamespace(is_directory=False, download=lambda target: calls.append(target))
+    item = SimpleNamespace(
+        is_directory=False, download=lambda target: calls.append(target)
+    )
     client = S3Client(client=object())
-    monkeypatch.setattr(client, "get_from_id", lambda item_id: calls.append(item_id) or item)
-    monkeypatch.setattr(client, "get_from_weburl", lambda url: pytest.fail("URL lookup"))
+    monkeypatch.setattr(
+        client, "get_from_id", lambda item_id: calls.append(item_id) or item
+    )
+    monkeypatch.setattr(
+        client, "get_from_weburl", lambda url: pytest.fail("URL lookup")
+    )
     monkeypatch.setattr(S3Client, "build_default", lambda: client)
     pull(plan_pull(path, root=tmp_path))
     assert calls == ["bucket:file.csv", tmp_path / "download.csv"]
@@ -279,23 +293,46 @@ def test_push_uses_saved_sharepoint_folder_id(tmp_path, monkeypatch):
     from fileroute.clients.sharepoint import SharepointClient
 
     (tmp_path / "file.csv").write_text("data")
-    path = descriptor(tmp_path, resources=[Resource(
-        path="file.csv", targets=[Location(
-            path=REMOTE, site="dev", drive="Docs", siteId="site-id",
-            driveId="drive-id", serviceId="folder-id", entityType="Directory",
-        )]
-    )])
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="file.csv",
+                targets=[
+                    Location(
+                        path=REMOTE,
+                        site="dev",
+                        drive="Docs",
+                        siteId="site-id",
+                        driveId="drive-id",
+                        serviceId="folder-id",
+                        entityType="Directory",
+                    )
+                ],
+            )
+        ],
+    )
     client = SharepointClient(access_token="fake")
     calls = []
     monkeypatch.setattr(SharepointClient, "build_default", lambda: client)
     monkeypatch.setattr(client, "get_site_id", lambda *args: pytest.fail("site lookup"))
-    monkeypatch.setattr(client, "get_drive_id", lambda *args, **kw: pytest.fail("drive lookup"))
-    monkeypatch.setattr(client, "get_item_metadata", lambda drive, **kw: (
-        calls.append((drive, kw)) or {"id": "folder-id", "folder": {}}
-    ))
-    monkeypatch.setattr(client, "_put_file", lambda url, path: (
-        calls.append(url) or {"id": "new", "name": "file.csv", "file": {}}
-    ))
+    monkeypatch.setattr(
+        client, "get_drive_id", lambda *args, **kw: pytest.fail("drive lookup")
+    )
+    monkeypatch.setattr(
+        client,
+        "get_item_metadata",
+        lambda drive, **kw: (
+            calls.append((drive, kw)) or {"id": "folder-id", "folder": {}}
+        ),
+    )
+    monkeypatch.setattr(
+        client,
+        "_put_file",
+        lambda url, path: (
+            calls.append(url) or {"id": "new", "name": "file.csv", "file": {}}
+        ),
+    )
     push(plan_push(path, root=tmp_path))
     assert calls[0] == ("drive-id", {"item_id": "folder-id"})
 
@@ -384,3 +421,107 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
             tmp_path / "local.docx",
         )
     ]
+
+
+def test_google_drive_folder_and_exact_file_targets(tmp_path, monkeypatch):
+    (tmp_path / "report.pdf").write_bytes(b"pdf")
+    folder = "https://drive.google.com/drive/folders/folder-id?usp=sharing"
+    file = "https://drive.google.com/file/d/file-id/view?usp=sharing"
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="report.pdf", targets=[Location(path=folder), Location(path=file)]
+            )
+        ],
+    )
+    calls = []
+    client = SimpleNamespace(
+        upload_to_location=lambda *args: calls.append(("folder", args)),
+        upload_to_file=lambda *args: calls.append(("file", args)),
+    )
+    monkeypatch.setattr(
+        "fileroute.clients.googledrive.GoogleDriveClient.build_default", lambda: client
+    )
+
+    planned = plan_push(path, root=tmp_path)
+    assert [entry.direct_file for entry in planned] == [False, True]
+    assert planned[1].location.service_id == "file-id"
+    assert planned[0].destination == f"{folder} :: report.pdf"
+    push(planned)
+    assert calls[0][0] == "folder"
+    assert calls[0][1][0].service_id == "folder-id"
+    assert calls[0][1][1:] == (Path("report.pdf"), tmp_path / "report.pdf")
+    assert calls[1][0] == "file"
+    assert calls[1][1][0].service_id == "file-id"
+    assert calls[1][1][1] == tmp_path / "report.pdf"
+
+
+def test_google_drive_scoped_directory_and_mixed_targets_dry_run(tmp_path, monkeypatch):
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "report.csv").write_bytes(b"data")
+    path = descriptor(
+        tmp_path,
+        path="out",
+        targets=[
+            Location(
+                path="reports",
+                serviceType="GoogleDrive",
+                drive="My Drive",
+                entityType="Directory",
+            ),
+            Location(path=REMOTE),
+        ],
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "fileroute.clients.googledrive.GoogleDriveClient.build_default",
+        lambda: pytest.fail("Google authenticated during planning"),
+    )
+    monkeypatch.setattr(
+        "fileroute.clients.sharepoint.SharepointClient.build_default",
+        lambda: pytest.fail("SharePoint authenticated during planning"),
+    )
+    planned = plan_push(path, root=tmp_path)
+    assert len(planned) == 2
+    assert planned[0].destination == "reports :: report.csv"
+    result = CliRunner().invoke(app, ["push", str(path), "--dry-run"])
+    assert result.exit_code == 0, result.output
+
+
+def test_google_drive_exact_file_collision_and_unresolved_path(tmp_path):
+    (tmp_path / "one.csv").write_bytes(b"one")
+    (tmp_path / "two.csv").write_bytes(b"two")
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="one.csv",
+                targets=[Location(path="https://drive.google.com/file/d/same/view")],
+            ),
+            Resource(
+                path="two.csv",
+                targets=[Location(path="https://drive.google.com/open?id=same")],
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match="Multiple local files"):
+        plan_push(path, root=tmp_path)
+
+    path = descriptor(
+        tmp_path,
+        resources=[
+            Resource(
+                path="one.csv",
+                targets=[
+                    Location(
+                        path="reports/one.csv",
+                        serviceType="GoogleDrive",
+                        drive="My Drive",
+                    )
+                ],
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="needs an ID"):
+        plan_push(path, root=tmp_path)

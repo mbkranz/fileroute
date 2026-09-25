@@ -49,8 +49,8 @@ uvx fileroute push config/fileroute.yaml
 
 ## SharePoint source and Google Drive target
 
-Record retrieval from SharePoint and the intended Google Drive destination.
-The Google Drive target is metadata only until upload support exists.
+Retrieve from SharePoint, then replace an existing Google Drive file by its ID.
+To create a new Drive file instead, target its existing folder URL.
 
 <!-- example:sharepoint-google-drive:start -->
 ```yaml
@@ -77,8 +77,8 @@ flowchart LR
 
 ## SharePoint source, SharePoint and Google Drive targets
 
-One artifact can declare both destinations. `push` does **not** publish just
-the SharePoint copy: an unsupported target makes the whole plan fail.
+One artifact can declare both destinations. `push` publishes to both when
+credentials permit access; it never deletes files outside the descriptor.
 
 <!-- example:sharepoint-mixed-targets:start -->
 ```yaml
@@ -141,10 +141,9 @@ flowchart LR
 <!-- diagram:local-three-targets:end -->
 
 **Current support:** SharePoint, Google Drive, and S3 remote sources can be
-pulled; only SharePoint targets can be pushed. The last three descriptors
-can be resolved and diagrammed, but any `push`, including `--dry-run`,
-rejects unsupported targets during planning. For immediate publication,
-put supported targets in a separate descriptor.
+pulled; SharePoint and Google Drive targets can be pushed. The last descriptor
+has an S3 target, so even `push --dry-run` rejects its entire upload plan.
+To publish its supported targets, use a separate descriptor without S3.
 
 To regenerate and check these blocks after editing a saved descriptor:
 

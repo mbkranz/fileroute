@@ -271,9 +271,17 @@ Auto-generated from source signatures and docstrings.
   - `def infer_export_mime_type(self, file_id: str) -> Optional[str]`
   - `def download_file(self, file_id: str, output_path: Optional[str] = None, mime_type: Optional[str] = None, acknowledge_abuse: bool = False, byte_range: Optional[str] = None, supports_all_drives: bool = True, **kwargs) -> Union[bytes, str]`
   - `def export_file(self, file_id: str, mime_type: Optional[str] = None, output_path: Optional[str] = None, supports_all_drives: bool = True, **kwargs) -> Union[bytes, str]`
-  - `def create_file(self, name: str, parent_id: str, content: bytes, mime_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, supports_all_drives: bool = True, **kwargs) -> GDriveItem`
-  - `def update_file(self, id: str, params: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None, file_in_bytes_or_path: Optional[Union[str, bytes]] = None, mime_type: Optional[str] = None, **kwargs) -> GDriveItem`
+  - `def create_file(self, name: str, parent_id: str, content: bytes | Path, mime_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, supports_all_drives: bool = True, **kwargs) -> GDriveItem`
+    - Create a binary file in a folder, including an empty file.
+  - `def update_file(self, id: str, params: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None, file_in_bytes_or_path: str | Path | bytes | None = None, mime_type: Optional[str] = None, **kwargs) -> GDriveItem`
+    - Replace content by file ID, or patch metadata/move without content.
   - `def create_folder(self, parent_folder_id: str, name: str) -> GDriveItem`
+  - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> GDriveItem`
+    - Create or replace a binary file below an existing Drive folder URL.
+  - `def upload_to_location(self, location: Location, relative_path: Path, local_file_path: str | Path) -> GDriveItem`
+    - Publish beneath a folder ID, URL, or scoped Drive path.
+  - `def upload_to_file(self, location: Location, local_file_path: str | Path) -> GDriveItem`
+    - Replace the content of an exact file target by its stable Drive ID.
   - `def get_from_weburl(self, url: str) -> GDriveItem`
     - Resolve a Google Drive file or folder URL.
   - `def recognizes_url(cls, url: str) -> bool`
