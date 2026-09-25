@@ -101,6 +101,7 @@ for nested folders, shared drives, and ambiguous names.
 - [Transfer behavior and provider support](docs/transfers.md)
 - [Diagram formats and Python graph API](docs/diagram.md)
 - [CLI reference](docs/cli.md) and [Python API](docs/api.md)
+- [Agent Skill for coding agents](.agents/skills/fileroute/SKILL.md)
 - [Development, migration, and package releases](docs/contributing.md)
 
 The descriptor `path` is a local artifact for transfers. `sources` are
