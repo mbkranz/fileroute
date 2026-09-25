@@ -71,15 +71,17 @@ use its name/dot-path, an exact JSONPath, or the JSON Pointer printed by
 
 ```bash
 fileroute list config/fileroute.yaml --format json
-fileroute list config/fileroute.yaml --select '$.catalogs[0].resources[1]'
+fileroute list config/fileroute.yaml --select 'catalogs[0].resources[1]'
 fileroute update --descriptor config/fileroute.yaml \
-  --select '$.catalogs[0].resources[1].targets[0]' --drive-id 'b!ABC'
+  --select 'catalogs[0].resources[1].targets[0]' --drive-id 'b!ABC'
 fileroute add appendix --descriptor config/fileroute.yaml \
-  --parent '$.catalogs[0]' --path docs/appendix.docx
+  --parent 'catalogs[0]' --path docs/appendix.docx
 ```
 
 Run `fileroute list` to see exact JSONPaths for entries and locations;
 `--format json` includes them as `jsonPath` alongside `jsonPointer` addresses.
+The leading `$` is optional in selectors: `catalogs[0]`, `.catalogs[0]`, and
+`$.catalogs[0]` address the same entry. `list` always prints the `$` form.
 JSONPath accepts fixed `resources`, `catalogs`,
 `sources`, or `targets` steps with numeric indices; sources and targets can
 only be the final step. Quoted keys such as `$['catalogs'][0]` also work.
