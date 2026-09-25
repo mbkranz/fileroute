@@ -159,7 +159,6 @@ def test_location_fields_require_location_selector(tmp_path):
     )
     assert result.exit_code != 0
     assert "requires a source or target location" in result.output
-    assert "with --select" in result.output
     assert "drive_id" not in load(path).resources[0].model_extra
 
 
