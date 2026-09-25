@@ -1,5 +1,6 @@
 from __future__ import annotations
-from fileroute.models import ServiceType
+from fileroute.models import Location, ServiceType
+from fileroute.resolution import ResolvedLocation, relative_path
 
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,9 @@ def _parse_s3_source_url(
         bucket = parsed.netloc
         key = parsed.path.lstrip("/")
     elif scheme in {"http", "https"}:
-        host = parsed.netloc.lower()
+        host = (parsed.hostname or "").lower()
+        if not host.endswith(".amazonaws.com"):
+            raise ValueError(f"Unsupported S3 URL host: {parsed.netloc}")
         path = parsed.path.lstrip("/")
         if host == "s3.amazonaws.com" or host.startswith("s3."):
             parts = path.split("/", 1)
@@ -81,6 +84,70 @@ class S3Client(BaseClient):
     def get_from_weburl(self, url: str) -> "S3Item":
         bucket, key = _parse_s3_source_url(url, allow_empty_key=True)
         return self.get_from_path(bucket=bucket, key=key)
+
+    @classmethod
+    def recognizes_url(cls, url: str) -> bool:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        return bool(host) and (parsed.scheme == "s3" or (
+            parsed.scheme in {"http", "https"} and
+            host.endswith(".amazonaws.com") and
+            (host == "s3.amazonaws.com" or host.startswith("s3.")
+             or ".s3." in host or host.endswith(".s3.amazonaws.com"))
+        ))
+
+    @classmethod
+    def parse_location(cls, location: Location) -> ResolvedLocation:
+        parsed = urlparse(location.path)
+        if cls.recognizes_url(location.path):
+            bucket, key = _parse_s3_source_url(location.path, allow_empty_key=True)
+            context = {"bucket": bucket}
+            remote_path = relative_path(key)
+            if key.endswith("/") and remote_path:
+                remote_path += "/"
+        elif not parsed.scheme:
+            if not location.bucket:
+                raise ValueError(f"S3 path requires bucket: {location.path}")
+            context = {"bucket": location.bucket}
+            remote_path = relative_path(location.path)
+            if location.path.endswith("/") and remote_path:
+                remote_path += "/"
+        else:
+            raise ValueError(f"S3 requires an S3 URL or bucket-scoped path: {location.path}")
+        if location.service_id:
+            id_bucket, separator, id_key = location.service_id.partition(":")
+            if not separator or id_bucket != context["bucket"] or id_key.strip("/") != remote_path.strip("/"):
+                raise ValueError(f"serviceId {location.service_id!r} conflicts with S3 location {location.path!r}")
+        return ResolvedLocation(ServiceType.S3, remote_path, context=context)
+
+    def get_from_id(self, item_id: str) -> "S3Item":
+        bucket, separator, key = item_id.partition(":")
+        if not separator or not bucket:
+            raise ValueError(f"Invalid S3 serviceId: {item_id!r}; expected bucket:key")
+        return self.get_from_path(bucket=bucket, key=key)
+
+    def get_from_location(self, location: Location) -> "S3Item":
+        if location.service_id:
+            return self.get_from_id(location.service_id)
+        if location.bucket:
+            return self.get_from_path(bucket=location.bucket,
+                                      key=location.remote_path or "")
+        return self.get_from_weburl(location.path)
+
+    def resolve_location(self, location: Location) -> ResolvedLocation:
+        item = self.get_from_location(location)
+        if item.is_directory:
+            if not item.key:
+                self.client.head_bucket(Bucket=item.bucket)
+            else:
+                result = self.client.list_objects_v2(
+                    Bucket=item.bucket, Prefix=item.key, MaxKeys=1
+                )
+                if not result.get("KeyCount") and not result.get("Contents"):
+                    raise FileNotFoundError(f"S3 prefix not found: {item.source_url}")
+        return ResolvedLocation(ServiceType.S3, location.remote_path, item.id,
+                                "Directory" if item.is_directory else "File",
+                                {"bucket": item.bucket})
 
     def get_from_path(self, *, bucket: str, key: str = "") -> "S3Item":
         trailing_slash = key.endswith("/")

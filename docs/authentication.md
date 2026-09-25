@@ -1,8 +1,10 @@
 # Authentication
 
-You can inspect descriptors, resolve provider URLs, render diagrams, and plan
-`pull` or `push` with `--dry-run` without provider credentials. Actual
-transfers authenticate using the provider's settings in the current project.
+You can inspect descriptors, run offline `resolve`, render diagrams, and plan
+`pull` or `push` with `--dry-run` without provider credentials. `resolve
+--online` and actual transfers authenticate using the provider's settings in
+the current project. Online resolution only reads metadata; it does not
+upload or download files.
 Copy the relevant variables from the repository's
 [sample environment file](https://github.com/mbkranz/fileroute/blob/main/.env-sample)
 into a local `.env` or your runtime's environment; never commit credentials.

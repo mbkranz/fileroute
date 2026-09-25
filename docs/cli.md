@@ -18,7 +18,7 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
-* `resolve`: Preview inferred provider metadata,...
+* `resolve`: Resolve locators offline by default;...
 * `migrate`: Convert a legacy descriptor to...
 * `update`: Update descriptor-root or resource...
 * `activate`: Activate a descriptor for later commands.
@@ -68,7 +68,7 @@ $ fileroute pull [OPTIONS] [DESCRIPTOR]
 
 ## `fileroute resolve`
 
-Preview inferred provider metadata, preserving URLs; no network access.
+Resolve locators offline by default; --online verifies IDs and types.
 
 **Usage**:
 
@@ -83,6 +83,7 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 **Options**:
 
 * `--write`: Save resolved metadata back to this descriptor.
+* `--online`: Verify and enrich remote locations using provider credentials.
 * `--help`: Show this message and exit.
 
 ## `fileroute migrate`

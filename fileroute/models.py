@@ -89,6 +89,12 @@ class Location(_Metadata):
     service_type: ServiceTypeField | None = Field(default=None, alias="serviceType")
     service_id: str | None = Field(default=None, alias="serviceId")
     entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
+    remote_path: str | None = Field(default=None, alias="remotePath")
+    site: str | None = None
+    site_id: str | None = Field(default=None, alias="siteId")
+    drive: str | None = None
+    drive_id: str | None = Field(default=None, alias="driveId")
+    bucket: str | None = None
 
 
 class _Artifact(_Metadata):

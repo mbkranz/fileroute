@@ -62,8 +62,10 @@ uv run fileroute push config/fileroute.yaml --dry-run
 uv run fileroute push config/fileroute.yaml
 ```
 
-`resolve`, `diagram`, and dry runs do not authenticate or contact providers;
-actual pull/push operations require access. Configure credentials using
+`resolve` parses URLs and scoped paths offline; `resolve --online --write`
+verifies remote locations and saves their IDs and entity types. `diagram` and
+dry runs also work without provider access; `--online` and actual transfers
+require credentials. Configure credentials using
 [.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
 provider setup.
 

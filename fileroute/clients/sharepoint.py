@@ -1,5 +1,6 @@
 from __future__ import annotations
-from fileroute.models import ServiceType
+from fileroute.models import Location, ServiceType
+from fileroute.resolution import ResolvedLocation, relative_path
 
 import json
 import mimetypes
@@ -340,6 +341,86 @@ class SharepointClient(BaseClient):
         path = "" if resolved["item_path"] == "/" else resolved["item_path"].strip("/")
         return SharepointItem._from_api_response(metadata, self, path=path)
 
+    @classmethod
+    def recognizes_url(cls, url: str) -> bool:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        return parsed.scheme in {"http", "https"} and (
+            host == "sharepoint.com" or host.endswith(".sharepoint.com")
+        )
+
+    @classmethod
+    def parse_location(cls, location: Location) -> ResolvedLocation:
+        parsed = urlparse(location.path)
+        context: dict[str, str] = {}
+        remote_path: str | None = None
+        if cls.recognizes_url(location.path):
+            parts = [unquote(part) for part in parsed.path.split("/") if part]
+            if len(parts) < 2 or parts[0].lower() != "sites":
+                raise ValueError(f"Cannot parse SharePoint site from URL: {location.path}")
+            context["site"] = parts[1]
+            if len(parts) > 2:
+                context["drive"] = parts[2]
+                remote_path = relative_path("/".join(parts[3:]))
+        elif not parsed.scheme:
+            remote_path = relative_path(location.path)
+        elif parsed.scheme not in {"http", "https"}:
+            raise ValueError(f"SharePoint requires an HTTP URL or scoped path: {location.path}")
+        # Explicitly provided context is also accepted for a relative path.
+        context.update({key: value for key in ("site", "site_id", "drive", "drive_id")
+                        if (value := getattr(location, key)) is not None and key not in context})
+        if not parsed.scheme and not (context.get("site") or context.get("site_id")):
+            raise ValueError(f"SharePoint path requires site or siteId: {location.path}")
+        if not parsed.scheme and not (context.get("drive") or context.get("drive_id")):
+            raise ValueError(f"SharePoint path requires drive or driveId: {location.path}")
+        return ResolvedLocation(ServiceType.SHAREPOINT, remote_path, context=context)
+
+    def _location_ids(self, location: Location, *, need_site_id: bool = False) -> tuple[str | None, str]:
+        parsed = urlparse(location.path)
+        if self.recognizes_url(location.path):
+            self.host_url = parsed.hostname or self.host_url
+        site_id = location.site_id
+        if not site_id and location.site and (need_site_id or not location.drive_id):
+            site_id = self.get_site_id(location.site)
+        drive_id = location.drive_id
+        if not drive_id:
+            if not site_id:
+                raise ValueError(f"SharePoint location needs site/siteId: {location.path}")
+            if not location.drive:
+                if not self.recognizes_url(location.path):
+                    raise ValueError(f"SharePoint location needs drive/driveId: {location.path}")
+                drive_id = self.get_drive_id(site_id)
+            else:
+                drive_id = self.get_drive_id(site_id, drive_name=location.drive)
+        return site_id, drive_id
+
+    def get_from_id(self, item_id: str, *, drive_id: str, path: str = "") -> "SharepointItem":
+        metadata = self.get_item_metadata(drive_id, item_id=item_id)
+        return SharepointItem._from_api_response(metadata, self, path=path)
+
+    def get_from_location(self, location: Location) -> "SharepointItem":
+        if location.service_id:
+            _, drive_id = self._location_ids(location)
+            return self.get_from_id(location.service_id, drive_id=drive_id,
+                                    path=location.remote_path or "")
+        if location.drive_id or location.site or location.site_id:
+            _, drive_id = self._location_ids(location)
+            metadata = self.get_item_metadata(drive_id, item_path=location.remote_path or "/")
+            return SharepointItem._from_api_response(metadata, self,
+                                                     path=location.remote_path or "")
+        return self.get_from_weburl(location.path)
+
+    def resolve_location(self, location: Location) -> ResolvedLocation:
+        site_id, drive_id = self._location_ids(location, need_site_id=True)
+        item = self.get_from_location(location.model_copy(update={"drive_id": drive_id}))
+        context = {key: value for key in ("site", "drive")
+                   if (value := getattr(location, key)) is not None}
+        if site_id:
+            context["site_id"] = site_id
+        context["drive_id"] = drive_id
+        return ResolvedLocation(ServiceType.SHAREPOINT, location.remote_path,
+                                item.id, "Directory" if item.is_directory else "File", context)
+
     def get_from_path(
         self, *, site_name: str, item_path: str = "/", library_name: str | None = None
     ) -> "SharepointItem":
@@ -358,40 +439,20 @@ class SharepointClient(BaseClient):
         return SharepointItem._from_api_response(metadata, self, path=path)
 
     def _resolve_weburl(self, url: str) -> dict[str, str]:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
+        if not self.recognizes_url(url):
             raise ValueError(f"Invalid SharePoint URL: {url}")
-
-        self.host_url = parsed.hostname or self.host_url
-        path_parts = [
-            part for part in Path(unquote(parsed.path)).parts if part not in {"/", ""}
-        ]
-
-        site_name = None
-        for index, part in enumerate(path_parts):
-            if part.lower() == "sites" and index + 1 < len(path_parts):
-                site_name = path_parts[index + 1]
-                drive_name = (
-                    path_parts[index + 2]
-                    if index + 2 < len(path_parts)
-                    else "Shared Documents"
-                )
-                item_path_parts = path_parts[index + 3 :]
-                break
-        else:
-            raise ValueError(
-                f"Could not extract site and library from SharePoint URL: {url}"
-            )
-
-        site_id = self.get_site_id(site_name)
-        drive_id = self.get_drive_id(site_id, drive_name=drive_name)
-        item_path = "/" + "/".join(item_path_parts) if item_path_parts else "/"
+        location = Location(path=url)
+        self.parse_location(location).apply(location)
+        # Historical URL-only call sites use the default library for a site URL.
+        location.drive = location.drive or "Shared Documents"
+        site_id, drive_id = self._location_ids(location, need_site_id=True)
+        assert site_id is not None and location.site is not None
         return {
-            "site_name": site_name,
+            "site_name": location.site,
             "site_id": site_id,
-            "drive_name": drive_name,
+            "drive_name": location.drive,
             "drive_id": drive_id,
-            "item_path": item_path,
+            "item_path": f"/{location.remote_path}" if location.remote_path else "/",
         }
 
     def download_content(self, drive_id=None, item_id=None, download_url=None):
@@ -534,11 +595,35 @@ class SharepointClient(BaseClient):
             )
 
         destination = self._resolve_weburl(folder_url)
-        drive_id = destination["drive_id"]
-        folder_path = destination["item_path"].strip("/")
-        folder = self.get_item_metadata(drive_id, item_path=folder_path or "/")
+        return self._upload_to_drive_folder(
+            destination["drive_id"], destination["item_path"].strip("/"),
+            relative, local,
+        )
+
+    def upload_to_location(
+        self, location: Location, relative_path: Path, local_file_path: str | Path
+    ) -> "SharepointItem":
+        """Upload beneath a verified folder ID or a scoped provider path."""
+        _, drive_id = self._location_ids(location)
+        return self._upload_to_drive_folder(
+            drive_id, location.remote_path or "", relative_path, local_file_path,
+            folder_id=location.service_id,
+        )
+
+    def _upload_to_drive_folder(
+        self, drive_id: str, folder_path: str, relative: Path,
+        local: str | Path, *, folder_id: str | None = None,
+    ) -> "SharepointItem":
+        relative = Path(relative)
+        local = Path(local)
+        if relative.is_absolute() or ".." in relative.parts or not relative.name:
+            raise ValueError(f"Unsafe relative upload path: {relative}")
+        if local.stat().st_size > 250_000_000:
+            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}")
+        folder = (self.get_item_metadata(drive_id, item_id=folder_id)
+                  if folder_id else self.get_item_metadata(drive_id, item_path=folder_path or "/"))
         if "folder" not in folder:
-            raise ValueError(f"Publication destination is not a folder: {folder_url}")
+            raise ValueError(f"Publication destination is not a folder: {folder_path}")
 
         parent_id = folder["id"]
         for part in relative.parts[:-1]:

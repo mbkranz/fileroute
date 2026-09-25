@@ -259,6 +259,47 @@ def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
     assert plan_push(path, root=tmp_path) == before
 
 
+def test_pull_prefers_saved_id_to_url(tmp_path, monkeypatch):
+    from fileroute.clients.s3 import S3Client
+
+    path = descriptor(tmp_path, resources=[Resource(
+        path="download.csv", sources=[Location(path="s3://bucket/file.csv", serviceId="bucket:file.csv")]
+    )])
+    calls = []
+    item = SimpleNamespace(is_directory=False, download=lambda target: calls.append(target))
+    client = S3Client(client=object())
+    monkeypatch.setattr(client, "get_from_id", lambda item_id: calls.append(item_id) or item)
+    monkeypatch.setattr(client, "get_from_weburl", lambda url: pytest.fail("URL lookup"))
+    monkeypatch.setattr(S3Client, "build_default", lambda: client)
+    pull(plan_pull(path, root=tmp_path))
+    assert calls == ["bucket:file.csv", tmp_path / "download.csv"]
+
+
+def test_push_uses_saved_sharepoint_folder_id(tmp_path, monkeypatch):
+    from fileroute.clients.sharepoint import SharepointClient
+
+    (tmp_path / "file.csv").write_text("data")
+    path = descriptor(tmp_path, resources=[Resource(
+        path="file.csv", targets=[Location(
+            path=REMOTE, site="dev", drive="Docs", siteId="site-id",
+            driveId="drive-id", serviceId="folder-id", entityType="Directory",
+        )]
+    )])
+    client = SharepointClient(access_token="fake")
+    calls = []
+    monkeypatch.setattr(SharepointClient, "build_default", lambda: client)
+    monkeypatch.setattr(client, "get_site_id", lambda *args: pytest.fail("site lookup"))
+    monkeypatch.setattr(client, "get_drive_id", lambda *args, **kw: pytest.fail("drive lookup"))
+    monkeypatch.setattr(client, "get_item_metadata", lambda drive, **kw: (
+        calls.append((drive, kw)) or {"id": "folder-id", "folder": {}}
+    ))
+    monkeypatch.setattr(client, "_put_file", lambda url, path: (
+        calls.append(url) or {"id": "new", "name": "file.csv", "file": {}}
+    ))
+    push(plan_push(path, root=tmp_path))
+    assert calls[0] == ("drive-id", {"item_id": "folder-id"})
+
+
 def _descriptor(root: Path) -> Path:
     descriptor = root / "config" / "fileroute.yaml"
     descriptor.parent.mkdir()

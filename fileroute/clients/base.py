@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from fileroute.item import ServiceItem
+    from fileroute.models import Location
+    from fileroute.resolution import ResolvedLocation
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,20 @@ class BaseClient(ABC):
 
     @abstractmethod
     def get_from_weburl(self, url: str) -> ServiceItem:
+        raise NotImplementedError
+
+    @classmethod
+    def recognizes_url(cls, url: str) -> bool:
+        return False
+
+    @classmethod
+    def parse_location(cls, location: "Location") -> "ResolvedLocation":
+        raise NotImplementedError
+
+    def get_from_location(self, location: "Location") -> ServiceItem:
+        raise NotImplementedError
+
+    def resolve_location(self, location: "Location") -> "ResolvedLocation":
         raise NotImplementedError
 
     def upload_to_folder(

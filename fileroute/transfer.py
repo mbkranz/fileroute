@@ -6,13 +6,14 @@ remote permissions and directory contents are checked during execution.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 from fileroute.models import Catalog, Resource, Location, ServiceType
 from fileroute.clients import get_provider
 from fileroute.descriptor import load, walk, resolve, local_path
+from fileroute.resolution import lookup_item
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class PullEntry:
     remote: str
     service_type: ServiceType
     directory: bool = False
+    location: Location | None = field(default=None, compare=False, repr=False)
 
 
 def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]:
@@ -71,7 +73,7 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
             raise ValueError(
                 f"Pull destination has the wrong file/directory type: {local}"
             )
-        entries.append(PullEntry(local, source.path, service, directory))
+        entries.append(PullEntry(local, source.path, service, directory, source))
     if not entries:
         raise ValueError("Pull needs at least one artifact with a remote source")
     return tuple(entries)
@@ -87,7 +89,10 @@ def pull(entries: tuple[PullEntry, ...]) -> None:
             clients[entry.service_type] = get_provider(
                 entry.service_type
             ).build_default()
-        item = clients[entry.service_type].get_from_weburl(entry.remote)
+        client = clients[entry.service_type]
+        item = (lookup_item(client, entry.location) if entry.location is not None
+                and hasattr(client, "get_from_location")
+                else client.get_from_weburl(entry.remote))
         if item.is_directory != entry.directory:
             raise ValueError(
                 f"Source has the wrong file/directory type: {entry.remote}"
@@ -122,6 +127,7 @@ class PushEntry:
     relative: Path
     service_type: ServiceType
     direct_file: bool = False
+    location: Location | None = field(default=None, compare=False, repr=False)
 
     @property
     def destination(self) -> str:
@@ -178,7 +184,7 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
             relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Unsafe relative upload path: {relative}")
-        entry = PushEntry(local, target.path, relative, service, direct)
+        entry = PushEntry(local, target.path, relative, service, direct, target)
         # Decoding catches authored aliases for the same remote file.
         key = (
             unquote(entry.destination).casefold()
@@ -256,7 +262,17 @@ def push(files: tuple[PushEntry, ...]) -> None:
         if file.service_type not in clients:
             clients[file.service_type] = get_provider(file.service_type).build_default()
         folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
-        clients[file.service_type].upload_to_folder(folder, file.relative, file.local)
+        client = clients[file.service_type]
+        if file.location is not None and hasattr(client, "upload_to_location"):
+            location = file.location.model_copy(deep=True)
+            if file.direct_file:
+                location.path = folder
+                location.service_id = None  # Exact file ID is not a folder ID.
+                if location.remote_path is not None:
+                    location.remote_path = location.remote_path.rpartition("/")[0]
+            client.upload_to_location(location, file.relative, file.local)
+        else:
+            client.upload_to_folder(folder, file.relative, file.local)
 
 
 __all__ = ["PullEntry", "PushEntry", "plan_pull", "plan_push", "pull", "push"]

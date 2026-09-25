@@ -42,6 +42,7 @@ def test_resolution_preserves_clickable_urls_and_local_provenance():
     [
         "https://sharepoint.com.evil.example/file",
         "https://notsharepoint.com/file",
+        "https://s3.evil.example/bucket/file",
         "https://example.com/link",
         "relative/file",
     ],
@@ -103,7 +104,10 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     preview = runner.invoke(app, ["resolve", str(path)])
     assert preview.exit_code == 0, preview.output
     target = json.loads(preview.output)["resources"][0]["targets"][0]
-    assert target == {"path": url, "serviceType": "SharePoint"}
+    assert target == {
+        "path": url, "serviceType": "SharePoint", "site": "dev", "drive": "Docs",
+        "remotePath": "guide one.docx",
+    }
     assert path.read_bytes() == before
     written = runner.invoke(app, ["resolve", str(path), "--write"])
     assert written.exit_code == 0, written.output
@@ -143,3 +147,150 @@ def test_failed_resolve_write_leaves_descriptor_unchanged(tmp_path):
     assert result.exit_code == 1
     assert "conflicts" in result.output
     assert path.read_bytes() == before
+
+
+def test_offline_provider_paths_and_url_ids():
+    doc = resolve(Catalog(targets=[
+        Location(path="Reports/a.docx", serviceType="SharePoint", site="PPSC", drive="Shared Documents"),
+        Location(path="Reports/a.docx", serviceType="GoogleDrive", drive="PPSC Shared Drive"),
+        Location(path="reports/a.csv", serviceType="S3", bucket="data-bucket"),
+        Location(path="https://drive.google.com/file/d/abc_DEF-123/view"),
+        Location(path="s3://data-bucket/reports/a.csv"),
+    ]))
+    sp, google, s3, google_url, s3_url = doc.targets
+    assert (sp.site, sp.drive, sp.remote_path) == ("PPSC", "Shared Documents", "Reports/a.docx")
+    assert (google.drive, google.remote_path) == ("PPSC Shared Drive", "Reports/a.docx")
+    assert (s3.bucket, s3.remote_path) == ("data-bucket", "reports/a.csv")
+    assert google_url.service_id == "abc_DEF-123"
+    assert (s3_url.bucket, s3_url.remote_path) == ("data-bucket", "reports/a.csv")
+    assert resolve(doc) == doc
+
+
+def test_provider_neutral_resolved_location_round_trip():
+    from fileroute.resolution import ResolvedLocation
+
+    loc = Location(path="Reports/a.docx", serviceType="SharePoint", site="PPSC",
+                   drive="Docs", remotePath="Reports/a.docx")
+    resolved = ResolvedLocation.from_location(loc)
+    assert resolved.context == {"site": "PPSC", "drive": "Docs"}
+    assert resolved.remote_path == "Reports/a.docx"
+    resolved.apply(loc)
+    assert loc.service_type is ServiceType.SHAREPOINT
+
+
+@pytest.mark.parametrize("location,match", [
+    (Location(path="Reports/a.docx", serviceType="SharePoint", site="PPSC"), "drive"),
+    (Location(path="Reports/a.docx", serviceType="GoogleDrive"), "drive"),
+    (Location(path="reports/a.csv", serviceType="S3"), "bucket"),
+    (Location(path="s3://bucket/a.csv", bucket="another"), "conflicts"),
+    (Location(path="https://tenant.sharepoint.com/sites/PPSC/Docs/file", site="Other"), "conflicts"),
+])
+def test_under_scoped_or_conflicting_metadata(location, match):
+    with pytest.raises(ValueError, match=match):
+        resolve(Catalog(targets=[location]))
+
+
+def test_online_sharepoint_populates_site_drive_item_ids(monkeypatch):
+    from fileroute.clients.sharepoint import SharepointClient
+
+    client = SharepointClient(access_token="fake")
+    calls = []
+    monkeypatch.setattr(client, "get_site_id", lambda name: calls.append(("site", name)) or "site-id")
+    monkeypatch.setattr(client, "get_drive_id", lambda site_id, drive_name: calls.append(("drive", drive_name)) or "drive-id")
+    monkeypatch.setattr(client, "get_item_metadata", lambda drive_id, *, item_path: {
+        "id": "item-id", "name": "a.docx", "file": {}, "parentReference": {"driveId": drive_id}
+    })
+    monkeypatch.setattr(SharepointClient, "build_default", lambda: client)
+    location = Location(path="Reports/a.docx", serviceType="SharePoint", site="PPSC", drive="Docs")
+    result = resolve(Catalog(targets=[location]), online=True).targets[0]
+    assert (result.site_id, result.drive_id, result.service_id, result.entity_type) == (
+        "site-id", "drive-id", "item-id", "File"
+    )
+    assert calls == [("site", "PPSC"), ("drive", "Docs")]
+    assert location.service_id is None
+
+
+def test_sharepoint_site_url_uses_default_drive_online(monkeypatch):
+    from fileroute.clients.sharepoint import SharepointClient
+
+    client = SharepointClient(access_token="fake")
+    monkeypatch.setattr(client, "get_site_id", lambda _: "site-id")
+    monkeypatch.setattr(client, "get_drive_id", lambda site_id: "default-drive")
+    monkeypatch.setattr(client, "get_item_metadata", lambda drive_id, *, item_path: {
+        "id": "root", "folder": {}, "parentReference": {"driveId": drive_id}
+    })
+    result = resolve(Catalog(targets=[Location(
+        path="https://tenant.sharepoint.com/sites/PPSC"
+    )])).targets[0]
+    assert (result.site, result.drive) == ("PPSC", None)
+    online = client.resolve_location(result)
+    assert (online.context["site_id"], online.context["drive_id"], online.service_id) == (
+        "site-id", "default-drive", "root"
+    )
+
+
+def test_online_google_named_drive_and_id_url(monkeypatch):
+    from fileroute.clients.googledrive import GoogleDriveClient
+
+    calls = []
+    def lookup(self, location):
+        calls.append((location.drive, location.remote_path, location.service_id))
+        return type("Item", (), {"id": "abc" if location.service_id else "file-id",
+                                 "is_directory": False, "_drive_id": "drive-id"})()
+    monkeypatch.setattr(GoogleDriveClient, "get_from_location", lookup)
+    # Exercise provider behavior with a client instance that needs no credentials.
+    client = object.__new__(GoogleDriveClient)
+    result = GoogleDriveClient.resolve_location(client, resolve(Catalog(targets=[
+        Location(path="Reports/a.docx", serviceType="GoogleDrive", drive="PPSC")
+    ])).targets[0])
+    assert result.context["drive_id"] == "drive-id"
+    assert result.service_id == "file-id"
+    url = resolve(Catalog(targets=[Location(path="https://drive.google.com/file/d/abc/view")])).targets[0]
+    GoogleDriveClient.resolve_location(client, url)
+    assert calls == [("PPSC", "Reports/a.docx", None), (None, None, "abc")]
+
+
+def test_online_s3_verifies_prefix_and_bucket():
+    from fileroute.clients.s3 import S3Client
+
+    calls = []
+    api = type("Api", (), {
+        "list_objects_v2": lambda self, **kw: calls.append(("list", kw["Prefix"])) or {"KeyCount": 1},
+        "head_bucket": lambda self, **kw: calls.append(("head", kw["Bucket"])),
+    })()
+    client = S3Client(client=api)
+    for path in ("s3://bucket/root/", "s3://bucket"):
+        loc = resolve(Catalog(targets=[Location(path=path)])).targets[0]
+        result = client.resolve_location(loc)
+        assert result.entity_type == "Directory"
+        assert result.service_id.startswith("bucket:")
+    assert calls == [("list", "root/"), ("head", "bucket")]
+
+
+def test_online_cli_write_preserves_url_and_enriches_ids(tmp_path, monkeypatch):
+    import yaml_support as yaml
+    from typer.testing import CliRunner
+    from fileroute.cli import app
+    from fileroute.clients.sharepoint import SharepointClient
+
+    path = tmp_path / "catalog.yaml"
+    url = "https://tenant.sharepoint.com/sites/PPSC/Docs/Reports/a.docx"
+    path.write_text(f"targets:\n  - path: {url}\n")
+    client = SharepointClient(access_token="fake")
+    monkeypatch.setattr(SharepointClient, "build_default", lambda: client)
+    monkeypatch.setattr(client, "get_site_id", lambda _: "site-id")
+    monkeypatch.setattr(client, "get_drive_id", lambda *args, **kw: "drive-id")
+    monkeypatch.setattr(client, "get_item_metadata", lambda *args, **kw: {
+        "id": "item-id", "file": {}, "name": "a.docx", "parentReference": {"driveId": "drive-id"}
+    })
+    runner = CliRunner()
+    result = runner.invoke(app, ["resolve", str(path), "--online", "--write"])
+    assert result.exit_code == 0, result.output
+    target = yaml.safe_load(path.read_text())["targets"][0]
+    assert target["path"] == url
+    assert (target["siteId"], target["driveId"], target["serviceId"], target["entityType"]) == (
+        "site-id", "drive-id", "item-id", "File"
+    )
+    first = path.read_bytes()
+    assert runner.invoke(app, ["resolve", str(path), "--online", "--write"]).exit_code == 0
+    assert path.read_bytes() == first

@@ -1,4 +1,4 @@
-"""Local descriptor I/O, traversal, lookup and offline URL resolution.
+"""Local descriptor I/O, traversal, lookup and location resolution.
 
 Models contain metadata only. Loading optionally expands references; walking
 and resolving metadata never read files or construct provider clients.
@@ -12,14 +12,14 @@ from io import StringIO
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
 from typing import Literal
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
-from fileroute.models import Catalog, CatalogReference, Location, Resource, ServiceType
+from fileroute.models import Catalog, CatalogReference, Resource
+from fileroute.resolution import parse_location, resolve_online
 
 
 def _yaml() -> YAML:
@@ -231,55 +231,38 @@ def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path:
     return resolved
 
 
-def _resolve_location(location: Location, *, required: bool) -> None:
-    """Infer only recognized URLs; never follow redirects or authenticate."""
-    url = urlsplit(location.path)
-    host = (url.hostname or "").casefold()
-    inferred = None
-    if url.scheme == "s3" and host:
-        inferred = ServiceType.S3
-    elif url.scheme in {"https", "http"} and host:
-        if host == "sharepoint.com" or host.endswith(".sharepoint.com"):
-            inferred = ServiceType.SHAREPOINT
-        elif host in {"drive.google.com", "docs.google.com"}:
-            inferred = ServiceType.GOOGLE_DRIVE
-    remote = bool(url.scheme in {"s3", "https", "http"} and host)
-    if location.service_type is not None:
-        if not remote:
-            raise ValueError(f"Provider requires a remote URL: {location.path}")
-        if inferred is not None and inferred != location.service_type:
-            raise ValueError(
-                f"serviceType {location.service_type} conflicts with URL {location.path}"
-            )
-    elif inferred is not None:
-        location.service_type = inferred
-    if required and location.service_type is None:
-        raise ValueError(
-            f"Cannot resolve target {location.path!r}; use a supported remote URL and set serviceType explicitly when needed"
-        )
-
-
 def resolve(
-    catalog: Catalog, *, direction: Literal["pull", "push"] | None = None
+    catalog: Catalog, *, direction: Literal["pull", "push"] | None = None,
+    online: bool = False,
 ) -> Catalog:
-    """Return resolved metadata without mutating input, URLs, files, or references.
+    """Return resolved metadata without mutating the input or authored paths.
 
-    Known source URLs gain serviceType; other provenance remains valid metadata.
-    Every target must resolve to a provider. Load external references separately
-    before resolving a transfer; descriptor write-back changes only its own file.
+    Offline parsing constructs no client. Online lookup verifies locations and
+    enriches IDs and types, but never transfers content. References are not
+    expanded or modified; resolve their documents individually for write-back.
     """
     if direction not in {None, "pull", "push"}:
         raise ValueError("direction must be pull or push")
     result = catalog.model_copy(deep=True)
+    clients = {}
+
+    def enrich(location, *, required: bool) -> None:
+        parse_location(location, required=required)
+        if online and location.service_type is not None:
+            if location.service_type not in clients:
+                from fileroute.clients import get_provider
+                clients[location.service_type] = get_provider(location.service_type).build_default()
+            resolve_online(location, clients[location.service_type])
+
     for row in walk(result, include_self=True):
         if isinstance(row.model, CatalogReference):
             continue
         if direction != "push":
             for location in row.model.sources:
-                _resolve_location(location, required=False)
+                enrich(location, required=False)
         if direction != "pull":
             for location in row.model.targets or []:
-                _resolve_location(location, required=True)
+                enrich(location, required=True)
     return result
 
 
