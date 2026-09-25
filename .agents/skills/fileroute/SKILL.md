@@ -55,9 +55,7 @@ Use registered names or qualified names with `--select`. Use `fileroute list`
 to discover names, exact JSONPath/Pointer addresses, and physical origin files.
 The positional argument remains a descriptor file. `activate` selects a file.
 Names match `[A-Za-z_][A-Za-z0-9_-]*`; put display text in `title`.
-For old named lists and `$ref` links, run `fileroute migrate INPUT OUTPUT_DIR
---dry-run`, then run the command without `--dry-run` to convert the linked descriptor graph into a new output directory. Do not silently accept or
-rewrite legacy descriptors while performing another task.
+For old named lists and `$ref` links, run `fileroute migrate INPUT OUTPUT_DIR --dry-run`, then repeat without `--dry-run` to convert the linked descriptor graph into a new output directory. Do not silently accept or rewrite legacy descriptors while performing another task.
 
 Descriptor fields are camelCase. Python attributes are snake_case.
 
