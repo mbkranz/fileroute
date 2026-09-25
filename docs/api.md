@@ -162,6 +162,7 @@ Auto-generated from source signatures and docstrings.
   - `profile: str`
   - `resources: dict[str, Resource]`
   - `catalogs: dict[str, Catalog | CatalogLink]`
+
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
 - Fields:
@@ -181,6 +182,7 @@ Auto-generated from source signatures and docstrings.
   - `drive: str | None`
   - `drive_id: str | None`
   - `bucket: str | None`
+
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.
 - Fields:
