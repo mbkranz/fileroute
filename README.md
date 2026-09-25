@@ -98,3 +98,14 @@ upstream inputs or provenance; `targets` are publication destinations.
 Diagrams show intent, not a completed transfer. Use `fileroute --help` for
 commands and options. To develop this repository, run `uv sync` and see the
 [contributor guide](docs/contributing.md).
+
+### HTTP retries and upload recovery
+
+Fileroute retries transient Microsoft Graph reads and content PUTs up to three times,
+respecting `Retry-After` when supplied. A content PUT reopens the local file on
+each attempt. Folder-creation POSTs are not automatically replayed after an
+uncertain result. Google Drive resumable uploads query the upload session after
+a transient or rate-limit error and continue from the byte offset confirmed by
+the server. Network and HTTP failures retain their provider-specific exception
+types and expose `status_code`, `response_text`, `response_json`, and
+`response_headers` for callers that need details.

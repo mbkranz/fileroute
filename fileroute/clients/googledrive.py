@@ -8,6 +8,9 @@ import time
 from urllib.parse import urlparse
 from uuid import uuid4
 from enum import Enum
+from http import HTTPStatus
+
+from fileroute.clients._http import is_transient_status, retry_delay
 from typing import Any, ClassVar, Dict, Literal, Optional, Union, cast
 import requests
 from google.auth.credentials import Credentials
@@ -131,7 +134,8 @@ class GoogleBaseClient(BaseClient):
             message,
             status_code=response.status_code,
             response_text=response.text,
-            response_json=payload,
+            response_json=payload if isinstance(payload, dict) else None,
+            response_headers=dict(response.headers),
         )
 
     @staticmethod
@@ -585,6 +589,18 @@ class GoogleDriveClient(GoogleBaseClient):
             )
         return response.json()
 
+    @staticmethod
+    def _retryable_upload_error(exc: GoogleApiError) -> bool:
+        if exc.status_code is None or is_transient_status(exc.status_code):
+            return True
+        if exc.status_code != HTTPStatus.FORBIDDEN:
+            return False
+        error = (exc.response_json or {}).get("error")
+        if not isinstance(error, dict):
+            return False
+        reasons = [entry.get("reason") for entry in error.get("errors", []) if isinstance(entry, dict)]
+        return any(reason in {"rateLimitExceeded", "userRateLimitExceeded"} for reason in reasons)
+
     def _upload_resumable(
         self,
         method: str,
@@ -639,18 +655,12 @@ class GoogleDriveClient(GoogleBaseClient):
                         },
                     )
                 except GoogleDriveError as exc:
-                    if exc.status_code is not None and exc.status_code not in {
-                        429,
-                        500,
-                        502,
-                        503,
-                        504,
-                    }:
+                    if not self._retryable_upload_error(exc):
                         raise
                     if failures >= 3:
                         raise
                     failures += 1
-                    time.sleep(min(2**failures, 8))
+                    time.sleep(retry_delay(failures, headers=exc.response_headers))
                     response = self._request(
                         "PUT",
                         session_url,
@@ -670,8 +680,9 @@ class GoogleDriveClient(GoogleBaseClient):
                 next_offset = int(match.group(1)) + 1 if match else 0
                 if next_offset > size or (next_offset <= offset and failures == 0):
                     raise GoogleDriveError("Drive resumable upload made no progress")
+                if next_offset > offset:
+                    failures = 0
                 offset = next_offset
-                failures = 0
         raise GoogleDriveError("Drive resumable upload ended without file metadata")
 
     def create_folder(self, parent_folder_id: str, name: str) -> GDriveItem:
