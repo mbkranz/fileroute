@@ -20,10 +20,19 @@ Field names draw on [Data Resource](https://datapackage.org/standard/data-resour
 [DCAT](https://www.w3.org/TR/vocab-dcat-3/), and
 [OpenMetadata Drive Service](https://docs.open-metadata.org/latest/main-concepts/metadata-standard/schemas/entity/services/driveservice).
 
-## Migrating legacy descriptors
+## Keyed descriptor transition (0.2)
+
+The keyed format is a breaking change. Use `fileroute migrate-format INPUT OUTPUT_DIR`
+for the preceding named-list format and `$ref` links; see the
+[descriptor migration guide](descriptors.md#migrate-the-old-format).
+The normal loader has one canonical representation. Legacy interpretation stays
+in the migration module. The release baseline is intentionally `0.2.0.dev0` so
+the existing main-branch release workflow promotes it to `0.2.0`.
+
+## Migrating older remote-location descriptors
 
 The public descriptor models are `Catalog`, `Resource`, `Location`, and
-`CatalogReference`. Legacy `Drive*` classes and artifact-level provider
+`CatalogLink`. Legacy `Drive*` classes and artifact-level provider
 fields, as well as the old `upload` alias and `set` command, are removed.
 Use `path`, `sources`, `targets`, `resources`, and `catalogs`, with
 provider information on a location. The new active descriptor is stored at

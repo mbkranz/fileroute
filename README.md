@@ -11,6 +11,15 @@ SharePoint and Google Drive can be pushed. S3 targets can be described and
 diagrammed, but `push --dry-run` rejects them until upload support exists.
 Fileroute does not transform files or transfer directly between cloud providers.
 
+## Descriptor format change
+
+Catalogs and resources are now keyed maps: `resources: {report: {path: report.csv}}`.
+The map key is the registered name. Cross-file catalogs use
+`catalogs: {archive: {descriptor: catalogs/archive.yaml}}`.
+Run `fileroute migrate-format OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
+converting existing named lists and `$ref` links. See the
+[migration guide](docs/descriptors.md#migrate-the-old-format).
+
 ## Get started
 
 For a repeatable project workflow, add Fileroute as a dependency and commit the
@@ -42,7 +51,7 @@ publishes that artifact to two SharePoint destinations:
 
 ```yaml
 resources:
-  - name: monthly-report
+  monthly-report:
     path: artifacts/monthly-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv

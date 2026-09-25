@@ -1,5 +1,5 @@
 resources:
-  - name: partner-report
+  partner-report:
     path: artifacts/partner-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
