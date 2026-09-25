@@ -36,7 +36,28 @@ A descriptor is local YAML or JSON metadata describing artifacts and their relat
 - `targets`: downstream publication destinations.
 - `serviceType`: optional provider metadata. Canonical saved values are `GoogleDrive`, `SharePoint`, and `S3`.
 - `serviceId`: optional provider-native identifier.
-- `$ref`: reference to another local catalog document.
+- `catalogs` and `resources`: keyed maps whose keys are registered names. Do not repeat a child `name` field.
+- `descriptor`: a cross-file catalog link, relative to its containing descriptor. Keep it distinct from an artifact's `path`.
+
+```yaml
+catalogs:
+  shared:
+    descriptor: catalogs/shared.yaml
+resources:
+  report:
+    path: artifacts/report.csv
+    sources:
+      - path: s3://example-bucket/report.csv
+        serviceType: S3
+```
+
+Use registered names or qualified names with `--select`. Use `fileroute list`
+to discover names, exact JSONPath/Pointer addresses, and physical origin files.
+The positional argument remains a descriptor file. `activate` selects a file.
+Names match `[A-Za-z_][A-Za-z0-9_-]*`; put display text in `title`.
+For old named lists and `$ref` links, run `migrate-format INPUT OUTPUT_DIR
+--dry-run`, then convert to a new output directory. Do not silently accept or
+rewrite legacy descriptors while performing another task.
 
 Descriptor fields are camelCase. Python attributes are snake_case.
 
@@ -49,9 +70,9 @@ Treat this table as a guardrail and verify `docs/transfers.md` when current beha
 | Operation | SharePoint | Google Drive | S3 |
 | --- | --- | --- | --- |
 | `pull` remote source | supported | supported | supported |
-| `push` publication target | supported | not implemented | not implemented |
+| `push` publication target | supported | supported (binary files) | not implemented |
 
-Descriptors and diagrams may describe Google Drive or S3 targets even though `push` cannot publish to them yet. `push --dry-run` fails if any target is unsupported; it does not partially publish supported targets.
+Google Drive push supports folder targets and exact existing binary file IDs; reject ambiguous names and Google-native document updates. Descriptors and diagrams may describe S3 targets even though push cannot publish to them yet. `push --dry-run` fails if any target is unsupported; it does not partially publish supported targets.
 
 Fileroute does not stream directly from one cloud provider to another and does not transform files. A remote-to-remote workflow is conceptually `pull` to the local artifact, perform any external transformation if needed, then `push`.
 
@@ -86,13 +107,16 @@ Run a dry run before an agent initiates a remote write unless the user explicitl
 | Preview/infer provider metadata without network access | `fileroute resolve [descriptor]` |
 | Persist inferred provider metadata | `fileroute resolve [descriptor] --write` |
 | Select a descriptor for later commands | `fileroute activate <descriptor>` |
-| Inspect resources and paths | `fileroute list [descriptor]` |
+| Inspect registered names, origins, and paths | `fileroute list [descriptor]` |
+| Explain one entry, including inherited targets | `fileroute resolve [descriptor] --select NAME` |
+| Verify provider metadata online | `fileroute resolve [descriptor] --online` |
 | Add a resource or catalog | `fileroute add ...` |
 | Edit descriptor/root properties | `fileroute update ...` |
 | Preview or perform retrieval | `fileroute pull [descriptor] --dry-run` / `pull` |
 | Preview or perform publication | `fileroute push [descriptor] --dry-run` / `push` |
 | Visualize provenance and destinations | `fileroute diagram [descriptor]` |
-| Convert a legacy descriptor | `fileroute migrate <old> <new>` |
+| Convert previous named lists and links | `fileroute migrate-format INPUT OUTPUT_DIR` |
+| Convert older remote-location metadata | `fileroute migrate <old> <new> --direction pull|push` |
 | Create a local descriptor variant | `fileroute clone descriptor <target>` |
 | Establish provider authentication | `fileroute auth login ...` |
 
@@ -102,7 +126,9 @@ For exact flags, use `fileroute <command> --help` rather than guessing.
 
 - Prefer updating an existing descriptor over creating parallel metadata.
 - Prefer `add`, `update`, and `resolve --write` for ordinary descriptor edits when they express the requested change clearly.
-- Direct YAML/JSON edits are acceptable for larger structural changes; preserve existing comments, style, `$ref` relationships, and unknown metadata where practical.
+- Direct YAML/JSON edits are acceptable for larger structural changes; preserve existing comments, style, `descriptor` links, and unknown metadata where practical.
+- `update` and `add --parent` edit one physical file. Use the origin descriptor shown by `list` when an entry belongs to a linked child.
+- Whole-descriptor `resolve --write` changes only the selected file; `resolve --select NAME --write` changes the entry's reported origin file. Preserve deeper links and never copy inherited targets onto a child.
 - Use explicit `targets: []` when an artifact must opt out of inherited publication targets.
 - Do not reinterpret a local provenance source as a download operation. For example, a `.qmd` source usually means "build this artifact from the Quarto source," not `pull` it.
 - Multiple sources can describe transformation/provenance. Do not arbitrarily choose one for `pull`; Fileroute intentionally refuses ambiguous retrieval.
@@ -133,7 +159,7 @@ Do not replace a simple CLI workflow with custom Python merely because Python is
 - Creating a second provenance manifest instead of extending the existing descriptor.
 - Treating `sources` and `targets` as interchangeable.
 - Assuming a described target is currently writable.
-- Assuming `resolve` contacts the provider, validates permissions, or follows redirects.
+- Assuming offline `resolve` verifies remote state; online verification requires `--online`.
 - Assuming Fileroute transforms files or copies directly between remote services.
 - Hard-coding credentials or secrets into descriptors, scripts, or commands committed to the repository.
 

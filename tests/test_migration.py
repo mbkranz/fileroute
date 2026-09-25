@@ -26,7 +26,7 @@ catalogs:
     )
 
     catalog = migrate_descriptor(source, direction="push")
-    documentation = catalog.catalogs[0]
+    documentation = catalog.catalogs["documentation"]
 
     assert documentation.path == "docs/_output"
     assert documentation.sources == []
@@ -48,7 +48,7 @@ resources:
 """.strip()
     )
 
-    export = migrate_descriptor(source, direction="pull").resources[0]
+    export = migrate_descriptor(source, direction="pull").resources["export"]
 
     assert export.path == "data/export.csv"
     assert export.targets is None
@@ -79,8 +79,11 @@ catalogs:
     assert result.exit_code == 0, result.output
     assert source.read_bytes() == before
     migrated = load(output)
-    assert migrated.catalogs[0].path == "docs/_output"
-    assert migrated.catalogs[0].targets[0].service_type is ServiceType.SHAREPOINT
+    assert migrated.catalogs["documentation"].path == "docs/_output"
+    assert (
+        migrated.catalogs["documentation"].targets[0].service_type
+        is ServiceType.SHAREPOINT
+    )
 
 
 def test_migrate_cli_refuses_overwrite(tmp_path: Path) -> None:
@@ -103,5 +106,5 @@ def test_normal_load_still_rejects_legacy_fields(tmp_path: Path) -> None:
         "    accessURL: https://tenant.sharepoint.com/sites/dev/Docs\n"
     )
 
-    with pytest.raises(ValueError, match="Unsupported fields"):
+    with pytest.raises(ValueError, match="migrate-format"):
         load(source)

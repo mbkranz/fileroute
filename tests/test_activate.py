@@ -10,13 +10,13 @@ RUNNER = CliRunner()
 def test_activate_selects_descriptor(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     descriptor = tmp_path / "descriptor.yaml"
-    descriptor.write_text("resources: []\n", encoding="utf-8")
-
+    descriptor.write_text("resources: {}\n", encoding="utf-8")
     result = RUNNER.invoke(app, ["activate", "descriptor.yaml"], prog_name="fileroute")
-
     assert result.exit_code == 0
     assert "Activated descriptor:" in result.output
-    selected = (tmp_path / ".fileroute" / "descriptor").read_text(encoding="utf-8").strip()
+    selected = (
+        (tmp_path / ".fileroute" / "descriptor").read_text(encoding="utf-8").strip()
+    )
     assert selected == str(descriptor.resolve())
 
 

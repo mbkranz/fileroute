@@ -1,8 +1,8 @@
 "$schema": fileroute-catalog
 resources:
-  - name: placeholder
+  placeholder:
     path: background/.gitkeep
     description: Placeholder for background information
-  - name: exports
+  exports:
     path: exports/.gitkeep
     description: Placeholder for export files

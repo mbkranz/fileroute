@@ -1,8 +1,11 @@
 from __future__ import annotations
-from fileroute.models import ServiceType
+from fileroute.models import Location, ServiceType
+from fileroute.resolution import ResolvedLocation, relative_path
 
 import json
 import mimetypes
+import time
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import quote, unquote, urlparse
@@ -11,7 +14,8 @@ from urllib.parse import quote, unquote, urlparse
 import requests
 
 from fileroute.clients.base import ClientCapabilities, BaseClient
-from fileroute.exceptions import GraphApiDriveError, GraphApiSiteError
+from fileroute.clients._http import is_transient_status, retry_delay
+from fileroute.exceptions import GraphApiDriveError, GraphApiSiteError, GraphApiError
 from fileroute.item import ServiceItem
 
 if TYPE_CHECKING:
@@ -54,6 +58,8 @@ class SharepointClient(BaseClient):
         host_url: str = "norc.sharepoint.com",
         *,
         access_token: str | None = None,
+        session: requests.Session | None = None,
+        timeout: int = 120,
     ):
         self.host_url = host_url or "norc.sharepoint.com"
 
@@ -68,6 +74,8 @@ class SharepointClient(BaseClient):
             raise ValueError("SharepointClient requires either auth or access_token.")
 
         self.auth_header = {"Authorization": f"Bearer {self.access_token}"}
+        self.session = session or requests.Session()
+        self.timeout = timeout
 
     @classmethod
     def build_default(cls) -> "SharepointClient":
@@ -96,87 +104,76 @@ class SharepointClient(BaseClient):
         config = MicrosoftAuthConfig()
         config.to_auth()
 
+    def _request(
+        self, method: str, url: str, *,
+        error_cls: type[GraphApiError] = GraphApiDriveError,
+        authenticated: bool = True, retry: bool = False, **kwargs: Any,
+    ) -> requests.Response:
+        """Translate transport errors; replay only explicitly safe operations.
+
+        Presigned download URLs must not receive the Graph authorization header.
+        Folder-creation POSTs are never replayed on ambiguous failures.
+        """
+        headers = kwargs.pop("headers", {})
+        if authenticated:
+            headers = {**self.auth_header, **headers}
+        for attempt in range(4):
+            try:
+                response = self.session.request(
+                    method, url, headers=headers, timeout=self.timeout, **kwargs
+                )
+            except requests.RequestException as exc:
+                error = error_cls(f"Request error when calling {url}: {exc}")
+                if retry and attempt < 3:
+                    time.sleep(retry_delay(attempt + 1))
+                    continue
+                raise error from exc
+            if 200 <= response.status_code < 300:
+                return response
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = None
+            error = error_cls(
+                f"Microsoft Graph request failed: {url}: {response.status_code} "
+                f"{response.reason}: {response.text}",
+                status_code=response.status_code, response_text=response.text,
+                response_json=payload if isinstance(payload, dict) else None,
+                response_headers=dict(response.headers),
+            )
+            if retry and attempt < 3 and is_transient_status(error.status_code):
+                time.sleep(retry_delay(attempt + 1, headers=error.response_headers))
+                continue
+            raise error
+        raise AssertionError("Unreachable retry loop")
+
     def _request_json(
         self, endpoint: str, *, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        try:
-            response = requests.get(endpoint, headers=self.auth_header, params=params)
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as http_err:
-            raise GraphApiDriveError(
-                f"HTTP error while calling Microsoft Graph\n"
-                f"URL: {response.url}\n"
-                f"Status: {response.status_code} - {response.reason}\n"
-                f"Details: {response.text}",
-                status_code=response.status_code,
-                response_text=response.text,
-            ) from http_err
-        except requests.exceptions.RequestException as req_err:
-            raise GraphApiDriveError(
-                f"Request error when calling {endpoint}: {req_err}"
-            ) from req_err
-
-        response_json = response.json()
-
-        # Handle pagination for collection endpoints (e.g., drives, children)
-        if "@odata.nextLink" in response_json:
-            current_json = response_json
-            while "@odata.nextLink" in current_json:
-                next_link = current_json["@odata.nextLink"]
-                try:
-                    next_resp = requests.get(next_link, headers=self.auth_header)
-                    next_resp.raise_for_status()
-                except requests.exceptions.HTTPError as http_err:
-                    raise GraphApiDriveError(
-                        f"HTTP error while calling Microsoft Graph (pagination)\n"
-                        f"URL: {next_resp.url}\n"
-                        f"Status: {next_resp.status_code} - {next_resp.reason}\n"
-                        f"Details: {next_resp.text}",
-                        status_code=next_resp.status_code,
-                        response_text=next_resp.text,
-                    ) from http_err
-                except requests.exceptions.RequestException as req_err:
-                    raise GraphApiDriveError(
-                        f"Request error when calling {next_link}: {req_err}"
-                    ) from req_err
-
-                current_json = next_resp.json()
-                # Aggregate items if "value" array exists
-                if "value" in response_json and "value" in current_json:
-                    response_json["value"].extend(current_json.get("value", []))
-
-            # Remove the nextLink from final aggregated response
-            response_json.pop("@odata.nextLink", None)
-
+        response_json = self._request("GET", endpoint, params=params, retry=True).json()
+        current_json = response_json
+        while "@odata.nextLink" in current_json:
+            current_json = self._request(
+                "GET", current_json["@odata.nextLink"], retry=True
+            ).json()
+            if "value" in response_json and "value" in current_json:
+                response_json["value"].extend(current_json["value"])
+        response_json.pop("@odata.nextLink", None)
         return response_json
 
     def get_site_id(self, site_name):
         endpoint = (
             f"https://graph.microsoft.com/v1.0/sites/{self.host_url}:/sites/{site_name}"
         )
-        try:
-            response = requests.get(endpoint, headers=self.auth_header)
-            response.raise_for_status()
-            site_data = response.json()
-        except requests.exceptions.HTTPError as http_err:
-            raise GraphApiSiteError(
-                f"HTTP error fetching site ID for '{site_name}'\n"
-                f"URL: {endpoint}\n"
-                f"Status: {response.status_code} - {response.reason}\n"
-                f"Details: {response.text}"
-            ) from http_err
-        except requests.exceptions.RequestException as req_err:
-            raise GraphApiDriveError(
-                f"Request error when calling {endpoint}: {req_err}"
-            ) from req_err
-
+        site_data = self._request(
+            "GET", endpoint, error_cls=GraphApiSiteError, retry=True
+        ).json()
         if "id" not in site_data:
             raise GraphApiDriveError(
                 f"Site found but no 'id' returned.\n"
                 f"Site Name: {site_name}\n"
                 f"Response JSON: {json.dumps(site_data, indent=2)}"
             )
-
         return site_data["id"]
 
     def list_site_drives(self, site_id: str) -> list[dict[str, Any]]:
@@ -220,21 +217,7 @@ class SharepointClient(BaseClient):
 
         endpoint = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive"
 
-        try:
-            response = requests.get(endpoint, headers=self.auth_header)
-            response.raise_for_status()
-            drive_data = response.json()
-        except requests.exceptions.HTTPError as http_err:
-            raise GraphApiDriveError(
-                f"HTTP error while retrieving drive for site '{site_id}'\n"
-                f"URL: {endpoint}\n"
-                f"Status: {response.status_code} - {response.reason}\n"
-                f"Details: {response.text}"
-            ) from http_err
-        except requests.exceptions.RequestException as req_err:
-            raise GraphApiDriveError(
-                f"Request error calling {endpoint}: {req_err}"
-            ) from req_err
+        drive_data = self._request("GET", endpoint, retry=True).json()
 
         if "id" not in drive_data:
             raise GraphApiDriveError(
@@ -340,6 +323,86 @@ class SharepointClient(BaseClient):
         path = "" if resolved["item_path"] == "/" else resolved["item_path"].strip("/")
         return SharepointItem._from_api_response(metadata, self, path=path)
 
+    @classmethod
+    def recognizes_url(cls, url: str) -> bool:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        return parsed.scheme in {"http", "https"} and (
+            host == "sharepoint.com" or host.endswith(".sharepoint.com")
+        )
+
+    @classmethod
+    def parse_location(cls, location: Location) -> ResolvedLocation:
+        parsed = urlparse(location.path)
+        context: dict[str, str] = {}
+        remote_path: str | None = None
+        if cls.recognizes_url(location.path):
+            parts = [unquote(part) for part in parsed.path.split("/") if part]
+            if len(parts) < 2 or parts[0].lower() != "sites":
+                raise ValueError(f"Cannot parse SharePoint site from URL: {location.path}")
+            context["site"] = parts[1]
+            if len(parts) > 2:
+                context["drive"] = parts[2]
+                remote_path = relative_path("/".join(parts[3:]))
+        elif not parsed.scheme:
+            remote_path = relative_path(location.path)
+        elif parsed.scheme not in {"http", "https"}:
+            raise ValueError(f"SharePoint requires an HTTP URL or scoped path: {location.path}")
+        # Explicitly provided context is also accepted for a relative path.
+        context.update({key: value for key in ("site", "site_id", "drive", "drive_id")
+                        if (value := getattr(location, key)) is not None and key not in context})
+        if not parsed.scheme and not (context.get("site") or context.get("site_id")):
+            raise ValueError(f"SharePoint path requires site or siteId: {location.path}")
+        if not parsed.scheme and not (context.get("drive") or context.get("drive_id")):
+            raise ValueError(f"SharePoint path requires drive or driveId: {location.path}")
+        return ResolvedLocation(ServiceType.SHAREPOINT, remote_path, context=context)
+
+    def _location_ids(self, location: Location, *, need_site_id: bool = False) -> tuple[str | None, str]:
+        parsed = urlparse(location.path)
+        if self.recognizes_url(location.path):
+            self.host_url = parsed.hostname or self.host_url
+        site_id = location.site_id
+        if not site_id and location.site and (need_site_id or not location.drive_id):
+            site_id = self.get_site_id(location.site)
+        drive_id = location.drive_id
+        if not drive_id:
+            if not site_id:
+                raise ValueError(f"SharePoint location needs site/siteId: {location.path}")
+            if not location.drive:
+                if not self.recognizes_url(location.path):
+                    raise ValueError(f"SharePoint location needs drive/driveId: {location.path}")
+                drive_id = self.get_drive_id(site_id)
+            else:
+                drive_id = self.get_drive_id(site_id, drive_name=location.drive)
+        return site_id, drive_id
+
+    def get_from_id(self, item_id: str, *, drive_id: str, path: str = "") -> "SharepointItem":
+        metadata = self.get_item_metadata(drive_id, item_id=item_id)
+        return SharepointItem._from_api_response(metadata, self, path=path)
+
+    def get_from_location(self, location: Location) -> "SharepointItem":
+        if location.service_id:
+            _, drive_id = self._location_ids(location)
+            return self.get_from_id(location.service_id, drive_id=drive_id,
+                                    path=location.remote_path or "")
+        if location.drive_id or location.site or location.site_id:
+            _, drive_id = self._location_ids(location)
+            metadata = self.get_item_metadata(drive_id, item_path=location.remote_path or "/")
+            return SharepointItem._from_api_response(metadata, self,
+                                                     path=location.remote_path or "")
+        return self.get_from_weburl(location.path)
+
+    def resolve_location(self, location: Location) -> ResolvedLocation:
+        site_id, drive_id = self._location_ids(location, need_site_id=True)
+        item = self.get_from_location(location.model_copy(update={"drive_id": drive_id}))
+        context = {key: value for key in ("site", "drive")
+                   if (value := getattr(location, key)) is not None}
+        if site_id:
+            context["site_id"] = site_id
+        context["drive_id"] = drive_id
+        return ResolvedLocation(ServiceType.SHAREPOINT, location.remote_path,
+                                item.id, "Directory" if item.is_directory else "File", context)
+
     def get_from_path(
         self, *, site_name: str, item_path: str = "/", library_name: str | None = None
     ) -> "SharepointItem":
@@ -358,40 +421,20 @@ class SharepointClient(BaseClient):
         return SharepointItem._from_api_response(metadata, self, path=path)
 
     def _resolve_weburl(self, url: str) -> dict[str, str]:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
+        if not self.recognizes_url(url):
             raise ValueError(f"Invalid SharePoint URL: {url}")
-
-        self.host_url = parsed.hostname or self.host_url
-        path_parts = [
-            part for part in Path(unquote(parsed.path)).parts if part not in {"/", ""}
-        ]
-
-        site_name = None
-        for index, part in enumerate(path_parts):
-            if part.lower() == "sites" and index + 1 < len(path_parts):
-                site_name = path_parts[index + 1]
-                drive_name = (
-                    path_parts[index + 2]
-                    if index + 2 < len(path_parts)
-                    else "Shared Documents"
-                )
-                item_path_parts = path_parts[index + 3 :]
-                break
-        else:
-            raise ValueError(
-                f"Could not extract site and library from SharePoint URL: {url}"
-            )
-
-        site_id = self.get_site_id(site_name)
-        drive_id = self.get_drive_id(site_id, drive_name=drive_name)
-        item_path = "/" + "/".join(item_path_parts) if item_path_parts else "/"
+        location = Location(path=url)
+        self.parse_location(location).apply(location)
+        # Historical URL-only call sites use the default library for a site URL.
+        location.drive = location.drive or "Shared Documents"
+        site_id, drive_id = self._location_ids(location, need_site_id=True)
+        assert site_id is not None and location.site is not None
         return {
-            "site_name": site_name,
+            "site_name": location.site,
             "site_id": site_id,
-            "drive_name": drive_name,
+            "drive_name": location.drive,
             "drive_id": drive_id,
-            "item_path": item_path,
+            "item_path": f"/{location.remote_path}" if location.remote_path else "/",
         }
 
     def download_content(self, drive_id=None, item_id=None, download_url=None):
@@ -403,45 +446,33 @@ class SharepointClient(BaseClient):
         """
 
         if download_url:
-            url = download_url
-            response = requests.get(url)
+            response = self._request("GET", download_url, authenticated=False, retry=True)
+        elif drive_id and item_id:
+            url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
+            response = self._request("GET", url, retry=True)
         else:
-            if drive_id and item_id:
-                url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
-                response = requests.get(url, headers=self.auth_header)
-            else:
-                raise GraphApiDriveError(
-                    "Need drive_id and item_id if not using download_url"
-                )
-
-        if response.status_code != 200:
-            raise GraphApiDriveError(
-                f"Failed to download file. Status code: {response.status_code} - {response.reason}",
-                status_code=response.status_code,
-                response_text=response.text,
-            )
+            raise GraphApiDriveError("Need drive_id and item_id if not using download_url")
         return response.content
 
     def _put_file(self, url: str, local_file_path: str | Path) -> dict[str, Any]:
         local_path = Path(local_file_path)
         content_type = mimetypes.guess_type(local_path)[0] or "application/octet-stream"
-        headers = {**self.auth_header, "Content-Type": content_type}
-        try:
-            with local_path.open("rb") as file_stream:
-                response = requests.put(url, headers=headers, data=file_stream)
-        except requests.exceptions.RequestException as exc:
-            raise GraphApiDriveError(
-                f"Request error while uploading {local_path}: {exc}"
-            ) from exc
-
-        if response.status_code not in {200, 201}:
-            raise GraphApiDriveError(
-                f"Failed to upload file. Status code: "
-                f"{response.status_code} - {response.reason}",
-                status_code=response.status_code,
-                response_text=response.text,
-            )
-        return response.json()
+        # Reopen the file for each attempt so a failed upload cannot replay an
+        # exhausted stream. PUT content at a fixed path/item is replay-safe.
+        for attempt in range(4):
+            try:
+                with local_path.open("rb") as stream:
+                    return self._request(
+                        "PUT", url, headers={"Content-Type": content_type},
+                        data=stream,
+                    ).json()
+            except GraphApiDriveError as exc:
+                if attempt == 3 or not (
+                    exc.status_code is None or is_transient_status(exc.status_code)
+                ):
+                    raise
+                time.sleep(retry_delay(attempt + 1, headers=exc.response_headers))
+        raise AssertionError("Unreachable retry loop")
 
     def create_file(
         self, *, site_name: str, folder_path: str, local_file_path: str | Path
@@ -534,11 +565,35 @@ class SharepointClient(BaseClient):
             )
 
         destination = self._resolve_weburl(folder_url)
-        drive_id = destination["drive_id"]
-        folder_path = destination["item_path"].strip("/")
-        folder = self.get_item_metadata(drive_id, item_path=folder_path or "/")
+        return self._upload_to_drive_folder(
+            destination["drive_id"], destination["item_path"].strip("/"),
+            relative, local,
+        )
+
+    def upload_to_location(
+        self, location: Location, relative_path: Path, local_file_path: str | Path
+    ) -> "SharepointItem":
+        """Upload beneath a verified folder ID or a scoped provider path."""
+        _, drive_id = self._location_ids(location)
+        return self._upload_to_drive_folder(
+            drive_id, location.remote_path or "", relative_path, local_file_path,
+            folder_id=location.service_id,
+        )
+
+    def _upload_to_drive_folder(
+        self, drive_id: str, folder_path: str, relative: Path,
+        local: str | Path, *, folder_id: str | None = None,
+    ) -> "SharepointItem":
+        relative = Path(relative)
+        local = Path(local)
+        if relative.is_absolute() or ".." in relative.parts or not relative.name:
+            raise ValueError(f"Unsafe relative upload path: {relative}")
+        if local.stat().st_size > 250_000_000:
+            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}")
+        folder = (self.get_item_metadata(drive_id, item_id=folder_id)
+                  if folder_id else self.get_item_metadata(drive_id, item_path=folder_path or "/"))
         if "folder" not in folder:
-            raise ValueError(f"Publication destination is not a folder: {folder_url}")
+            raise ValueError(f"Publication destination is not a folder: {folder_path}")
 
         parent_id = folder["id"]
         for part in relative.parts[:-1]:
@@ -549,32 +604,22 @@ class SharepointClient(BaseClient):
                 if exc.status_code != 404:
                     raise
                 try:
-                    response = requests.post(
+                    response = self._request(
+                        "POST",
                         f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{parent_id}/children",
-                        headers={
-                            **self.auth_header,
-                            "Content-Type": "application/json",
-                        },
+                        headers={"Content-Type": "application/json"},
                         json={
                             "name": part,
                             "folder": {},
                             "@microsoft.graph.conflictBehavior": "fail",
                         },
                     )
-                except requests.exceptions.RequestException as error:
-                    raise GraphApiDriveError(
-                        f"Failed to create folder {folder_path}: {error}"
-                    ) from error
-                if response.status_code == 409:
+                except GraphApiDriveError as error:
+                    if error.status_code != HTTPStatus.CONFLICT:
+                        raise
                     child = self.get_item_metadata(drive_id, item_path=folder_path)
-                elif response.status_code == 201:
-                    child = response.json()
                 else:
-                    raise GraphApiDriveError(
-                        f"Failed to create folder {folder_path}: {response.status_code} {response.text}",
-                        status_code=response.status_code,
-                        response_text=response.text,
-                    )
+                    child = response.json()
             if "folder" not in child:
                 raise ValueError(f"Upload path is occupied by a file: {folder_path}")
             parent_id = child["id"]

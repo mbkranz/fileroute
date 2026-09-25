@@ -23,6 +23,7 @@ Auto-generated from source signatures and docstrings.
   - `remote: str`
   - `service_type: ServiceType`
   - `directory: bool`
+  - `location: Location | None`
 
 #### `PushEntry`
 - Fields:
@@ -31,6 +32,7 @@ Auto-generated from source signatures and docstrings.
   - `relative: Path`
   - `service_type: ServiceType`
   - `direct_file: bool`
+  - `location: Location | None`
 - Methods:
   - `def destination(self) -> str`
 
@@ -40,27 +42,48 @@ Auto-generated from source signatures and docstrings.
 ### Functions
 
 - `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
-  - Load YAML/JSON; optionally expand $ref relative to each containing file.
+  - Load keyed YAML/JSON; optionally expand links with per-entry provenance.
 - `def save(catalog: Catalog, path: Path | str) -> None`
   - Atomically save canonical metadata, including authored defaults/extensions.
 - `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
-  - Walk typed metadata only; no file I/O. Reject duplicate named paths.
-- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
-  - Find one entity by name/dot-path, optionally restricting its model kind.
-- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None) -> Catalog`
-  - Return resolved metadata without mutating input, URLs, files, or references.
+  - Walk keyed metadata without I/O, retaining origins from load().
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogLink | Location`
+  - Find one registered name, JSON Pointer, or exact JSONPath (optional $).
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
+  - Return resolved metadata without mutating the input or authored paths.
+- `def select(catalog: Catalog, selector: str) -> Selection`
+  - Select a node with origin and inherited target context; never perform I/O.
+- `def resolve_selection(path: Path | str, selector: str, *, online: bool = False, write: bool = False) -> Selection`
+  - Resolve one selected scope; optional writes affect its origin file only.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
 
 ### Classes
 
 #### `EntityPath`
+- Registered identity and editable physical origin of an expanded entry.
 - Fields:
   - `name_path: str`
-  - `model: Catalog | Resource | CatalogReference`
+  - `model: Catalog | Resource | CatalogLink`
   - `json_pointer: str`
+  - `origin_descriptor: Path | None`
+  - `origin_pointer: str`
+  - `reference_chain: tuple[Path, ...]`
 - Methods:
+  - `def name(self) -> str | None`
+  - `def json_path(self) -> str`
   - `def entity_type(self) -> str`
+
+#### `Selection`
+- One selected entity/location and its physical source address.
+- Fields:
+  - `model: Catalog | Resource | CatalogLink | Location`
+  - `entry: EntityPath`
+  - `origin_pointer: str`
+  - `effective_targets: tuple[Location, ...]`
+  - `requested_selector: str`
+- Methods:
+  - `def as_dict(self) -> dict`
 
 
 ## `fileroute.diagram`
@@ -124,6 +147,8 @@ Auto-generated from source signatures and docstrings.
 
 ### Functions
 
+- `def validate_name(name: str) -> str`
+  - Registered names are stable map keys; titles hold display text.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
 
@@ -132,13 +157,17 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceType`
 
 #### `Catalog`
-- Nested groups of resources and catalogs.
+- Keyed resources and catalogs; paths retain transfer-root semantics.
 - Fields:
   - `profile: str`
-  - `resources: list[Resource]`
-  - `catalogs: list[Catalog | CatalogReference]`
+  - `resources: dict[str, Resource]`
+  - `catalogs: dict[str, Catalog | CatalogLink]`
+  - `_origins: dict[str, tuple[Path, str, tuple[Path, ...]]]`
+  - `_expanded: bool`
 - Methods:
-  - `def identify_references(cls, children: Any) -> Any`
+  - `def require_mapping(cls, children: Any) -> Any`
+  - `def identify_links(cls, children: Any) -> Any`
+  - `def unique_names(self) -> Catalog`
 
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
@@ -153,12 +182,21 @@ Auto-generated from source signatures and docstrings.
   - `service_type: ServiceTypeField | None`
   - `service_id: str | None`
   - `entity_type: EntityTypeValue | None`
+  - `remote_path: str | None`
+  - `site: str | None`
+  - `site_id: str | None`
+  - `drive: str | None`
+  - `drive_id: str | None`
+  - `bucket: str | None`
+- Methods:
+  - `def reject_links(cls, value: Any) -> Any`
 
-#### `CatalogReference`
-- Reference to another local descriptor; descriptor.load owns resolution.
+#### `CatalogLink`
+- Link to a local catalog document, relative to its containing file.
 - Fields:
-  - `name: str | None`
-  - `path: str`
+  - `descriptor: str`
+- Methods:
+  - `def validate_descriptor(cls, value: str) -> str`
 
 
 ## `fileroute.item`
@@ -208,6 +246,11 @@ Auto-generated from source signatures and docstrings.
   - `def build_default(cls) -> 'S3Client'`
   - `def check_auth(cls) -> None`
   - `def get_from_weburl(self, url: str) -> 'S3Item'`
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_id(self, item_id: str) -> 'S3Item'`
+  - `def get_from_location(self, location: Location) -> 'S3Item'`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_path(self, *, bucket: str, key: str = '') -> 'S3Item'`
   - `def resolve_descendant(self, *, bucket: str, parent_key: str, name: str) -> 'S3Item'`
   - `def list_children(self, *, bucket: str, prefix: str) -> tuple[list[dict[str, Any]], list[str]]`
@@ -256,11 +299,23 @@ Auto-generated from source signatures and docstrings.
   - `def infer_export_mime_type(self, file_id: str) -> Optional[str]`
   - `def download_file(self, file_id: str, output_path: Optional[str] = None, mime_type: Optional[str] = None, acknowledge_abuse: bool = False, byte_range: Optional[str] = None, supports_all_drives: bool = True, **kwargs) -> Union[bytes, str]`
   - `def export_file(self, file_id: str, mime_type: Optional[str] = None, output_path: Optional[str] = None, supports_all_drives: bool = True, **kwargs) -> Union[bytes, str]`
-  - `def create_file(self, name: str, parent_id: str, content: bytes, mime_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, supports_all_drives: bool = True, **kwargs) -> GDriveItem`
-  - `def update_file(self, id: str, params: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None, file_in_bytes_or_path: Optional[Union[str, bytes]] = None, mime_type: Optional[str] = None, **kwargs) -> GDriveItem`
+  - `def create_file(self, name: str, parent_id: str, content: bytes | Path, mime_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, supports_all_drives: bool = True, **kwargs) -> GDriveItem`
+    - Create a binary file in a folder, including an empty file.
+  - `def update_file(self, id: str, params: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None, file_in_bytes_or_path: str | Path | bytes | None = None, mime_type: Optional[str] = None, **kwargs) -> GDriveItem`
+    - Replace content by file ID, or patch metadata/move without content.
   - `def create_folder(self, parent_folder_id: str, name: str) -> GDriveItem`
+  - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> GDriveItem`
+    - Create or replace a binary file below an existing Drive folder URL.
+  - `def upload_to_location(self, location: Location, relative_path: Path, local_file_path: str | Path) -> GDriveItem`
+    - Publish beneath a folder ID, URL, or scoped Drive path.
+  - `def upload_to_file(self, location: Location, local_file_path: str | Path) -> GDriveItem`
+    - Replace the content of an exact file target by its stable Drive ID.
   - `def get_from_weburl(self, url: str) -> GDriveItem`
     - Resolve a Google Drive file or folder URL.
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_location(self, location: Location) -> GDriveItem`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_id(self, file_id: str) -> GDriveItem`
     - Resolve a Google Drive item ID.
   - `def get_from_path(self, drive_name: str, path: str = '') -> GDriveItem`
@@ -406,6 +461,11 @@ Auto-generated from source signatures and docstrings.
   - `def scan_descendants(self, *, drive_id: str) -> list[dict[str, Any]]`
   - `def resolve_descendant(self, *, drive_id: str, parent_path: str, name: str) -> dict[str, Any]`
   - `def get_from_weburl(self, url: str) -> 'SharepointItem'`
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: Location) -> ResolvedLocation`
+  - `def get_from_id(self, item_id: str, *, drive_id: str, path: str = '') -> 'SharepointItem'`
+  - `def get_from_location(self, location: Location) -> 'SharepointItem'`
+  - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_path(self, *, site_name: str, item_path: str = '/', library_name: str | None = None) -> 'SharepointItem'`
   - `def download_content(self, drive_id = None, item_id = None, download_url = None)`
     - takes in the components needed to download content --
@@ -417,6 +477,8 @@ Auto-generated from source signatures and docstrings.
     - Update a file, optionally creating it when it does not exist.
   - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
     - Create or replace a file below an existing SharePoint folder URL.
+  - `def upload_to_location(self, location: Location, relative_path: Path, local_file_path: str | Path) -> 'SharepointItem'`
+    - Upload beneath a verified folder ID or a scoped provider path.
 
 #### `SharepointItem`
 - A SharePoint file or folder item backed by Microsoft Graph.

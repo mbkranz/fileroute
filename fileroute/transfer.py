@@ -6,13 +6,14 @@ remote permissions and directory contents are checked during execution.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 from fileroute.models import Catalog, Resource, Location, ServiceType
 from fileroute.clients import get_provider
 from fileroute.descriptor import load, walk, resolve, local_path
+from fileroute.resolution import lookup_item
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class PullEntry:
     remote: str
     service_type: ServiceType
     directory: bool = False
+    location: Location | None = field(default=None, compare=False, repr=False)
 
 
 def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]:
@@ -41,11 +43,11 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
             continue
         if len(entity.sources) != 1:
             raise ValueError(
-                f"{entity.name}: pull requires exactly one source; build derived artifacts separately"
+                f"{row.name_path or 'root'}: pull requires exactly one source; build derived artifacts separately"
             )
         if entity.path is None:
             raise ValueError(
-                f"{entity.name}: set path for the local artifact before pulling"
+                f"{row.name_path or 'root'}: set path for the local artifact before pulling"
             )
         source = entity.sources[0]
         service = source.service_type
@@ -71,7 +73,7 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
             raise ValueError(
                 f"Pull destination has the wrong file/directory type: {local}"
             )
-        entries.append(PullEntry(local, source.path, service, directory))
+        entries.append(PullEntry(local, source.path, service, directory, source))
     if not entries:
         raise ValueError("Pull needs at least one artifact with a remote source")
     return tuple(entries)
@@ -87,7 +89,12 @@ def pull(entries: tuple[PullEntry, ...]) -> None:
             clients[entry.service_type] = get_provider(
                 entry.service_type
             ).build_default()
-        item = clients[entry.service_type].get_from_weburl(entry.remote)
+        client = clients[entry.service_type]
+        item = (
+            lookup_item(client, entry.location)
+            if entry.location is not None and hasattr(client, "get_from_location")
+            else client.get_from_weburl(entry.remote)
+        )
         if item.is_directory != entry.directory:
             raise ValueError(
                 f"Source has the wrong file/directory type: {entry.remote}"
@@ -122,9 +129,13 @@ class PushEntry:
     relative: Path
     service_type: ServiceType
     direct_file: bool = False
+    location: Location | None = field(default=None, compare=False, repr=False)
 
     @property
     def destination(self) -> str:
+        if self.service_type is ServiceType.GOOGLE_DRIVE and not self.direct_file:
+            # A Drive folder URL is an ID, not a hierarchical URL prefix.
+            return f"{self.remote} :: {self.relative.as_posix()}"
         return (
             self.remote
             if self.direct_file
@@ -140,7 +151,8 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
     or root when absent. Explicit child targets replace inherited ones; [] opts
     out. A catalog with children publishes only those children. A leaf catalog
     publishes its directory tree. Explicit resource targets are file URLs unless
-    entityType is Directory/Container.
+    entityType is Directory/Container. Google Drive folder URLs also identify
+    directory targets without an entityType hint.
     """
     root = (root or Path.cwd()).resolve()
     document = resolve(load(descriptor, resolve_references=True), direction="push")
@@ -153,7 +165,9 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
         if not provider.capabilities.supports_upload:
             raise ValueError(f"Upload is not implemented for {service}")
         url = urlparse(target.path)
-        if url.query or url.fragment:
+        if (url.query or url.fragment) and not (
+            service is ServiceType.GOOGLE_DRIVE and provider.recognizes_url(target.path)
+        ):
             raise ValueError(
                 "Upload needs a direct folder/file URL without a query or fragment"
             )
@@ -170,21 +184,45 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
             raise ValueError(
                 f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}"
             )
+        if (
+            service is ServiceType.GOOGLE_DRIVE
+            and target.entity_type == "File"
+            and "/folders/" in url.path
+        ):
+            raise ValueError(
+                f"Google Drive folder URL cannot be a file target: {target.path}"
+            )
         direct = relative is None
         if direct:
-            name = unquote(url.path.rsplit("/", 1)[-1])
-            if not name or name in {".", ".."} or "/" in name or "\\" in name:
-                raise ValueError(f"Invalid remote file path: {target.path}")
-            relative = Path(name)
+            if service is ServiceType.GOOGLE_DRIVE:
+                if not target.service_id:
+                    raise ValueError(
+                        f"Google Drive file target {target.path!r} needs an ID; "
+                        "use a file URL or a folder target to create a file"
+                    )
+                # File URLs end in /view or /edit, neither is a filename.
+                relative = Path(local.name)
+            else:
+                name = unquote(url.path.rsplit("/", 1)[-1])
+                if not name or name in {".", ".."} or "/" in name or "\\" in name:
+                    raise ValueError(f"Invalid remote file path: {target.path}")
+                relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Unsafe relative upload path: {relative}")
-        entry = PushEntry(local, target.path, relative, service, direct)
+        entry = PushEntry(local, target.path, relative, service, direct, target)
         # Decoding catches authored aliases for the same remote file.
-        key = (
-            unquote(entry.destination).casefold()
-            if service is ServiceType.SHAREPOINT
-            else entry.destination
-        )
+        if service is ServiceType.GOOGLE_DRIVE:
+            key = (
+                f"file:{target.service_id}"
+                if direct
+                else f"folder:{target.service_id or target.path}:{entry.relative.as_posix()}"
+            )
+        else:
+            key = (
+                unquote(entry.destination).casefold()
+                if service is ServiceType.SHAREPOINT
+                else entry.destination
+            )
         if key in destinations:
             if destinations[key] != local:
                 raise ValueError(f"Multiple local files target {entry.destination}")
@@ -207,7 +245,7 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
                 raise ValueError("Catalog targets must be folders, not files")
             if explicit:
                 anchor = local or root
-            children = [*entity.resources, *entity.catalogs]
+            children = [*entity.resources.values(), *entity.catalogs.values()]
             if children:
                 for child in children:
                     visit(child, targets or [], anchor)
@@ -231,6 +269,10 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
                     (
                         Path(local.name)
                         if target.entity_type in {"Directory", "Container"}
+                        or (
+                            target.service_type is ServiceType.GOOGLE_DRIVE
+                            and "/folders/" in urlparse(target.path).path
+                        )
                         else None
                     )
                     if explicit
@@ -255,8 +297,23 @@ def push(files: tuple[PushEntry, ...]) -> None:
     for file in files:
         if file.service_type not in clients:
             clients[file.service_type] = get_provider(file.service_type).build_default()
+        client = clients[file.service_type]
+        if file.service_type is ServiceType.GOOGLE_DRIVE and file.direct_file:
+            if file.location is None:
+                raise ValueError("Google Drive file upload requires a resolved target")
+            client.upload_to_file(file.location, file.local)
+            continue
         folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
-        clients[file.service_type].upload_to_folder(folder, file.relative, file.local)
+        if file.location is not None and hasattr(client, "upload_to_location"):
+            location = file.location.model_copy(deep=True)
+            if file.direct_file:
+                location.path = folder
+                location.service_id = None  # Exact file ID is not a folder ID.
+                if location.remote_path is not None:
+                    location.remote_path = location.remote_path.rpartition("/")[0]
+            client.upload_to_location(location, file.relative, file.local)
+        else:
+            client.upload_to_folder(folder, file.relative, file.local)
 
 
 __all__ = ["PullEntry", "PushEntry", "plan_pull", "plan_push", "pull", "push"]
