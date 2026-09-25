@@ -246,7 +246,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             None, "--descriptor", help=DESCRIPTOR_DEFAULT_HELP
         ),
         name: Optional[str] = typer.Option(
-            None, "--name", "--select", help="Entity or location by name, dot-path, JSON Pointer, or exact JSONPath. Defaults to the descriptor root."
+            None, "--name", "--select", help="Entity or location by name, dot-path, JSON Pointer, or exact JSONPath. Defaults to the descriptor root. Use 'fileroute list' to see exact JSONPaths."
         ),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="Show what would be updated without writing files."
@@ -376,7 +376,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             OutputFormat.TEXT, "--format", help="Output format."
         ),
         select: Optional[str] = typer.Option(
-            None, "--select", help="Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath."
+            None, "--select", help="Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath. Use 'fileroute list' to see exact JSONPaths."
         ),
     ) -> None:
         """List local descriptor entities, paths, and source metadata."""
@@ -500,7 +500,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             None, "--descriptor", help=DESCRIPTOR_DEFAULT_HELP
         ),
         parent: Optional[str] = typer.Option(
-            None, "--parent", help="Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath; defaults to root."
+            None, "--parent", help="Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath; defaults to root. Use 'fileroute list' to see exact JSONPaths."
         ),
     ) -> None:
         """Add a standards-aligned resource or catalog entry to a descriptor."""

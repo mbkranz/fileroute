@@ -210,7 +210,8 @@ def find(
     """Find by name, dot-path, JSON Pointer, or exact JSONPath.
 
     JSONPath here is an address (``$.catalogs[0].resources[1].sources[0]``),
-    not a query language: wildcards and filters are unsupported.
+    not a query language: wildcards and filters are unsupported. Run
+    ``fileroute list`` to see exact JSONPaths for entries and locations.
     """
     if name == "$":
         if kind is None or isinstance(catalog, kind):
