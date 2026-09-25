@@ -78,8 +78,9 @@ fileroute add appendix --descriptor config/fileroute.yaml \
   --parent '$.catalogs[0]' --path docs/appendix.docx
 ```
 
-`list --format json` includes exact `jsonPath` and `jsonPointer` addresses
-for entries and locations. JSONPath accepts fixed `resources`, `catalogs`,
+Run `fileroute list` to see exact JSONPaths for entries and locations;
+`--format json` includes them as `jsonPath` alongside `jsonPointer` addresses.
+JSONPath accepts fixed `resources`, `catalogs`,
 `sources`, or `targets` steps with numeric indices; sources and targets can
 only be the final step. Quoted keys such as `$['catalogs'][0]` also work.
 Wildcards, filters, and arbitrary metadata fields are not CLI selectors.
