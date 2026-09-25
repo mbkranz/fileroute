@@ -137,7 +137,7 @@ class _Artifact(_Metadata):
             } & value.keys()
             if legacy:
                 raise ValueError(
-                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate-format for old descriptors"
+                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate for old descriptors"
                 )
         return value
 
@@ -198,7 +198,7 @@ class Catalog(_Artifact):
     def require_mapping(cls, children: Any) -> Any:
         if not isinstance(children, dict):
             raise ValueError(
-                "resources/catalogs must be keyed mappings; run fileroute migrate-format INPUT OUTPUT_DIR"
+                "resources/catalogs must be keyed mappings; run fileroute migrate INPUT OUTPUT_DIR"
             )
         for key in children:
             validate_name(key)

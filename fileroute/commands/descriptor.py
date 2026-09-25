@@ -180,55 +180,26 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
-    @app.command("migrate-format")
-    def migrate_format_command(
-        descriptor: Path = typer.Argument(..., help="Legacy list-shaped descriptor."),
-        output: Path = typer.Argument(
-            ..., help="New directory for the converted file graph."
-        ),
-        dry_run: bool = typer.Option(
-            False, "--dry-run", help="Validate and report all outputs without writing."
-        ),
-    ) -> None:
-        """Convert named lists and $ref links to keyed descriptors atomically."""
-        from fileroute.migration import migrate_format
-
-        try:
-            echo_json(migrate_format(descriptor, output, dry_run=dry_run))
-        except (OSError, ValueError) as exc:
-            raise typer.BadParameter(str(exc)) from exc
-
     @app.command(
         "migrate",
-        help="Convert a legacy descriptor to path/sources/targets in a new file.",
-        epilog=examples_epilog(
-            "fileroute migrate old.yaml new.yaml --direction pull",
-            "fileroute migrate old.yaml new.yaml --direction push",
-        ),
+        help="Convert named-list descriptors and $ref links to the keyed format.",
     )
     def migrate_command(
         descriptor: Path = typer.Argument(..., help="Legacy descriptor to read."),
-        output: Path = typer.Argument(..., help="New canonical descriptor to write."),
-        direction: str = typer.Option(
-            "pull",
-            "--direction",
-            help="Interpret legacy remote URLs as pull sources or push targets.",
+        output: Path = typer.Argument(
+            ..., help="New directory for the converted descriptor graph."
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Validate and report outputs without writing."
         ),
     ) -> None:
-        """Convert a legacy descriptor without overwriting its input."""
-        if direction not in {"pull", "push"}:
-            raise typer.BadParameter("--direction must be pull or push")
-        if output.exists() or output.resolve() == descriptor.resolve():
-            raise typer.BadParameter(
-                "Choose a new output file; migrate does not overwrite files"
-            )
-        try:
-            from fileroute.migration import migrate_descriptor
+        """Convert the complete linked descriptor graph without overwriting inputs."""
+        from fileroute.migration import migrate
 
-            save(migrate_descriptor(descriptor, direction=direction), output)
+        try:
+            echo_json(migrate(descriptor, output, dry_run=dry_run))
         except (OSError, ValueError) as exc:
             raise typer.BadParameter(str(exc)) from exc
-        typer.echo(f"Migrated {descriptor} -> {output}")
 
     @clone_app.command(
         "descriptor",
