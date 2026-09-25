@@ -5,8 +5,7 @@ Run the checks from a repository checkout:
 ```bash
 uv tool install poethepoet==0.48.0
 poe check
-poe docs-check
-poe docs-build
+poe docs-validate
 ```
 
 `poe docs-update` refreshes the generated CLI/API reference and the YAML
@@ -15,6 +14,12 @@ changes with their source changes; `poe docs-check` detects stale output.
 `poe docs-build` runs a strict MkDocs build; `poe docs-serve` previews it.
 One-off task usage is `uvx --from poethepoet==0.48.0 poe <task>`.
 Provider tests use mocks and do not establish live tenant access.
+
+Documentation tasks use `uv.lock` with `--frozen`. Use `poe docs` to
+regenerate and build locally, or `poe docs-validate` to check generated files
+and build strictly without regenerating sources. Both PR and release CI call
+`poe release-check`, which includes this validation; Pages deployment calls
+`poe docs-validate` separately. CI never regenerates or auto-commits docs.
 
 Field names draw on [Data Resource](https://datapackage.org/standard/data-resource/),
 [DCAT](https://www.w3.org/TR/vocab-dcat-3/), and
@@ -31,7 +36,7 @@ the existing main-branch release workflow promotes it to `0.2.0`.
 
 ## Package releases
 
-`poe release-check` validates code and generated docs; `poe build` creates
+`poe release-check` validates code, generated docs, and the strict site build; `poe build` creates
 a local wheel and source distribution. Normal releases should not edit the
 version manually. The `publish-to-pypi.yaml` workflow handles three jobs:
 prepare, publish, and (on `main`) GitHub Release.
