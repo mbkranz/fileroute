@@ -74,6 +74,36 @@ GOOGLE_SCOPES=https://www.googleapis.com/auth/drive.readonly
 ```
 
 You can also use `GOOGLE_APPLICATION_CREDENTIALS` instead of `GOOGLE_SERVICE_ACCOUNT_CREDENTIALS`.
+The read-only scope in this example is for `pull` and online resolution. To
+run `push`, use a credential with permission to write to the destination and
+configure `GOOGLE_SCOPES=https://www.googleapis.com/auth/drive`. The narrower
+`drive.file` scope only covers files the app created or the user opened with it;
+it does not grant access to every existing Drive file named in a descriptor.
+
+## Verify a publication target
+
+Point a resource at an existing folder to create or replace a file within it:
+
+```yaml
+resources:
+  - path: artifacts/report.csv
+    targets:
+      - path: https://drive.google.com/drive/folders/FOLDER_ID
+```
+
+Replace `FOLDER_ID` with a real folder ID. Once the local file exists, preview
+the local plan and optionally verify access to the folder before publishing:
+
+```bash
+uv run fileroute push config/fileroute.yaml --dry-run
+uv run fileroute resolve config/fileroute.yaml --online
+uv run fileroute push config/fileroute.yaml
+```
+
+The dry run does not authenticate or determine whether it will create or update
+the remote file. Online resolution reads the folder metadata without writing.
+An exact file URL targets an **existing** file by ID and preserves its remote
+name; see [Google Drive publication](transfers.md#google-drive-publication).
 
 ## What can and cannot be fully automated
 

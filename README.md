@@ -7,9 +7,18 @@ credentials, visualize the relationships, pull remote inputs, and publish to
 supported targets through the CLI or Python API. Python 3.11+ is required.
 
 **Current transfer support:** SharePoint, Google Drive, and S3 can be pulled;
-only SharePoint can be pushed. Google Drive and S3 targets can be described and
-diagrammed, but even `push --dry-run` rejects them until upload support exists.
+SharePoint and Google Drive can be pushed. S3 targets can be described and
+diagrammed, but `push --dry-run` rejects them until upload support exists.
 Fileroute does not transform files or transfer directly between cloud providers.
+
+## Descriptor format change
+
+Catalogs and resources are now keyed maps: `resources: {report: {path: report.csv}}`.
+The map key is the registered name. Cross-file catalogs use
+`catalogs: {archive: {descriptor: catalogs/archive.yaml}}`.
+Run `fileroute migrate OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
+converting existing named lists and `$ref` links. See the
+[migration guide](docs/descriptors.md#migrate-the-old-format).
 
 ## Get started
 
@@ -42,7 +51,7 @@ publishes that artifact to two SharePoint destinations:
 
 ```yaml
 resources:
-  - name: monthly-report
+  monthly-report:
     path: artifacts/monthly-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv
@@ -69,6 +78,22 @@ require credentials. Configure credentials using
 [.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
 provider setup.
 
+To publish a new file to Google Drive, target an existing folder; Fileroute
+creates or replaces the file below it. An exact file URL instead replaces that
+file by ID and preserves its existing name:
+
+```yaml
+resources:
+  report:
+    path: artifacts/report.csv
+    targets:
+      - path: https://drive.google.com/drive/folders/FOLDER_ID
+      - path: https://drive.google.com/file/d/EXISTING_FILE_ID/view
+```
+
+The two targets receive separate copies. See [Transfers](docs/transfers.md)
+for nested folders, shared drives, and ambiguous names.
+
 ## Documentation
 
 - [Descriptor model, paths, references, and resolution](docs/descriptors.md)
@@ -85,3 +110,14 @@ For nested edits, `fileroute list` shows exact JSONPath selectors; the leading
 Diagrams show intent, not a completed transfer. Use `fileroute --help` for
 commands and options. To develop this repository, run `uv sync` and see the
 [contributor guide](docs/contributing.md).
+
+### HTTP retries and upload recovery
+
+Fileroute retries transient Microsoft Graph reads and content PUTs up to three times,
+respecting `Retry-After` when supplied. A content PUT reopens the local file on
+each attempt. Folder-creation POSTs are not automatically replayed after an
+uncertain result. Google Drive resumable uploads query the upload session after
+a transient or rate-limit error and continue from the byte offset confirmed by
+the server. Network and HTTP failures retain their provider-specific exception
+types and expose `status_code`, `response_text`, `response_json`, and
+`response_headers` for callers that need details.

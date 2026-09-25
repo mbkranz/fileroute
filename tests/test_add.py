@@ -13,7 +13,7 @@ from fileroute.descriptor import resolve
 def _write_catalog_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
-            {"$schema": "fileroute-catalog", "resources": [], "catalogs": []},
+            {"$schema": "fileroute-catalog", "resources": {}, "catalogs": {}},
             sort_keys=False,
         ),
         encoding="utf-8",
@@ -41,7 +41,7 @@ def test_add_resource_writes_artifact_path_and_source(tmp_path: Path) -> None:
     assert resource["path"] == "background/exports/source-export.csv"
     assert "_cache" not in resource
     assert resource["sources"][0]["path"] == "s3://my-bucket/path/to/source-export.csv"
-    assert document["resources"][0]["sources"][0]["serviceType"] == "S3"
+    assert document["resources"]["source-export"]["sources"][0]["serviceType"] == "S3"
 
 
 def test_add_resource_to_descriptor_rejects_duplicate_names(tmp_path: Path) -> None:
@@ -84,7 +84,7 @@ def test_add_catalog_with_target(tmp_path: Path) -> None:
     )
     assert catalog["path"] == "docs/_output"
     assert catalog["targets"][0]["path"].endswith("/Docs")
-    assert yaml.safe_load(descriptor.read_text())["catalogs"][0] == catalog
+    assert yaml.safe_load(descriptor.read_text())["catalogs"]["docs"] == catalog
 
 
 def test_add_resource_to_descriptor_requires_existing_descriptor_by_default(
@@ -114,8 +114,9 @@ def test_add_resource_to_descriptor_allows_create_if_missing(tmp_path: Path) -> 
         create_if_missing=True,
     )
 
+    assert resource["path"] == "background/exports/source-export.csv"
     assert descriptor.exists()
-    assert resource["name"] == "source-export"
+    assert "source-export" in yaml.safe_load(descriptor.read_text())["resources"]
 
 
 @pytest.mark.parametrize(

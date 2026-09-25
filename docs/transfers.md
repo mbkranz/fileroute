@@ -15,12 +15,12 @@ See the exact [`pull`](cli.md#fileroute-pull) and
 | Direction | SharePoint | Google Drive | S3 |
 | --- | --- | --- | --- |
 | Remote source for `pull` | Supported | Supported | Supported |
-| Publication target for `push` | Supported | Not implemented | Not implemented |
+| Publication target for `push` | Supported | Supported | Not implemented |
 
 Descriptors and diagrams may include unsupported publication targets. However,
 `push --dry-run` also fails planning if **any** target is unsupported; it
-does not partially publish to the supported targets. To publish just the
-SharePoint copy now, use a separate descriptor or remove the other targets.
+does not partially publish to the supported targets. To publish without S3,
+use a separate descriptor or remove that target.
 Offline `resolve`, `diagram`, and dry runs do not authenticate or inspect remote
 permissions. `resolve --online` reads provider metadata to verify locations.
 
@@ -34,9 +34,11 @@ permissions. `resolve --online` reads provider metadata to verify locations.
   declares its own targets.
 - A catalog with children publishes only those children. A leaf catalog with
   a path publishes the files in its directory tree.
-- An explicit resource target is an exact file URL (and can rename the file).
-  Set `entityType: Directory` on a target to append the local filename to
-  a folder URL.
+- An explicit resource target is an exact file URL. SharePoint URLs can rename
+  the file. Google Drive file URLs update that exact ID and keep its remote
+  name; the target must already exist. Set `entityType: Directory` to append
+  the local filename to a folder target. Google Drive `/folders/ID` URLs are
+  recognized as folder targets without an explicit entity type.
 - Multiple targets receive multiple copies. Conflicting files aimed at one
   destination fail before transfer.
 
@@ -47,7 +49,36 @@ single-request limit fail planning. A dry run cannot verify remote folders,
 access, or permissions.
 For a folder target enriched by `resolve --online --write`, push uses its
 `driveId` and `serviceId` directly. An exact file target uses its parent folder
-path, because the saved file ID does not identify the upload folder.
+path on SharePoint. Google Drive instead updates the saved file ID directly.
+
+### Google Drive publication
+
+The destination folder must exist. A folder target creates missing child
+folders, then creates or replaces the named binary file. A repeated push
+updates the same file ID. Google Drive permits duplicate names in one folder;
+Fileroute refuses to choose among duplicate files or folders. Use an exact
+file URL when you need to disambiguate an existing file. Native Google Docs,
+Sheets, shortcuts, and folders cannot be replaced with binary file content.
+Remote files absent from the plan are never deleted.
+
+```yaml
+catalogs:
+  - path: docs/_output
+    targets:
+      - path: https://drive.google.com/drive/folders/FOLDER_ID
+    resources:
+      - path: docs/_output/reports/summary.pdf
+```
+
+For a path-based target, specify the namespace explicitly, for example
+`path: Reports`, `serviceType: GoogleDrive`, `drive: My Drive`, and
+`entityType: Directory`. A shared drive name or `driveId` works too. The
+planner remains offline: `--dry-run` can show the folder and relative file
+path, but only execution can tell whether a file will be created or updated.
+Small files use multipart upload; files above 5 MiB use a streaming resumable
+upload. Existing Google OAuth credentials need write access to the target;
+the configured `drive` scope covers arbitrary accessible files, while
+`drive.file` is limited to files the app created or the user opened with it.
 
 ## Pull
 

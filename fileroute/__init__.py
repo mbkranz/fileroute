@@ -1,5 +1,5 @@
 from .clients import get_provider
-from .models import Catalog, Resource, Location, CatalogReference, ServiceType
+from .models import Catalog, Resource, Location, CatalogLink, ServiceType
 from .exceptions import AmbiguousPathError
 
 __all__ = [
@@ -8,6 +8,6 @@ __all__ = [
     "Catalog",
     "Resource",
     "Location",
-    "CatalogReference",
+    "CatalogLink",
     "AmbiguousPathError",
 ]

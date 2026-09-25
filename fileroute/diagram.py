@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from fileroute.descriptor import load, resolve
-from fileroute.models import Catalog, CatalogReference, Location, Resource, ServiceType
+from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class DescriptorGraph:
 
 
 def _artifact_label(artifact: Catalog | Resource, fallback: str) -> str:
-    return artifact.title or artifact.name or artifact.path or fallback
+    return artifact.title or fallback or artifact.path or "Catalog"
 
 
 def _location_label(location: Location) -> str:
@@ -70,7 +70,9 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
     anchor_counts: dict[str, int] = {}
 
     def node_details(
-        model: Catalog | Resource | Location | CatalogReference, identity: str
+        model: Catalog | Resource | Location | CatalogLink,
+        identity: str,
+        name: str | None = None,
     ) -> _NodeDetails:
         # Anchors use semantic identity, while existing graph keys remain compatible.
         digest = sha256(identity.encode()).hexdigest()[:20]
@@ -83,6 +85,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
             exclude_none=True,
             exclude={"resources", "catalogs", "sources", "targets"},
         )
+        if name is not None:
+            metadata["name"] = name
         return {"anchor": anchor, "metadata": metadata}
 
     def add_location(location: Location, kind: str) -> str:
@@ -142,7 +146,7 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                 kind="catalog",
                 path=current.path,
                 entity_type=current.entity_type,
-                **node_details(current, identity),
+                **node_details(current, identity, fallback if parent_key else None),
             )
         )
         if parent_key is not None:
@@ -151,22 +155,19 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
             key, current.sources, effective_targets, owner if owner != key else None
         )
 
-        for index, resource in enumerate(current.resources):
-            resource_key = f"{key}/resource:{index + 1}"
+        for name, resource in current.resources.items():
+            resource_key = f"{key}/resource:{name}"
             resource_targets = (
                 resource.targets if resource.targets is not None else effective_targets
             )
             nodes.append(
                 DiagramNode(
                     key=resource_key,
-                    label=_artifact_label(resource, f"Resource {index + 1}"),
+                    label=_artifact_label(resource, name),
                     kind="resource",
                     path=resource.path,
                     entity_type=resource.entity_type,
-                    **node_details(
-                        resource,
-                        identity + "/resource:" + (resource.name or resource.path),
-                    ),
+                    **node_details(resource, identity + "/resource:" + name, name),
                 )
             )
             edges.append(DiagramEdge(key, resource_key, "contains"))
@@ -177,16 +178,16 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                 owner if resource.targets is None else None,
             )
 
-        for index, child in enumerate(current.catalogs):
-            child_key = f"{key}/catalog:{index + 1}"
-            if isinstance(child, CatalogReference):
+        for name, child in current.catalogs.items():
+            child_key = f"{key}/catalog:{name}"
+            if isinstance(child, CatalogLink):
                 nodes.append(
                     DiagramNode(
                         key=child_key,
-                        label=child.name or child.path,
+                        label=name,
                         kind="reference",
-                        path=child.path,
-                        **node_details(child, identity + "/reference:" + child.path),
+                        path=child.descriptor,
+                        **node_details(child, identity + "/reference:" + name, name),
                     )
                 )
                 edges.append(DiagramEdge(key, child_key, "contains"))
@@ -196,10 +197,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                 key=child_key,
                 parent_key=key,
                 inherited_targets=effective_targets,
-                fallback=f"Catalog {index + 1}",
-                identity=identity
-                + "/catalog:"
-                + (child.name or child.path or child.title or "anonymous"),
+                fallback=name,
+                identity=identity + "/catalog:" + name,
                 target_owner=owner,
             )
 

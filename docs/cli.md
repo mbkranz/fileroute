@@ -19,10 +19,10 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
 * `resolve`: Resolve locators offline by default;...
-* `migrate`: Convert a legacy descriptor to...
+* `migrate`: Convert named-list descriptors and $ref...
 * `update`: Update descriptor-root or resource...
 * `activate`: Activate a descriptor for later commands.
-* `list`: List local descriptor entities, paths, and...
+* `list`: List registered names, origins, exact...
 * `add`: Add a standards-aligned resource or...
 * `diagram`: Render descriptor sources, artifacts, and...
 * `auth`: Authentication helpers.
@@ -82,13 +82,14 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
+* `--select TEXT`: Registered name or exact address. Use fileroute list for names and selectors.
 * `--write`: Save resolved metadata back to this descriptor.
 * `--online`: Verify and enrich remote locations using provider credentials.
 * `--help`: Show this message and exit.
 
 ## `fileroute migrate`
 
-Convert a legacy descriptor to path/sources/targets in a new file.
+Convert named-list descriptors and $ref links to the keyed format.
 
 **Usage**:
 
@@ -99,22 +100,12 @@ $ fileroute migrate [OPTIONS] DESCRIPTOR OUTPUT
 **Arguments**:
 
 * `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New canonical descriptor to write.  [required]
+* `OUTPUT`: New directory for the converted descriptor graph.  [required]
 
 **Options**:
 
-* `--direction TEXT`: Interpret legacy remote URLs as pull sources or push targets.  [default: pull]
+* `--dry-run`: Validate and report outputs without writing.
 * `--help`: Show this message and exit.
-
-**Examples**
-
-```bash
-fileroute migrate old.yaml new.yaml --direction pull
-```
-
-```bash
-fileroute migrate old.yaml new.yaml --direction push
-```
 
 ## `fileroute update`
 
@@ -144,7 +135,7 @@ fileroute update --name file1 --title "Hello" --description "hello"
 ```
 
 ```bash
-fileroute update --select '$.catalogs[0].resources[1]' --title 'Hello'
+fileroute update --select '$.catalogs.docs.resources.guide' --title 'Hello'
 ```
 
 ## `fileroute activate`
@@ -173,7 +164,7 @@ fileroute activate resources/descriptor.yaml
 
 ## `fileroute list`
 
-List local descriptor entities, paths, and source metadata.
+List registered names, origins, exact selectors and local metadata.
 
 **Usage**:
 
@@ -188,6 +179,7 @@ $ fileroute list [OPTIONS] [DESCRIPTOR]
 **Options**:
 
 * `--format [text|json]`: Output format.  [default: text]
+* `--kind TEXT`: Filter catalogs or resources: all, catalog, resource.  [default: all]
 * `--select TEXT`: Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath (optional $). Use 'fileroute list' to see exact JSONPaths.
 * `--help`: Show this message and exit.
 
@@ -206,7 +198,7 @@ fileroute list resources/descriptor.yaml --format json
 ```
 
 ```bash
-fileroute list --select '$.catalogs[0].resources[1]'
+fileroute list --select '$.catalogs.docs.resources.guide'
 ```
 
 ## `fileroute add`
@@ -237,7 +229,7 @@ fileroute add my-resource --path downloads/file.csv --source https://drive.googl
 ```
 
 ```bash
-fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs[0]'
+fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs.docs'
 ```
 
 ## `fileroute diagram`

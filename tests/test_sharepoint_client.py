@@ -80,12 +80,13 @@ def test_download_content_raises_graph_error_for_http_failure(
     client = SharepointClient(access_token="token")
 
     monkeypatch.setattr(
-        "fileroute.clients.sharepoint.requests.get",
+        client.session, "request",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=503, reason="Service Unavailable", text="upstream down"
         ),
     )
 
+    monkeypatch.setattr("fileroute.clients.sharepoint.time.sleep", lambda _: None)
     with pytest.raises(GraphApiDriveError) as exc_info:
         client.download_content(drive_id="drive-1", item_id="item-1")
 
@@ -100,7 +101,7 @@ def test_download_raises_graph_error_before_writing_failed_response(
     target = tmp_path / "report.csv"
 
     monkeypatch.setattr(
-        "fileroute.clients.sharepoint.requests.get",
+        client.session, "request",
         lambda *_args, **_kwargs: DummyResponse(
             status_code=500, reason="Server Error", text="bad gateway", ok=False
         ),
@@ -118,6 +119,7 @@ def test_download_raises_graph_error_before_writing_failed_response(
         path="report.csv",
     )
 
+    monkeypatch.setattr("fileroute.clients.sharepoint.time.sleep", lambda _: None)
     with pytest.raises(GraphApiDriveError) as exc_info:
         item.download(target)
 
@@ -151,7 +153,7 @@ def test_update_file_replaces_existing_content(
             },
         )
 
-    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr(client.session, "request", lambda method, url, **kw: fake_put(url, headers=kw["headers"], data=kw["data"]))
 
     item = client.update_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -192,7 +194,7 @@ def test_upload_file_creates_missing_content(
         )
 
     monkeypatch.setattr(client, "get_item_metadata", missing)
-    monkeypatch.setattr("fileroute.clients.sharepoint.requests.put", fake_put)
+    monkeypatch.setattr(client.session, "request", lambda method, url, **kw: fake_put(url, headers=kw["headers"], data=kw["data"]))
 
     item = client.upload_file(
         site_name="Test", folder_path="/reports", local_file_path=local_file
@@ -426,8 +428,8 @@ def test_upload_creates_missing_nested_folder_and_replaces_file(monkeypatch, tmp
 
     monkeypatch.setattr(client, "get_item_metadata", metadata)
     monkeypatch.setattr(
-        "fileroute.clients.sharepoint.requests.post",
-        lambda url, **kw: (
+        client.session, "request",
+        lambda method, url, **kw: (
             calls.append(("post", kw["json"]["name"]))
             or SimpleNamespace(
                 status_code=201, json=lambda: {"id": "child", "folder": {}}

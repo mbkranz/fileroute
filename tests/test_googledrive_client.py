@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ from fileroute.clients.googledrive import (
     GoogleDriveClient,
 )
 from fileroute.exceptions import GoogleDriveError
+from fileroute.models import Location
 
 
 class DummyCreds:
@@ -34,12 +36,14 @@ class DummyResponse:
         payload: dict | None = None,
         text: str = "",
         chunks: list[bytes] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         self.ok = ok
         self.status_code = status_code
         self._payload = payload or {}
         self.text = text or json.dumps(self._payload)
         self._chunks = chunks or []
+        self.headers = headers or {}
 
     def json(self):
         return self._payload
@@ -372,3 +376,263 @@ def test_gdrive_item_from_path_trailing_slash_requires_directory() -> None:
     with pytest.raises(NotADirectoryError, match="directory"):
         client.get_from_path("My Drive", "summary.csv/")
 
+
+def test_create_empty_file_and_update_empty_content() -> None:
+    session = DummySession([
+        DummyResponse(
+            payload={"id": "new", "name": "empty.txt", "mimeType": "text/plain"}
+        ),
+        DummyResponse(
+            payload={"id": "new", "name": "empty.txt", "mimeType": "text/plain"}
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+
+    assert client.create_file("empty.txt", "parent", b"").id == "new"
+    assert client.update_file("new", file_in_bytes_or_path=b"").id == "new"
+    creation, replacement = session.calls
+    assert creation[0:2] == ("POST", "https://www.googleapis.com/upload/drive/v3/files")
+    assert creation[2]["params"]["uploadType"] == "multipart"
+    assert b'"parents": ["parent"]' in creation[2]["data"]
+    assert replacement[0:2] == (
+        "PATCH",
+        "https://www.googleapis.com/upload/drive/v3/files/new",
+    )
+    assert replacement[2]["params"]["uploadType"] == "media"
+    assert replacement[2]["data"] == b""
+
+
+def test_five_megabyte_file_still_uses_multipart(tmp_path: Path) -> None:
+    local = tmp_path / "boundary.bin"
+    with local.open("wb") as stream:
+        stream.truncate(5 * 1024 * 1024)
+    session = DummySession([
+        DummyResponse(payload={"id": "boundary", "name": "boundary.bin"})
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    assert client.create_file("boundary.bin", "parent", local).id == "boundary"
+    assert session.calls[0][2]["params"]["uploadType"] == "multipart"
+
+
+def test_metadata_only_update_uses_metadata_endpoint() -> None:
+    session = DummySession([DummyResponse(payload={"id": "file", "name": "renamed"})])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    assert client.update_file("file", metadata={"name": "renamed"}).name == "renamed"
+    assert session.calls[0][0:2] == (
+        "PATCH",
+        "https://www.googleapis.com/drive/v3/files/file",
+    )
+    assert session.calls[0][2]["json"] == {"name": "renamed"}
+
+
+def test_large_file_uses_streamed_resumable_chunks(tmp_path: Path) -> None:
+    local = tmp_path / "large.bin"
+    with local.open("wb") as stream:
+        stream.truncate(8 * 1024 * 1024 + 1)
+    session_url = "https://www.googleapis.com/upload/drive/v3/files?upload_id=abc"
+    session = DummySession([
+        DummyResponse(headers={"Location": session_url}),
+        DummyResponse(status_code=308, headers={"Range": "bytes=0-8388607"}),
+        DummyResponse(payload={"id": "large", "name": "large.bin"}),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+
+    assert client.create_file("large.bin", "parent", local).id == "large"
+    assert [call[0] for call in session.calls] == ["POST", "PUT", "PUT"]
+    assert session.calls[0][2]["params"]["uploadType"] == "resumable"
+    assert session.calls[1][2]["headers"]["Content-Range"] == "bytes 0-8388607/8388609"
+    assert (
+        session.calls[2][2]["headers"]["Content-Range"]
+        == "bytes 8388608-8388608/8388609"
+    )
+    assert len(session.calls[2][2]["data"]) == 1
+
+
+def test_resumable_upload_probes_server_after_lost_chunk_reply(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("fileroute.clients.googledrive.time.sleep", lambda _: None)
+    local = tmp_path / "large.bin"
+    with local.open("wb") as stream:
+        stream.truncate(8 * 1024 * 1024 + 1)
+    session_url = "https://www.googleapis.com/upload/drive/v3/files?upload_id=abc"
+    session = DummySession([
+        DummyResponse(headers={"Location": session_url}),
+        DummyResponse(
+            ok=False, status_code=503, payload={"error": {"message": "retry"}}
+        ),
+        DummyResponse(status_code=308, headers={"Range": "bytes=0-8388607"}),
+        DummyResponse(payload={"id": "large", "name": "large.bin"}),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+
+    assert client.create_file("large.bin", "parent", local).id == "large"
+    assert session.calls[2][2]["headers"]["Content-Range"] == "bytes */8388609"
+    assert (
+        session.calls[3][2]["headers"]["Content-Range"]
+        == "bytes 8388608-8388608/8388609"
+    )
+
+
+def test_upload_to_shared_drive_creates_child_and_then_file(tmp_path: Path) -> None:
+    local = tmp_path / "local.csv"
+    local.write_bytes(b"a,b\n1,2\n")
+    session = DummySession([
+        DummyResponse(
+            payload={"id": "root", "mimeType": FOLDER_MIME, "driveId": "drive"}
+        ),
+        DummyResponse(payload={"files": []}),
+        DummyResponse(
+            payload={"id": "child", "name": "reports", "mimeType": FOLDER_MIME}
+        ),
+        DummyResponse(payload={"files": []}),
+        DummyResponse(
+            payload={"id": "created", "name": "published.csv", "mimeType": "text/csv"}
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    location = Location(
+        path="https://drive.google.com/drive/folders/root", serviceId="root"
+    )
+
+    item = client.upload_to_location(location, Path("reports/published.csv"), local)
+    assert item.id == "created"
+    assert session.calls[1][2]["params"]["driveId"] == "drive"
+    assert session.calls[1][2]["params"]["corpora"] == "drive"
+    assert b'"parents": ["child"]' in session.calls[4][2]["data"]
+
+
+def test_upload_to_scoped_my_drive_path(tmp_path: Path) -> None:
+    local = tmp_path / "report.csv"
+    local.write_bytes(b"data")
+    session = DummySession([
+        DummyResponse(payload={"id": "root", "mimeType": FOLDER_MIME}),
+        DummyResponse(
+            payload={
+                "files": [{"id": "reports", "name": "reports", "mimeType": FOLDER_MIME}]
+            }
+        ),
+        DummyResponse(payload={"files": []}),
+        DummyResponse(
+            payload={"id": "created", "name": "report.csv", "mimeType": "text/csv"}
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    location = Location(
+        path="reports",
+        serviceType="GoogleDrive",
+        drive="My Drive",
+        remotePath="reports",
+    )
+    assert (
+        client.upload_to_location(location, Path("report.csv"), local).id == "created"
+    )
+    assert session.calls[3][0] == "POST"
+
+
+def test_upload_updates_existing_sibling_by_id(tmp_path: Path) -> None:
+    local = tmp_path / "report.csv"
+    local.write_bytes(b"new")
+    session = DummySession([
+        DummyResponse(payload={"id": "folder", "mimeType": FOLDER_MIME}),
+        DummyResponse(
+            payload={
+                "files": [
+                    {"id": "existing", "name": "report.csv", "mimeType": "text/csv"}
+                ]
+            }
+        ),
+        DummyResponse(
+            payload={"id": "existing", "name": "report.csv", "mimeType": "text/csv"}
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    item = client.upload_to_location(
+        Location(
+            path="https://drive.google.com/drive/folders/folder", serviceId="folder"
+        ),
+        Path("report.csv"),
+        local,
+    )
+    assert item.id == "existing"
+    assert session.calls[2][0:2] == (
+        "PATCH",
+        "https://www.googleapis.com/upload/drive/v3/files/existing",
+    )
+
+
+def test_upload_refuses_ambiguous_siblings(tmp_path: Path) -> None:
+    local = tmp_path / "report.csv"
+    local.write_bytes(b"new")
+    session = DummySession([
+        DummyResponse(payload={"id": "folder", "mimeType": FOLDER_MIME}),
+        DummyResponse(
+            payload={
+                "files": [
+                    {"id": "first", "name": "report.csv", "mimeType": "text/csv"},
+                    {"id": "second", "name": "report.csv", "mimeType": "text/csv"},
+                ]
+            }
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    with pytest.raises(ValueError, match="Ambiguous"):
+        client.upload_to_location(
+            Location(
+                path="https://drive.google.com/drive/folders/folder", serviceId="folder"
+            ),
+            Path("report.csv"),
+            local,
+        )
+    assert len(session.calls) == 2
+
+
+def test_exact_file_url_updates_its_id_and_rejects_native_documents(
+    tmp_path: Path,
+) -> None:
+    local = tmp_path / "local.pdf"
+    local.write_bytes(b"pdf")
+    session = DummySession([
+        DummyResponse(
+            payload={
+                "id": "existing",
+                "name": "published.pdf",
+                "mimeType": "application/pdf",
+            }
+        ),
+        DummyResponse(
+            payload={
+                "id": "existing",
+                "name": "published.pdf",
+                "mimeType": "application/pdf",
+            }
+        ),
+        DummyResponse(
+            payload={
+                "id": "native",
+                "name": "doc",
+                "mimeType": "application/vnd.google-apps.document",
+            }
+        ),
+    ])
+    client = GoogleDriveClient(credentials=DummyCreds(), session=session)
+    assert (
+        client.upload_to_file(
+            Location(
+                path="https://drive.google.com/file/d/existing/view",
+                serviceId="existing",
+            ),
+            local,
+        ).id
+        == "existing"
+    )
+    assert session.calls[1][1].endswith("/files/existing")
+    with pytest.raises(ValueError, match="Google Workspace"):
+        client.upload_to_file(
+            Location(
+                path="https://docs.google.com/document/d/native/edit",
+                serviceId="native",
+            ),
+            local,
+        )
+    assert len(session.calls) == 3
