@@ -233,7 +233,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             return
 
         # Validate the source, then copy its authored fields without the model's
-        # exclude-defaults serialization dropping $schema or empty collections.
+        # exclude-defaults serialization dropping profile or empty collections.
         load(str(source_descriptor))
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if source_descriptor.suffix.lower() == target_path.suffix.lower():
@@ -308,7 +308,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 "siteId": "site_id",
                 "drive-id": "drive_id",
                 "driveId": "drive_id",
-                "$schema": "profile",
             }.get(property_name, property_name)
             value = raw_value
             if property_path == "service_type":

@@ -16,7 +16,7 @@ def _write_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
             {
-                "$schema": "fileroute-catalog",
+                "profile": "fileroute-catalog",
                 "resources": {
                     "source-export": {
                         "path": "downloads/source.csv",
@@ -57,7 +57,7 @@ def test_clone_descriptor_writes_target_yaml(tmp_path: Path) -> None:
     assert result.exit_code == 0
     cloned = yaml.safe_load(target_descriptor.read_text(encoding="utf-8"))
     source = yaml.safe_load(source_descriptor.read_text(encoding="utf-8"))
-    assert cloned["$schema"] == source["$schema"]
+    assert cloned["profile"] == source["profile"]
     assert cloned["resources"] == source["resources"]
 
 
@@ -80,7 +80,7 @@ def test_clone_descriptor_uses_target_suffix_format(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(target_descriptor.read_text(encoding="utf-8"))
-    assert payload["$schema"] == "fileroute-catalog"
+    assert payload["profile"] == "fileroute-catalog"
     assert "source-export" in payload["resources"]
     assert payload["resources"]["source-export"]["sources"][0]["serviceType"] == "S3"
 
@@ -113,7 +113,7 @@ def test_clone_descriptor_rejects_existing_target_without_force(tmp_path: Path) 
     _write_descriptor(source_descriptor)
     target_descriptor = tmp_path / "descriptor-copy.yaml"
     target_descriptor.write_text(
-        "$schema: fileroute-catalog\nresources: {}\ncatalogs: {}\n", encoding="utf-8"
+        "profile: fileroute-catalog\nresources: {}\ncatalogs: {}\n", encoding="utf-8"
     )
     result = RUNNER.invoke(
         app,
@@ -135,7 +135,7 @@ def test_clone_descriptor_force_overwrites_existing_target(tmp_path: Path) -> No
     _write_descriptor(source_descriptor)
     target_descriptor = tmp_path / "descriptor-copy.yaml"
     target_descriptor.write_text(
-        "$schema: fileroute-catalog\nresources: {}\ncatalogs: {}\n", encoding="utf-8"
+        "profile: fileroute-catalog\nresources: {}\ncatalogs: {}\n", encoding="utf-8"
     )
     result = RUNNER.invoke(
         app,

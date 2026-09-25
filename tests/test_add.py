@@ -13,7 +13,7 @@ from fileroute.descriptor import resolve
 def _write_catalog_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
-            {"$schema": "fileroute-catalog", "resources": {}, "catalogs": {}},
+            {"profile": "fileroute-catalog", "resources": {}, "catalogs": {}},
             sort_keys=False,
         ),
         encoding="utf-8",

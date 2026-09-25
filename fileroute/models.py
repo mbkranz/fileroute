@@ -184,7 +184,7 @@ class Catalog(_Artifact):
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
-    profile: str = Field(default=CATALOG_PROFILE, alias="$schema")
+    profile: str = CATALOG_PROFILE
     resources: dict[str, Resource] = Field(default_factory=dict)
     catalogs: dict[str, Catalog | CatalogLink] = Field(default_factory=dict)
     # Runtime-only origins: expanded pointer -> (source file, source pointer, chain).
@@ -192,6 +192,15 @@ class Catalog(_Artifact):
         default_factory=dict
     )
     _expanded: bool = PrivateAttr(default=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_schema_key(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "$schema" in value:
+            raise ValueError(
+                "Use 'profile' instead of '$schema' in catalog descriptors"
+            )
+        return value
 
     @field_validator("resources", "catalogs", mode="before")
     @classmethod

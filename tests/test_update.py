@@ -14,7 +14,7 @@ def _write_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
             {
-                "$schema": "fileroute-catalog",
+                "profile": "fileroute-catalog",
                 "title": "Original title",
                 "description": "Original description",
                 "resources": {
@@ -98,7 +98,7 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
         document["resources"]["spec-workbook"]["description"] == "Updated description"
     )
     assert "title" not in document["resources"]["other-resource"]
-    assert document["$schema"] == "fileroute-catalog"
+    assert document["profile"] == "fileroute-catalog"
     assert (
         document["resources"]["spec-workbook"]["path"]
         == "background/specs/spec-workbook.xlsx"
