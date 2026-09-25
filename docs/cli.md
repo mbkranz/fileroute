@@ -19,8 +19,7 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
 * `resolve`: Resolve locators offline by default;...
-* `migrate-format`: Convert named lists and $ref links to...
-* `migrate`: Convert a legacy descriptor to...
+* `migrate`: Convert named-list descriptors and $ref links to...
 * `update`: Update descriptor-root or resource...
 * `activate`: Activate a descriptor for later commands.
 * `list`: List registered names, origins, exact...
@@ -88,29 +87,9 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 * `--online`: Verify and enrich remote locations using provider credentials.
 * `--help`: Show this message and exit.
 
-## `fileroute migrate-format`
-
-Convert named lists and $ref links to keyed descriptors atomically.
-
-**Usage**:
-
-```console
-$ fileroute migrate-format [OPTIONS] DESCRIPTOR OUTPUT
-```
-
-**Arguments**:
-
-* `DESCRIPTOR`: Legacy list-shaped descriptor.  [required]
-* `OUTPUT`: New directory for the converted file graph.  [required]
-
-**Options**:
-
-* `--dry-run`: Validate and report all outputs without writing.
-* `--help`: Show this message and exit.
-
 ## `fileroute migrate`
 
-Convert a legacy descriptor to path/sources/targets in a new file.
+Convert named-list descriptors and $ref links to the keyed format.
 
 **Usage**:
 
@@ -121,22 +100,12 @@ $ fileroute migrate [OPTIONS] DESCRIPTOR OUTPUT
 **Arguments**:
 
 * `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New canonical descriptor to write.  [required]
+* `OUTPUT`: New directory for the converted descriptor graph.  [required]
 
 **Options**:
 
-* `--direction TEXT`: Interpret legacy remote URLs as pull sources or push targets.  [default: pull]
+* `--dry-run`: Validate and report outputs without writing.
 * `--help`: Show this message and exit.
-
-**Examples**
-
-```bash
-fileroute migrate old.yaml new.yaml --direction pull
-```
-
-```bash
-fileroute migrate old.yaml new.yaml --direction push
-```
 
 ## `fileroute update`
 

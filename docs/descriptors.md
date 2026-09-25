@@ -150,8 +150,8 @@ This is a breaking descriptor-format change. Normal loading accepts keyed maps
 and `descriptor` links. For the previous named lists and `$ref` syntax:
 
 ```bash
-fileroute migrate-format config/fileroute.yaml migrated/ --dry-run
-fileroute migrate-format config/fileroute.yaml migrated/
+fileroute migrate config/fileroute.yaml migrated/ --dry-run
+fileroute migrate config/fileroute.yaml migrated/
 fileroute list migrated/fileroute.yaml
 ```
 
@@ -165,9 +165,8 @@ metadata becomes `title` when no title was supplied.
 
 Artifact paths are **not rebased** into the migration directory. Run transfers
 from the original project working root or supply `root` through the Python API.
-The separate `migrate OLD NEW --direction pull|push` command continues to convert
-older `_cache`/remote-location descriptors into the new keyed format, flattening
-those older references as documented by that command.
+Historical pre-`path`/`sources`/`targets` descriptor shapes are intentionally
+not carried forward as a second compatibility layer.
 
 ## Python API
 

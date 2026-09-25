@@ -16,7 +16,7 @@ Fileroute does not transform files or transfer directly between cloud providers.
 Catalogs and resources are now keyed maps: `resources: {report: {path: report.csv}}`.
 The map key is the registered name. Cross-file catalogs use
 `catalogs: {archive: {descriptor: catalogs/archive.yaml}}`.
-Run `fileroute migrate-format OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
+Run `fileroute migrate OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
 converting existing named lists and `$ref` links. See the
 [migration guide](docs/descriptors.md#migrate-the-old-format).
 
@@ -84,7 +84,8 @@ file by ID and preserves its existing name:
 
 ```yaml
 resources:
-  - path: artifacts/report.csv
+  report:
+    path: artifacts/report.csv
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
       - path: https://drive.google.com/file/d/EXISTING_FILE_ID/view
