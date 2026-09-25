@@ -17,8 +17,8 @@ from fileroute.commands.toolkit import (
 )
 from fileroute.exceptions import GoogleApiError, GraphApiError
 from fileroute.commands.config import active_descriptor, set_active_descriptor
-from fileroute.descriptor import load, save, walk, find, resolve
-from fileroute.models import Catalog, Resource, normalize_entity_type, Location
+from fileroute.descriptor import load, save, walk, find, resolve, _pointer_json_path
+from fileroute.models import Catalog, CatalogReference, Resource, normalize_entity_type, Location
 
 
 def _add_resource_to_descriptor(
@@ -27,6 +27,7 @@ def _add_resource_to_descriptor(
     name: str,
     create_if_missing: bool = False,
     catalog: bool = False,
+    parent: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     descriptor_path = Path(descriptor)
@@ -41,8 +42,11 @@ def _add_resource_to_descriptor(
     else:
         raise FileNotFoundError(f"Descriptor '{descriptor_path}' does not exist.")
 
-    normalized_name = entity_name.lower()
-    top_level_entries = [*document.resources, *document.catalogs]
+    parent_catalog = find(document, parent) if parent is not None else document
+    if not isinstance(parent_catalog, Catalog):
+        raise ValueError(f"Parent {parent!r} must select a catalog in this descriptor")
+    normalized_name = entity_name.casefold()
+    top_level_entries = [*parent_catalog.resources, *parent_catalog.catalogs]
     if any(
         str(getattr(entry, "name", "") or "").strip().lower() == normalized_name
         for entry in top_level_entries
@@ -56,10 +60,13 @@ def _add_resource_to_descriptor(
     kwargs["name"] = entity_name
     if catalog:
         entry = Catalog.model_validate(kwargs)
-        document.catalogs = [*document.catalogs, entry]
+        parent_catalog.catalogs = [*parent_catalog.catalogs, entry]
     else:
         entry = Resource.model_validate(kwargs)
-        document.resources = [*document.resources, entry]
+        parent_catalog.resources = [*parent_catalog.resources, entry]
+
+    # An unnamed parent can make an otherwise distinct name path ambiguous.
+    list(walk(document))
 
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
     save(document, descriptor_path)
@@ -230,7 +237,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         epilog=examples_epilog(
             'fileroute update --title "Hello" --description "hello"',
             'fileroute update --name file1 --title "Hello" --description "hello"',
-            'fileroute update --descriptor resources/descriptor.yaml --name file1 --title "Hello"',
+            "fileroute update --select '$.catalogs[0].resources[1]' --title 'Hello'",
         ),
     )
     def update_command(
@@ -239,7 +246,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             None, "--descriptor", help=DESCRIPTOR_DEFAULT_HELP
         ),
         name: Optional[str] = typer.Option(
-            None, "--name", help="Exact entity name or dot-path to update."
+            None, "--name", "--select", help="Entity or location by name, dot-path, JSON Pointer, or exact JSONPath. Defaults to the descriptor root."
         ),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="Show what would be updated without writing files."
@@ -259,6 +266,16 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             try:
                 target = find(document, name)
             except ValueError as exc:
+                # list expands $ref catalogs for inspection, but updates only
+                # the selected file. Explain this boundary for copied selectors.
+                try:
+                    find(load(descriptor_path, resolve_references=True), name)
+                except (OSError, ValueError):
+                    pass
+                else:
+                    raise typer.BadParameter(
+                        "Selected entry is inside a $ref; edit its own descriptor file"
+                    ) from exc
                 raise typer.BadParameter(str(exc)) from exc
             target_label = f"{name} in {descriptor_path}"
 
@@ -269,6 +286,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 "serviceType": "service_type",
                 "entity-type": "entity_type",
                 "entityType": "entity_type",
+                "service-id": "service_id",
+                "serviceId": "service_id",
+                "remote-path": "remote_path",
+                "remotePath": "remote_path",
+                "site-id": "site_id",
+                "siteId": "site_id",
+                "drive-id": "drive_id",
+                "driveId": "drive_id",
                 "$schema": "profile",
             }.get(property_name, property_name)
             value = raw_value
@@ -288,6 +313,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                         "--service-type requires exactly one source for this entity."
                     )
                 field_target = sources[0]
+            if property_path in {
+                "service_type", "service_id", "remote_path", "site", "site_id",
+                "drive", "drive_id", "bucket",
+            } and not isinstance(field_target, Location):
+                raise typer.BadParameter(
+                    f"--{property_name} requires a source or target location; "
+                    "select it with --select '$.resources[0].sources[0]'"
+                )
             if getattr(field_target, property_path, None) != value:
                 setattr(field_target, property_path, value)
                 changed_properties.append(
@@ -332,6 +365,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "fileroute list",
             "fileroute list resources/descriptor.yaml",
             "fileroute list resources/descriptor.yaml --format json",
+            "fileroute list --select '$.catalogs[0].resources[1]'",
         ),
     )
     def list_command(
@@ -341,6 +375,9 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         output_format: OutputFormat = typer.Option(
             OutputFormat.TEXT, "--format", help="Output format."
         ),
+        select: Optional[str] = typer.Option(
+            None, "--select", help="Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath."
+        ),
     ) -> None:
         """List local descriptor entities, paths, and source metadata."""
         descriptor_path = prepare_descriptor_path(descriptor)
@@ -348,6 +385,36 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         try:
             model = load(descriptor_path, resolve_references=True)
             references = list(walk(model))
+            location_rows = [
+                (
+                    f"{row.json_pointer}/{field_name}/{index}", location
+                )
+                for row in walk(model, include_self=True)
+                if not isinstance(row.model, CatalogReference)
+                for field_name in ("sources", "targets")
+                for index, location in enumerate(getattr(row.model, field_name) or [])
+            ]
+            if select is not None and select != "$":
+                selected = find(model, select)
+                if isinstance(selected, Location):
+                    references = []
+                    location_rows = [
+                        (pointer, location) for pointer, location in location_rows
+                        if location is selected
+                    ]
+                else:
+                    pointer = next(
+                        row.json_pointer for row in references if row.model is selected
+                    )
+                    references = [
+                        row for row in references
+                        if row.json_pointer == pointer
+                        or row.json_pointer.startswith(pointer + "/")
+                    ]
+                    location_rows = [
+                        (path, location) for path, location in location_rows
+                        if path.startswith(pointer + "/")
+                    ]
         except (OSError, ValueError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -361,6 +428,20 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                     )
                     for reference in references
                 ],
+                "selectors": [
+                    {"jsonPath": row.json_path, "jsonPointer": row.json_pointer}
+                    for row in references
+                ],
+                "locations": [
+                    {
+                        "jsonPath": _pointer_json_path(pointer),
+                        "jsonPointer": pointer,
+                        "location": location.model_dump(
+                            mode="json", by_alias=True, exclude_unset=True
+                        ),
+                    }
+                    for pointer, location in location_rows
+                ],
             })
             return
 
@@ -368,6 +449,9 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         from rich.tree import Tree
 
         root = Tree(descriptor_path.name)
+        if not references:
+            for pointer, location in location_rows:
+                root.add(f"{location.path} [dim]{_pointer_json_path(pointer)}[/dim]")
         nodes: dict[str, Any] = {}
         for reference in references:
             item = reference.model
@@ -376,7 +460,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             parent_node = nodes.get(parent_path, root) if parent_path else root
             label = (
                 f"{name} ({reference.entity_type}) "
-                f"[dim]{reference.name_path} {reference.json_pointer}[/dim]"
+                f"[dim]{reference.name_path} {reference.json_path}[/dim]"
             )
             node = parent_node.add(label)
             nodes[reference.name_path] = node
@@ -386,8 +470,9 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             if resource_path:
                 details.append(f"path={resource_path}")
             for field in ("sources", "targets"):
-                for location in getattr(item, field, None) or []:
-                    details.append(f"{field}={location.path}")
+                for index, location in enumerate(getattr(item, field, None) or []):
+                    pointer = f"{reference.json_pointer}/{field}/{index}"
+                    details.append(f"{field}={location.path} ({_pointer_json_path(pointer)})")
             if entity_type:
                 details.append(f"entityType={entity_type}")
             if details:
@@ -400,7 +485,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         epilog=examples_epilog(
             "fileroute add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...",
-            "fileroute add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published",
+            "fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs[0]'",
         ),
     )
     def add(
@@ -413,6 +498,9 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         ),
         descriptor: Optional[Path] = typer.Option(
             None, "--descriptor", help=DESCRIPTOR_DEFAULT_HELP
+        ),
+        parent: Optional[str] = typer.Option(
+            None, "--parent", help="Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath; defaults to root."
         ),
     ) -> None:
         """Add a standards-aligned resource or catalog entry to a descriptor."""
@@ -431,6 +519,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 descriptor=descriptor_path,
                 name=name,
                 catalog=catalog,
+                parent=parent,
                 create_if_missing=not explicit_descriptor,
                 **parsed,
             )

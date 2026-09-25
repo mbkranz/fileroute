@@ -7,6 +7,7 @@ and resolving metadata never read files or construct provider clients.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from io import StringIO
 from collections.abc import Iterator
@@ -18,7 +19,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
-from fileroute.models import Catalog, CatalogReference, Resource
+from fileroute.models import Catalog, CatalogReference, Location, Resource
 from fileroute.resolution import parse_location, resolve_online
 
 
@@ -167,6 +168,11 @@ class EntityPath:
     json_pointer: str
 
     @property
+    def json_path(self) -> str:
+        """Exact JSONPath address of this entity in its descriptor tree."""
+        return _pointer_json_path(self.json_pointer)
+
+    @property
     def entity_type(self) -> str:
         return "resource" if isinstance(self.model, Resource) else "catalog"
 
@@ -196,21 +202,78 @@ def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath
 
 
 def find(
-    catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None
-) -> Catalog | Resource | CatalogReference:
-    """Find one entity by name/dot-path, optionally restricting its model kind."""
-    matches = [
-        row.model
-        for row in walk(catalog)
-        if (kind is None or isinstance(row.model, kind))
-        and name.casefold()
-        in {row.name_path.casefold(), (row.model.name or "").casefold()}
-    ]
+    catalog: Catalog,
+    name: str,
+    *,
+    kind: type[Catalog] | type[Resource] | type[Location] | None = None,
+) -> Catalog | Resource | CatalogReference | Location:
+    """Find by name, dot-path, JSON Pointer, or exact JSONPath.
+
+    JSONPath here is an address (``$.catalogs[0].resources[1].sources[0]``),
+    not a query language: wildcards and filters are unsupported.
+    """
+    if name == "$":
+        if kind is None or isinstance(catalog, kind):
+            return catalog
+        raise ValueError(f'Entity selector "{name}" was not found')
+    pointer = _json_path_pointer(name) if name.startswith("$") else name
+    matches = []
+    for row in walk(catalog, include_self=True):
+        if name.startswith(("$", "/")):
+            if row.json_pointer == pointer and (kind is None or isinstance(row.model, kind)):
+                matches.append(row.model)
+            if isinstance(row.model, CatalogReference):
+                continue
+            for field_name in ("sources", "targets"):
+                for index, location in enumerate(getattr(row.model, field_name) or []):
+                    if (f"{row.json_pointer}/{field_name}/{index}" == pointer
+                            and (kind is None or isinstance(location, kind))):
+                        matches.append(location)
+        elif row.json_pointer and (kind is None or isinstance(row.model, kind)):
+            if name.casefold() in {
+                row.name_path.casefold(), (row.model.name or "").casefold()
+            }:
+                matches.append(row.model)
     if not matches:
         raise ValueError(f'Entity selector "{name}" was not found')
     if len(matches) > 1:
         raise ValueError(f'Entity selector "{name}" is ambiguous; use a dot-path')
     return matches[0]
+
+
+_JSON_PATH_STEP = re.compile(
+    r"(?:\.(resources|catalogs|sources|targets)|\[\"(resources|catalogs|sources|targets)\"\]|\['(resources|catalogs|sources|targets)'\])"
+    r"\[(0|[1-9][0-9]*)\]"
+)
+
+
+def _json_path_pointer(path: str) -> str:
+    """Convert an exact JSONPath entity address to an existing walk pointer."""
+    if path == "$":
+        return ""
+    cursor = 1
+    parts = []
+    while cursor < len(path):
+        step = _JSON_PATH_STEP.match(path, cursor)
+        if step is None:
+            raise ValueError(
+                f"Unsupported JSONPath {path!r}; use exact entity steps such as "
+                "$.catalogs[0].resources[1] (no wildcards or filters)"
+            )
+        collection = next(value for value in step.groups()[:3] if value)
+        if collection in {"sources", "targets"} and step.end() != len(path):
+            raise ValueError(f"Location must be the final step in JSONPath {path!r}")
+        parts.extend((collection, step[4]))
+        cursor = step.end()
+    return "/" + "/".join(parts)
+
+
+def _pointer_json_path(pointer: str) -> str:
+    parts = pointer.strip("/").split("/") if pointer else []
+    return "$" + "".join(
+        f".{collection}[{index}]"
+        for collection, index in zip(parts[::2], parts[1::2])
+    )
 
 
 def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path:

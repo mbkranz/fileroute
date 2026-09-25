@@ -47,8 +47,8 @@ Auto-generated from source signatures and docstrings.
   - Atomically save canonical metadata, including authored defaults/extensions.
 - `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
   - Walk typed metadata only; no file I/O. Reject duplicate named paths.
-- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | None = None) -> Catalog | Resource | CatalogReference`
-  - Find one entity by name/dot-path, optionally restricting its model kind.
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogReference | Location`
+  - Find by name, dot-path, JSON Pointer, or exact JSONPath.
 - `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
   - Return resolved metadata without mutating the input or authored paths.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
@@ -62,6 +62,8 @@ Auto-generated from source signatures and docstrings.
   - `model: Catalog | Resource | CatalogReference`
   - `json_pointer: str`
 - Methods:
+  - `def json_path(self) -> str`
+    - Exact JSONPath address of this entity in its descriptor tree.
   - `def entity_type(self) -> str`
 
 
