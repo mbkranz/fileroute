@@ -102,7 +102,7 @@ refresh or mutation invalidates it.
 
 Live development-tenant validation is still needed for canonical descriptors;
 mocked tests cannot prove access or real transfers. Future capabilities should
-follow demand: Google Drive/S3 upload, SharePoint upload sessions for files
+follow demand: S3 upload, SharePoint upload sessions for files
 above 250 MB, descriptor discovery with a defined operator workflow, and a
 small Rich terminal diagram view. Keep transformation tools such as Quarto
 outside Fileroute.

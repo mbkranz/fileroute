@@ -5,8 +5,9 @@ destinations in one versioned YAML or JSON descriptor. Fileroute can inspect
 that descriptor offline, draw a workflow diagram, pull remote inputs, and push
 to supported targets.
 
-**Today:** pull from SharePoint, Google Drive, or S3; push to SharePoint.
-Google Drive and S3 targets are valid metadata but not executable uploads.
+**Today:** pull from SharePoint, Google Drive, or S3; push to SharePoint or
+Google Drive. S3 targets can be described and diagrammed, but `push` rejects
+an upload plan containing one.
 Fileroute does not render source documents or stream between providers.
 
 ## Start with a descriptor
