@@ -129,7 +129,7 @@ $ fileroute update [OPTIONS]
 **Options**:
 
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-* `--name TEXT`: Exact entity name or dot-path to update.
+* `--name, --select TEXT`: Entity or location by name, dot-path, JSON Pointer, or exact JSONPath. Defaults to the descriptor root.
 * `--dry-run`: Show what would be updated without writing files.
 * `--help`: Show this message and exit.
 
@@ -144,7 +144,7 @@ fileroute update --name file1 --title "Hello" --description "hello"
 ```
 
 ```bash
-fileroute update --descriptor resources/descriptor.yaml --name file1 --title "Hello"
+fileroute update --select '$.catalogs[0].resources[1]' --title 'Hello'
 ```
 
 ## `fileroute activate`
@@ -188,6 +188,7 @@ $ fileroute list [OPTIONS] [DESCRIPTOR]
 **Options**:
 
 * `--format [text|json]`: Output format.  [default: text]
+* `--select TEXT`: Show one entity, location, or catalog subtree by name, JSON Pointer, or exact JSONPath.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -202,6 +203,10 @@ fileroute list resources/descriptor.yaml
 
 ```bash
 fileroute list resources/descriptor.yaml --format json
+```
+
+```bash
+fileroute list --select '$.catalogs[0].resources[1]'
 ```
 
 ## `fileroute add`
@@ -222,6 +227,7 @@ $ fileroute add [OPTIONS] NAME
 
 * `--catalog`: Treat as a catalog of resources or a directory.
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+* `--parent TEXT`: Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath; defaults to root.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -231,7 +237,7 @@ fileroute add my-resource --path downloads/file.csv --source https://drive.googl
 ```
 
 ```bash
-fileroute add my-folder --catalog --path docs/_output --target https://tenant.sharepoint.com/sites/docs/Published
+fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs[0]'
 ```
 
 ## `fileroute diagram`

@@ -63,6 +63,34 @@ See [Transfers](transfers.md) for `pull` and `push`, and
 [Diagrams](diagram.md) for `diagram`. The generated
 [CLI reference](cli.md) lists every argument and option.
 
+### Selecting nested entries
+
+`activate` selects a descriptor **file**. To edit an entry within that file,
+use its name/dot-path, an exact JSONPath, or the JSON Pointer printed by
+`list`. The JSONPath form addresses array positions directly:
+
+```bash
+fileroute list config/fileroute.yaml --format json
+fileroute list config/fileroute.yaml --select '$.catalogs[0].resources[1]'
+fileroute update --descriptor config/fileroute.yaml \
+  --select '$.catalogs[0].resources[1].targets[0]' --drive-id 'b!ABC'
+fileroute add appendix --descriptor config/fileroute.yaml \
+  --parent '$.catalogs[0]' --path docs/appendix.docx
+```
+
+`list --format json` includes exact `jsonPath` and `jsonPointer` addresses
+for entries and locations. JSONPath accepts fixed `resources`, `catalogs`,
+`sources`, or `targets` steps with numeric indices; sources and targets can
+only be the final step. Quoted keys such as `$['catalogs'][0]` also work.
+Wildcards, filters, and arbitrary metadata fields are not CLI selectors.
+Named dot-paths remain useful for stable selectors when array ordering changes.
+
+Referenced catalogs (`$ref`) are shown when listing an expanded descriptor.
+Edit a referenced child using its own descriptor file; writes to the parent
+preserve its reference instead of changing the child's file. `pull`, `push`,
+`resolve`, and `diagram` operate on the descriptor as a whole so catalog
+target inheritance and cross-entity relationships remain intact.
+
 ## Paths and references
 
 Artifact paths are relative to the **working directory**, even when the
