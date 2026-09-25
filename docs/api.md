@@ -188,6 +188,7 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `descriptor: str`
 
+
 ## `fileroute.item`
 
 ### Classes
