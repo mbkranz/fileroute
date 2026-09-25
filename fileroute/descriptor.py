@@ -242,7 +242,6 @@ def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath
         return EntityPath(name, model, pointer, *origin)
 
     def descend(parent: Catalog, prefix: str = "", pointer: str = ""):
-        parent.unique_names()
         for collection in ("resources", "catalogs"):
             for name, child in getattr(parent, collection).items():
                 name_path = ".".join(filter(None, (prefix, name)))

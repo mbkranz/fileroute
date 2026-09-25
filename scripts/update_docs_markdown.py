@@ -310,7 +310,11 @@ def _format_assignment_signature(name: str, node: ast.Assign | ast.AnnAssign) ->
 def _class_fields(node: ast.ClassDef) -> list[str]:
     fields: list[str] = []
     for item in node.body:
-        if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+        if (
+            isinstance(item, ast.AnnAssign)
+            and isinstance(item.target, ast.Name)
+            and not item.target.id.startswith("_")
+        ):
             ann = _ann_to_str(item.annotation)
             if ann:
                 fields.append(f"{item.target.id}: {ann}")

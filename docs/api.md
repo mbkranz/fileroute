@@ -162,13 +162,6 @@ Auto-generated from source signatures and docstrings.
   - `profile: str`
   - `resources: dict[str, Resource]`
   - `catalogs: dict[str, Catalog | CatalogLink]`
-  - `_origins: dict[str, tuple[Path, str, tuple[Path, ...]]]`
-  - `_expanded: bool`
-- Methods:
-  - `def require_mapping(cls, children: Any) -> Any`
-  - `def identify_links(cls, children: Any) -> Any`
-  - `def unique_names(self) -> Catalog`
-
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
 - Fields:
@@ -188,16 +181,10 @@ Auto-generated from source signatures and docstrings.
   - `drive: str | None`
   - `drive_id: str | None`
   - `bucket: str | None`
-- Methods:
-  - `def reject_links(cls, value: Any) -> Any`
-
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.
 - Fields:
   - `descriptor: str`
-- Methods:
-  - `def validate_descriptor(cls, value: str) -> str`
-
 
 ## `fileroute.item`
 

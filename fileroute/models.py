@@ -101,7 +101,7 @@ class Location(_Metadata):
 
     @model_validator(mode="before")
     @classmethod
-    def reject_links(cls, value: Any) -> Any:
+    def _reject_links(cls, value: Any) -> Any:
         if isinstance(value, dict) and {"descriptor", "$ref"} & value.keys():
             raise ValueError(
                 "Locations cannot contain descriptor links; use a location path"
@@ -120,7 +120,7 @@ class _Artifact(_Metadata):
 
     @model_validator(mode="before")
     @classmethod
-    def reject_legacy_fields(cls, value: Any) -> Any:
+    def _reject_legacy_fields(cls, value: Any) -> Any:
         if isinstance(value, dict):
             legacy = {
                 "name",
@@ -157,7 +157,7 @@ class CatalogLink(BaseModel):
 
     @field_validator("descriptor")
     @classmethod
-    def validate_descriptor(cls, value: str) -> str:
+    def _validate_descriptor(cls, value: str) -> str:
         if not value.strip() or "://" in value or "#" in value:
             raise ValueError(
                 "descriptor must be a local file path without a URI fragment"
@@ -195,7 +195,7 @@ class Catalog(_Artifact):
 
     @field_validator("resources", "catalogs", mode="before")
     @classmethod
-    def require_mapping(cls, children: Any) -> Any:
+    def _require_mapping(cls, children: Any) -> Any:
         if not isinstance(children, dict):
             raise ValueError(
                 "resources/catalogs must be keyed mappings; run fileroute migrate INPUT OUTPUT_DIR"
@@ -204,27 +204,10 @@ class Catalog(_Artifact):
             validate_name(key)
         return children
 
-    @field_validator("catalogs", mode="before")
-    @classmethod
-    def identify_links(cls, children: Any) -> Any:
-        if not isinstance(children, dict):
-            return children
-        return {
-            key: (
-                CatalogLink.model_validate(child)
-                if "descriptor" in child
-                else Catalog.model_validate(child)
-            )
-            if isinstance(child, dict)
-            else child
-            for key, child in children.items()
-        }
-
     @model_validator(mode="after")
-    def unique_names(self) -> Catalog:
+    def _reject_name_collisions(self) -> Catalog:
         seen: set[str] = set()
         for key in [*self.resources, *self.catalogs]:
-            validate_name(key)
             folded = key.casefold()
             if folded in seen:
                 raise ValueError(f"Duplicate registered name: {key}")
