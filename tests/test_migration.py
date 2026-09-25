@@ -6,6 +6,16 @@ from fileroute.migration import migrate
 from fileroute.descriptor import load, find
 
 
+def test_migrate_schema_key_to_profile(tmp_path):
+    source = tmp_path / "old.yaml"
+    source.write_text("$schema: fileroute-catalog\nresources: {}\n")
+    target = tmp_path / "converted"
+    migrate(source, target)
+    content = (target / source.name).read_text()
+    assert "profile: fileroute-catalog" in content
+    assert "$schema" not in content
+
+
 def test_shared_graph_migration_preserves_files_and_metadata(tmp_path):
     root = tmp_path / "root.yaml"
     root.write_text(

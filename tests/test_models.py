@@ -10,6 +10,15 @@ def test_location_aliases_and_metadata():
     assert location.model_dump(by_alias=True)["custom"] == 3
 
 
+def test_catalog_profile_is_the_serialized_key():
+    catalog = Catalog.model_validate({"profile": "custom-catalog"})
+    assert catalog.profile == "custom-catalog"
+    assert catalog.model_dump(by_alias=True)["profile"] == "custom-catalog"
+    assert "$schema" not in catalog.model_dump(by_alias=True)
+    with pytest.raises(ValueError, match=r"Use 'profile' instead of '\$schema'"):
+        Catalog.model_validate({"$schema": "custom-catalog"})
+
+
 def test_keyed_children_and_strict_link_dispatch():
     model = Catalog.model_validate({
         "resources": {"guide": {"path": "guide.csv", "targets": []}},

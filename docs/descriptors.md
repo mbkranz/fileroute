@@ -6,7 +6,7 @@ field. `CatalogLink` composes another catalog file through `descriptor`.
 `Location` records upstream provenance or a publication destination.
 
 ```yaml
-$schema: fileroute-catalog
+profile: fileroute-catalog
 catalogs:
   documentation:
     path: docs/_output
@@ -34,6 +34,7 @@ name. Root descriptors may have a `title` for display.
 
 | Field | Meaning |
 | --- | --- |
+| `profile` | Optional catalog profile label (defaults to `fileroute-catalog`) |
 | `catalogs`, `resources` | Maps of registered names to catalogs/links or resources |
 | `descriptor` | Link to another **local catalog document**, relative to the containing file |
 | Catalog/resource `path` | Local artifact or directory, relative to the transfer working root |
@@ -52,8 +53,9 @@ A bare name works when unique. Links cannot mix `descriptor` with inline fields.
 
 Unknown extension metadata survives round trips. YAML comments, styles, and
 mapping order are preserved where practical; exact whitespace is not guaranteed.
-Custom tags such as `!include` are rejected. `$schema` is an optional profile
-label, not a network-fetched schema. The format uses Data Package and
+Custom tags such as `!include` are rejected. `profile` is a label, not a
+network-fetched schema. Use `fileroute migrate` to convert older descriptors
+with `$schema` to `profile`. The format uses Data Package and
 OpenMetadata vocabulary but is not an implementation of their full schemas.
 
 ## Discover and select

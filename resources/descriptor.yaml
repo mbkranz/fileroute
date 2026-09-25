@@ -1,4 +1,4 @@
-"$schema": fileroute-catalog
+"profile": fileroute-catalog
 resources:
   placeholder:
     path: background/.gitkeep

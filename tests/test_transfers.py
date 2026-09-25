@@ -345,7 +345,7 @@ def _descriptor(root: Path) -> Path:
     descriptor = root / "config" / "fileroute.yaml"
     descriptor.parent.mkdir()
     descriptor.write_text(
-        "$schema: fileroute-catalog\ncatalogs:\n  documentation:\n    path: docs/_output\n    targets:\n    - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n      serviceType: SharePoint\n"
+        "profile: fileroute-catalog\ncatalogs:\n  documentation:\n    path: docs/_output\n    targets:\n    - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n      serviceType: SharePoint\n"
     )
     return descriptor
 
@@ -403,7 +403,7 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     (tmp_path / "local.docx").write_bytes(b"document")
     descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
-        "$schema: fileroute-catalog\nresources:\n  guide:\n    path: local.docx\n    targets:\n    - path: \n        https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
+        "profile: fileroute-catalog\nresources:\n  guide:\n    path: local.docx\n    targets:\n    - path: \n        https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
     )
     files = plan_push(descriptor, root=tmp_path)
     calls = []

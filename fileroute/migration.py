@@ -24,6 +24,10 @@ def _keyed_document(data: dict, *, label: str = "descriptor") -> dict:
     from fileroute.models import validate_name
 
     root_name = data.pop("name", None)
+    if "$schema" in data:
+        if "profile" in data:
+            raise ValueError(f"{label}: both $schema and profile are present")
+        data["profile"] = data.pop("$schema")
     if root_name and "title" not in data:
         data["title"] = root_name
     for field in ("resources", "catalogs"):
