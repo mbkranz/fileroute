@@ -17,7 +17,7 @@ supported end-to-end transfer if credentials grant access to all sites.
 <!-- example:sharepoint-two-targets:start -->
 ```yaml
 resources:
-  - name: monthly-report
+  monthly-report:
     path: artifacts/monthly-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv
@@ -55,7 +55,7 @@ To create a new Drive file instead, target its existing folder URL.
 <!-- example:sharepoint-google-drive:start -->
 ```yaml
 resources:
-  - name: partner-report
+  partner-report:
     path: artifacts/partner-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
@@ -83,7 +83,7 @@ credentials permit access; it never deletes files outside the descriptor.
 <!-- example:sharepoint-mixed-targets:start -->
 ```yaml
 resources:
-  - name: partner-report
+  partner-report:
     path: artifacts/partner-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
@@ -114,7 +114,7 @@ The local source is provenance; `pull` neither copies nor renders it.
 <!-- example:local-three-targets:start -->
 ```yaml
 resources:
-  - name: guide
+  guide:
     path: docs/_output/guide.docx
     sources:
       - path: docs/guide.qmd

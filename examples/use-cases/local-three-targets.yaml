@@ -1,5 +1,5 @@
 resources:
-  - name: guide
+  guide:
     path: docs/_output/guide.docx
     sources:
       - path: docs/guide.qmd

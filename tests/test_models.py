@@ -1,33 +1,51 @@
-"""Validation contracts for descriptor models."""
+"""Canonical keyed models reject ambiguous and legacy shapes."""
 
 import pytest
+from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
 
-from fileroute.models import Catalog, CatalogReference, Location, Resource, ServiceType
 
-
-def test_location_aliases_and_metadata_validation():
-    location = Location.model_validate({
-        "path": "s3://bucket/key",
-        "serviceType": "s3",
-        "custom": 3,
-    })
+def test_location_aliases_and_metadata():
+    location = Location(path="s3://bucket/key", serviceType="s3", custom=3)
     assert location.service_type is ServiceType.S3
-    assert location.model_dump(by_alias=True, exclude_unset=True)["custom"] == 3
-    assert location.model_dump(by_alias=True)["serviceType"] == "S3"
+    assert location.model_dump(by_alias=True)["custom"] == 3
+
+
+def test_keyed_children_and_strict_link_dispatch():
+    model = Catalog.model_validate({
+        "resources": {"guide": {"path": "guide.csv", "targets": []}},
+        "catalogs": {"child": {"descriptor": "child.yaml"}},
+    })
+    assert model.resources["guide"].targets == []
+    assert isinstance(model.catalogs["child"], CatalogLink)
+    for bad in (
+        {"descriptor": "child.yaml", "path": "out"},
+        {"descriptor": "child.yaml", "resources": {}},
+        {"$ref": "child.yaml"},
+    ):
+        with pytest.raises(ValueError):
+            Catalog(catalogs={"bad": bad})
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"resources": []},
+        {"catalogs": []},
+        {"resources": {"bad.name": {"path": "x"}}},
+        {"resources": {"file": {"path": "x"}, "FILE": {"path": "y"}}},
+        {"catalogs": {"file": {}}, "resources": {"file": {"path": "x"}}},
+        {"name": "old"},
+        {"serviceType": "S3"},
+        {"packages": []},
+    ],
+)
+def test_invalid_or_legacy_shape(data):
     with pytest.raises(ValueError):
-        Location.model_validate({"path": "", "serviceType": "S3"})
+        Catalog.model_validate(data)
 
 
-def test_resource_catalog_and_reference_models():
-    catalog = Catalog(resources=[Resource(path="out.csv", targets=[])])
-    assert catalog.resources[0].targets == []
-    reference = CatalogReference.model_validate({"$ref": "child.yaml"})
-    assert reference.model_dump(by_alias=True, exclude_unset=True) == {
-        "$ref": "child.yaml"
-    }
-
-
-@pytest.mark.parametrize("field", ["_cache", "packages", "serviceType", "syncTarget"])
-def test_retired_fields_fail_actionably(field):
-    with pytest.raises(ValueError, match="Unsupported fields"):
-        Catalog.model_validate({field: []})
+def test_resource_has_no_duplicate_name_and_preserves_extensions():
+    with pytest.raises(ValueError):
+        Resource(name="file", path="x")
+    item = Resource(path="x", custom={"owner": "team"})
+    assert item.model_dump()["custom"] == {"owner": "team"}

@@ -42,29 +42,48 @@ Auto-generated from source signatures and docstrings.
 ### Functions
 
 - `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
-  - Load YAML/JSON; optionally expand $ref relative to each containing file.
+  - Load keyed YAML/JSON; optionally expand links with per-entry provenance.
 - `def save(catalog: Catalog, path: Path | str) -> None`
   - Atomically save canonical metadata, including authored defaults/extensions.
 - `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
-  - Walk typed metadata only; no file I/O. Reject duplicate named paths.
-- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogReference | Location`
-  - Find by name, dot-path, JSON Pointer, or exact JSONPath.
+  - Walk keyed metadata without I/O, retaining origins from load().
+- `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogLink | Location`
+  - Find one registered name, JSON Pointer, or exact JSONPath (optional $).
 - `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
   - Return resolved metadata without mutating the input or authored paths.
+- `def select(catalog: Catalog, selector: str) -> Selection`
+  - Select a node with origin and inherited target context; never perform I/O.
+- `def resolve_selection(path: Path | str, selector: str, *, online: bool = False, write: bool = False) -> Selection`
+  - Resolve one selected scope; optional writes affect its origin file only.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
 
 ### Classes
 
 #### `EntityPath`
+- Registered identity and editable physical origin of an expanded entry.
 - Fields:
   - `name_path: str`
-  - `model: Catalog | Resource | CatalogReference`
+  - `model: Catalog | Resource | CatalogLink`
   - `json_pointer: str`
+  - `origin_descriptor: Path | None`
+  - `origin_pointer: str`
+  - `reference_chain: tuple[Path, ...]`
 - Methods:
+  - `def name(self) -> str | None`
   - `def json_path(self) -> str`
-    - Exact JSONPath address of this entity in its descriptor tree.
   - `def entity_type(self) -> str`
+
+#### `Selection`
+- One selected entity/location and its physical source address.
+- Fields:
+  - `model: Catalog | Resource | CatalogLink | Location`
+  - `entry: EntityPath`
+  - `origin_pointer: str`
+  - `effective_targets: tuple[Location, ...]`
+  - `requested_selector: str`
+- Methods:
+  - `def as_dict(self) -> dict`
 
 
 ## `fileroute.diagram`
@@ -128,6 +147,8 @@ Auto-generated from source signatures and docstrings.
 
 ### Functions
 
+- `def validate_name(name: str) -> str`
+  - Registered names are stable map keys; titles hold display text.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
 
@@ -136,13 +157,11 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceType`
 
 #### `Catalog`
-- Nested groups of resources and catalogs.
+- Keyed resources and catalogs; paths retain transfer-root semantics.
 - Fields:
   - `profile: str`
-  - `resources: list[Resource]`
-  - `catalogs: list[Catalog | CatalogReference]`
-- Methods:
-  - `def identify_references(cls, children: Any) -> Any`
+  - `resources: dict[str, Resource]`
+  - `catalogs: dict[str, Catalog | CatalogLink]`
 
 #### `Resource`
 - A materialized artifact and its provenance/publication locations.
@@ -164,11 +183,10 @@ Auto-generated from source signatures and docstrings.
   - `drive_id: str | None`
   - `bucket: str | None`
 
-#### `CatalogReference`
-- Reference to another local descriptor; descriptor.load owns resolution.
+#### `CatalogLink`
+- Link to a local catalog document, relative to its containing file.
 - Fields:
-  - `name: str | None`
-  - `path: str`
+  - `descriptor: str`
 
 
 ## `fileroute.item`

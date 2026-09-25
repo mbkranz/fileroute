@@ -1,107 +1,85 @@
-from pathlib import Path
+"""Graph migration never overwrites inputs or publishes partial output."""
 
+import json
 import pytest
-from typer.testing import CliRunner
-
-from fileroute.cli import app
-from fileroute.descriptor import load
-from fileroute.migration import migrate_descriptor
-from fileroute.models import ServiceType
-
-RUNNER = CliRunner()
+from fileroute.migration import migrate
+from fileroute.descriptor import load, find
 
 
-def test_migrate_legacy_directory_for_push(tmp_path: Path) -> None:
-    source = tmp_path / "old.yaml"
-    source.write_text(
-        """
-$schema: data-package-catalog
-catalogs:
-  - name: documentation
-    _cache: docs/_output
-    accessURL: https://tenant.sharepoint.com/sites/dev/Shared%20Documents/Docs
-    serviceType: SharePoint
-    entityType: Directory
-""".strip()
+def test_shared_graph_migration_preserves_files_and_metadata(tmp_path):
+    root = tmp_path / "root.yaml"
+    root.write_text(
+        "# retained\ncatalogs:\n  - name: left\n    $ref: child.json\n  - name: right\n    $ref: child.json\n"
     )
-
-    catalog = migrate_descriptor(source, direction="push")
-    documentation = catalog.catalogs[0]
-
-    assert documentation.path == "docs/_output"
-    assert documentation.sources == []
-    assert documentation.targets is not None
-    assert documentation.targets[0].path.endswith("/Shared%20Documents/Docs")
-    assert documentation.targets[0].service_type is ServiceType.SHAREPOINT
-    assert documentation.entity_type == "Directory"
-
-
-def test_migrate_legacy_resource_for_pull(tmp_path: Path) -> None:
-    source = tmp_path / "old.yaml"
-    source.write_text(
-        """
-resources:
-  - name: export
-    path: s3://bucket/export.csv
-    _cache: data/export.csv
-    serviceType: S3
-""".strip()
+    child = tmp_path / "child.json"
+    child.write_text(
+        json.dumps({
+            "resources": [
+                {
+                    "name": "file",
+                    "path": "out.csv",
+                    "targets": [],
+                    "extra": {"owner": "team"},
+                }
+            ]
+        })
     )
+    before = {p: p.read_bytes() for p in (root, child)}
+    out = tmp_path / "converted"
+    report = migrate(root, out, dry_run=True)
+    assert len(report) == 2 and not out.exists()
+    assert migrate(root, out) == report
+    result = load(out / "root.yaml", resolve_references=True)
+    for name in ("left.file", "right.file"):
+        resource = find(result, name)
+        assert resource.path == "out.csv" and resource.targets == []
+        assert resource.model_extra["extra"] == {"owner": "team"}
+    assert "# retained" in (out / "root.yaml").read_text()
+    assert all(p.read_bytes() == data for p, data in before.items())
+    with pytest.raises(ValueError, match="exists"):
+        migrate(root, out)
 
-    export = migrate_descriptor(source, direction="pull").resources[0]
 
-    assert export.path == "data/export.csv"
-    assert export.targets is None
-    assert export.sources[0].path == "s3://bucket/export.csv"
-    assert export.sources[0].service_type is ServiceType.S3
+@pytest.mark.parametrize(
+    "children",
+    [
+        [{"path": "x"}],
+        [{"name": "bad.name", "path": "x"}],
+        [{"name": "file", "path": "x"}, {"name": "FILE", "path": "y"}],
+    ],
+)
+def test_invalid_names_publish_nothing(tmp_path, children):
+    root = tmp_path / "root.json"
+    root.write_text(json.dumps({"resources": children}))
+    with pytest.raises(ValueError):
+        migrate(root, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
 
 
-def test_migrate_cli_writes_new_file_and_preserves_input(tmp_path: Path) -> None:
-    source = tmp_path / "old.yaml"
-    output = tmp_path / "new.yaml"
-    source.write_text(
-        """
-catalogs:
-  - name: documentation
-    _cache: docs/_output
-    accessURL: https://tenant.sharepoint.com/sites/dev/Docs
-    serviceType: SharePoint
-""".strip()
+def test_cycles_and_failed_publish_leave_no_stage(tmp_path, monkeypatch):
+    root = tmp_path / "root.json"
+    root.write_text(json.dumps({"catalogs": [{"name": "cycle", "$ref": "root.json"}]}))
+    with pytest.raises(ValueError, match="Cyclic"):
+        migrate(root, tmp_path / "out")
+    root.write_text(json.dumps({"resources": [{"name": "file", "path": "x"}]}))
+    monkeypatch.setattr(
+        "fileroute.descriptor.load",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("verification failed")),
     )
-    before = source.read_bytes()
+    with pytest.raises(ValueError, match="verification failed"):
+        migrate(root, tmp_path / "out")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["root.json"]
 
-    result = RUNNER.invoke(
-        app,
-        ["migrate", str(source), str(output), "--direction", "push"],
-        prog_name="fileroute",
+
+def test_migration_preserves_name_and_link_comments(tmp_path):
+    root = tmp_path / "root.yaml"
+    root.write_text(
+        "catalogs:\n  - name: child # name comment\n    $ref: child.yaml # link comment\n"
     )
-
-    assert result.exit_code == 0, result.output
-    assert source.read_bytes() == before
-    migrated = load(output)
-    assert migrated.catalogs[0].path == "docs/_output"
-    assert migrated.catalogs[0].targets[0].service_type is ServiceType.SHAREPOINT
-
-
-def test_migrate_cli_refuses_overwrite(tmp_path: Path) -> None:
-    source = tmp_path / "old.yaml"
-    output = tmp_path / "new.yaml"
-    source.write_text("resources: []\n")
-    output.write_text("existing\n")
-
-    result = RUNNER.invoke(app, ["migrate", str(source), str(output)])
-
-    assert result.exit_code != 0
-    assert "does not overwrite files" in result.output
-    assert output.read_text() == "existing\n"
-
-
-def test_normal_load_still_rejects_legacy_fields(tmp_path: Path) -> None:
-    source = tmp_path / "old.yaml"
-    source.write_text(
-        "catalogs:\n  - name: docs\n    _cache: docs/_output\n"
-        "    accessURL: https://tenant.sharepoint.com/sites/dev/Docs\n"
+    (tmp_path / "child.yaml").write_text(
+        "resources:\n  - name: file # resource comment\n    path: x\n"
     )
-
-    with pytest.raises(ValueError, match="Unsupported fields"):
-        load(source)
+    migrate(root, tmp_path / "out")
+    text = (tmp_path / "out/root.yaml").read_text()
+    assert "# name comment" in text and "# link comment" in text
+    assert "# resource comment" in (tmp_path / "out/child.yaml").read_text()
