@@ -79,9 +79,6 @@ def _add_resource_to_descriptor(
         entry = Resource.model_validate(kwargs)
         parent_catalog.resources[entity_name] = entry
 
-    # An unnamed parent can make an otherwise distinct name path ambiguous.
-    list(walk(document))
-
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
     save(document, descriptor_path)
     return entry.model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -455,6 +452,19 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         if kind != "all":
             references = [row for row in references if row.entity_type == kind]
         if output_format == OutputFormat.JSON:
+
+            def location_metadata(pointer: str, location: Location) -> dict[str, Any]:
+                origin = select_entry(model, pointer)
+                return {
+                    "jsonPath": _pointer_json_path(pointer),
+                    "jsonPointer": pointer,
+                    "originDescriptor": str(origin.entry.origin_descriptor),
+                    "originSelector": _pointer_json_path(origin.origin_pointer),
+                    "location": location.model_dump(
+                        mode="json", by_alias=True, exclude_unset=True
+                    ),
+                }
+
             echo_json({
                 "descriptor": descriptor_path.as_posix(),
                 "entities": [
@@ -494,19 +504,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                     for row in references
                 ],
                 "locations": [
-                    {
-                        "jsonPath": _pointer_json_path(pointer),
-                        "jsonPointer": pointer,
-                        "originDescriptor": str(
-                            select_entry(model, pointer).entry.origin_descriptor
-                        ),
-                        "originSelector": _pointer_json_path(
-                            select_entry(model, pointer).origin_pointer
-                        ),
-                        "location": location.model_dump(
-                            mode="json", by_alias=True, exclude_unset=True
-                        ),
-                    }
+                    location_metadata(pointer, location)
                     for pointer, location in location_rows
                 ],
             })
