@@ -43,11 +43,11 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
             continue
         if len(entity.sources) != 1:
             raise ValueError(
-                f"{entity.name}: pull requires exactly one source; build derived artifacts separately"
+                f"{row.name_path or 'root'}: pull requires exactly one source; build derived artifacts separately"
             )
         if entity.path is None:
             raise ValueError(
-                f"{entity.name}: set path for the local artifact before pulling"
+                f"{row.name_path or 'root'}: set path for the local artifact before pulling"
             )
         source = entity.sources[0]
         service = source.service_type
@@ -245,7 +245,7 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
                 raise ValueError("Catalog targets must be folders, not files")
             if explicit:
                 anchor = local or root
-            children = [*entity.resources, *entity.catalogs]
+            children = [*entity.resources.values(), *entity.catalogs.values()]
             if children:
                 for child in children:
                     visit(child, targets or [], anchor)

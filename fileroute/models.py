@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from enum import StrEnum
+import re
+from pathlib import Path
 from typing import Annotated, Any
 
 from pydantic import (
@@ -9,6 +11,7 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    PrivateAttr,
     model_validator,
 )
 
@@ -96,9 +99,17 @@ class Location(_Metadata):
     drive_id: str | None = Field(default=None, alias="driveId")
     bucket: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_links(cls, value: Any) -> Any:
+        if isinstance(value, dict) and {"descriptor", "$ref"} & value.keys():
+            raise ValueError(
+                "Locations cannot contain descriptor links; use a location path"
+            )
+        return value
+
 
 class _Artifact(_Metadata):
-    name: str | None = None
     title: str | None = None
     description: str | None = None
     path: str | None = None
@@ -112,6 +123,9 @@ class _Artifact(_Metadata):
     def reject_legacy_fields(cls, value: Any) -> Any:
         if isinstance(value, dict):
             legacy = {
+                "name",
+                "$ref",
+                "descriptor",
                 "_cache",
                 "cache",
                 "accessURL",
@@ -123,7 +137,7 @@ class _Artifact(_Metadata):
             } & value.keys()
             if legacy:
                 raise ValueError(
-                    f"Unsupported fields {sorted(legacy)}; use path, sources, targets, resources and catalogs"
+                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate-format for old descriptors"
                 )
         return value
 
@@ -135,42 +149,87 @@ class Resource(_Artifact):
     format: str | None = None
 
 
-class CatalogReference(_Metadata):
-    """Reference to another local descriptor; descriptor.load owns resolution."""
+class CatalogLink(BaseModel):
+    """Link to a local catalog document, relative to its containing file."""
 
-    name: str | None = None
     model_config = ConfigDict(extra="forbid")
-    path: str = Field(alias="$ref")
+    descriptor: str = Field(min_length=1)
+
+    @field_validator("descriptor")
+    @classmethod
+    def validate_descriptor(cls, value: str) -> str:
+        if not value.strip() or "://" in value or "#" in value:
+            raise ValueError(
+                "descriptor must be a local file path without a URI fragment"
+            )
+        return value
+
+
+NAME_PATTERN = r"[A-Za-z_][A-Za-z0-9_-]*"
+
+
+def validate_name(name: str) -> str:
+    """Registered names are stable map keys; titles hold display text."""
+    if not isinstance(name, str) or re.fullmatch(NAME_PATTERN, name) is None:
+        raise ValueError(
+            f"Invalid registered name {name!r}; use {NAME_PATTERN}; put display text in title"
+        )
+    return name
 
 
 class Catalog(_Artifact):
-    """Nested groups of resources and catalogs.
+    """Keyed resources and catalogs; paths retain transfer-root semantics.
 
-    Data Package field names remain useful metadata conventions, but this is a
-    Fileroute descriptor, not a full implementation of the Data Package schema.
-    Paths are never rewritten on load. Transfer roots are explicit and default
-    to cwd; reference paths are always relative to the containing descriptor.
+    Map keys are registered names. Links are recognized before union validation
+    so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
     profile: str = Field(default=CATALOG_PROFILE, alias="$schema")
-    resources: list[Resource] = Field(default_factory=list)
-    catalogs: list[Catalog | CatalogReference] = Field(default_factory=list)
+    resources: dict[str, Resource] = Field(default_factory=dict)
+    catalogs: dict[str, Catalog | CatalogLink] = Field(default_factory=dict)
+    # Runtime-only origins: expanded pointer -> (source file, source pointer, chain).
+    _origins: dict[str, tuple[Path, str, tuple[Path, ...]]] = PrivateAttr(
+        default_factory=dict
+    )
+    _expanded: bool = PrivateAttr(default=False)
+
+    @field_validator("resources", "catalogs", mode="before")
+    @classmethod
+    def require_mapping(cls, children: Any) -> Any:
+        if not isinstance(children, dict):
+            raise ValueError(
+                "resources/catalogs must be keyed mappings; run fileroute migrate-format INPUT OUTPUT_DIR"
+            )
+        for key in children:
+            validate_name(key)
+        return children
 
     @field_validator("catalogs", mode="before")
     @classmethod
-    def identify_references(cls, children: Any) -> Any:
-        if not isinstance(children, list):
+    def identify_links(cls, children: Any) -> Any:
+        if not isinstance(children, dict):
             return children
-        return [
-            (
-                CatalogReference.model_validate(child)
-                if "$ref" in child
+        return {
+            key: (
+                CatalogLink.model_validate(child)
+                if "descriptor" in child
                 else Catalog.model_validate(child)
             )
             if isinstance(child, dict)
             else child
-            for child in children
-        ]
+            for key, child in children.items()
+        }
+
+    @model_validator(mode="after")
+    def unique_names(self) -> Catalog:
+        seen: set[str] = set()
+        for key in [*self.resources, *self.catalogs]:
+            validate_name(key)
+            folded = key.casefold()
+            if folded in seen:
+                raise ValueError(f"Duplicate registered name: {key}")
+            seen.add(folded)
+        return self
 
 
 __all__ = [
@@ -178,7 +237,8 @@ __all__ = [
     "Catalog",
     "Resource",
     "Location",
-    "CatalogReference",
+    "CatalogLink",
+    "validate_name",
     "CATALOG_PROFILE",
     "EntityTypeValue",
     "normalize_entity_type",

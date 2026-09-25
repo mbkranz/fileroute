@@ -81,7 +81,7 @@ def test_file_to_catalog_uses_artifact_path_and_remote_source() -> None:
     resource = item.to_catalog()
 
     assert isinstance(resource, Resource)
-    assert resource.name == "reports/Report.CSV"
+    assert resource.title == "Report.CSV"
     assert resource.path == "reports/Report.CSV"
     assert resource.sources[0].path == "https://drive.google.com/file/d/file-1"
     assert resource.sources[0].service_id == "file-1"
@@ -138,20 +138,16 @@ def test_directory_to_catalog_preserves_child_resources_and_catalogs() -> None:
         is_directory=True,
         children=[nested_folder, root_file],
     )
-
     catalog = root.to_catalog()
-
     assert isinstance(catalog, Catalog)
-    assert catalog.name == ""
+    assert catalog.title == "bucket"
     assert catalog.sources[0].path == "s3://example-bucket"
     assert catalog.sources[0].service_id == "root-folder"
     assert catalog.sources[0].service_type == "S3"
     assert catalog.entity_type == "Directory"
-    assert [resource.name for resource in catalog.resources] == ["summary.csv"]
-    assert [child.name for child in catalog.catalogs] == ["archive"]
-    assert [resource.name for resource in catalog.catalogs[0].resources] == [
-        "archive/detail.parquet"
-    ]
+    assert list(catalog.resources) == ["summary-csv"]
+    assert list(catalog.catalogs) == ["archive"]
+    assert list(catalog.catalogs["archive"].resources) == ["detail-parquet"]
 
 
 def test_directory_download_writes_leaf_files_relative_to_target(
