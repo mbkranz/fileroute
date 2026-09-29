@@ -12,6 +12,8 @@ import re
 import shutil
 import subprocess
 import tomllib
+import tarfile
+import zipfile
 from pathlib import Path
 
 
@@ -34,6 +36,35 @@ def build(source: str) -> None:
             "SOURCE_DATE_EPOCH": git("show", "-s", "--format=%ct", source),
         },
     )
+
+    subprocess.run(
+        ["uv", "run", "--frozen", "python", "scripts/export_schema.py"], check=True
+    )
+
+    check_license()
+
+
+def check_license() -> None:
+    """Fail release preparation if either distribution omits the project license."""
+    expected = Path("LICENSE").read_bytes()
+    for wheel in Path("dist").glob("*.whl"):
+        with zipfile.ZipFile(wheel) as archive:
+            names = [
+                name
+                for name in archive.namelist()
+                if name.endswith(".dist-info/licenses/LICENSE")
+            ]
+            if len(names) != 1 or archive.read(names[0]) != expected:
+                raise RuntimeError(f"Missing or mismatched MIT license in {wheel}")
+    for source in Path("dist").glob("*.tar.gz"):
+        with tarfile.open(source) as archive:
+            names = [
+                name
+                for name in archive.getnames()
+                if name.count("/") == 1 and name.endswith("/LICENSE")
+            ]
+            if len(names) != 1 or archive.extractfile(names[0]).read() != expected:
+                raise RuntimeError(f"Missing or mismatched MIT license in {source}")
 
 
 def existing_release(branch: str, source: str) -> tuple[str, str] | None:

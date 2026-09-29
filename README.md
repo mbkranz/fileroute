@@ -132,3 +132,49 @@ a transient or rate-limit error and continue from the byte offset confirmed by
 the server. Network and HTTP failures retain their provider-specific exception
 types and expose `status_code`, `response_text`, `response_json`, and
 `response_headers` for callers that need details.
+
+## Root catalogs and profile schemas
+
+Use `catalog.yaml` (also `.yml` or `.json`) as a project resource inventory.
+Discovery checks an explicit argument, then the activated descriptor, then a root
+catalog, then `resources/descriptor.*`. A stale activation remains an error;
+Fileroute does not search parent directories.
+
+`Catalog.pathTemplate` describes an artifact naming pattern relative to `path`:
+
+```yaml
+profile: fileroute-catalog
+targets: []
+catalogs:
+  surveys:
+    path: data
+    pathTemplate: "{surveyid}/{env}/v{version}/schema.json"
+```
+
+Applications interpret the pattern. Transfers do not expand placeholders,
+discover matching files, or replace explicit resource paths. Select publication
+scope explicitly, for example `fileroute push catalog.yaml --select documentation`.
+
+`poe schema-export` generates `dist/schemas/fileroute-catalog.schema.json` from
+the models. Stable releases attach that exact version's schema as a GitHub asset.
+Associate YAML with a released schema using this editor comment (replace VERSION):
+
+```yaml
+# yaml-language-server: $schema=https://github.com/mbkranz/fileroute/releases/download/vVERSION/fileroute-catalog.schema.json
+profile: fileroute-catalog
+```
+
+Keep `profile` as document data; `$schema` is only in the editor comment.
+Schema validation covers structural constraints. Runtime checks still validate
+case-insensitive name collisions, descriptor paths and cycles, filesystem state,
+and operational transfer requirements. Service aliases normalized at runtime may
+need canonical spelling for editor validation.
+
+Release preparation saves schemas under `dist/schemas/` alongside distributions;
+PyPI receives only distributions. Retries reuse the saved release artifact and
+refuse to replace an existing GitHub schema asset with different bytes.
+
+## License
+
+Fileroute's code and generated profile schemas are covered by the MIT license
+in `LICENSE`. Resources referenced by user catalogs retain their own terms.

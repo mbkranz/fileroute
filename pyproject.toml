@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "fileroute"
 version = "0.2.3"
 description = "Convenient connectors to make interoperating and collaborating across multiple content management systems easier"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.10.6",
@@ -37,7 +39,8 @@ dev = [
     {include-group = "test"}
 ]
 test = [
-    "pytest"
+    "pytest",
+    "jsonschema>=4"
 ]
 
 [tool.poe]
@@ -172,3 +175,7 @@ help = "Prepare a release locally; requires --branch and --source. CI saves and 
 [tool.poe.tasks.release-test]
 cmd = "python -m unittest discover -s tests -p test_release.py"
 help = "Test release transitions and retries using temporary Git repositories."
+
+[tool.poe.tasks.schema-export]
+cmd = "uv run --frozen python scripts/export_schema.py"
+help = "Generate the versioned catalog profile schema in dist/schemas."

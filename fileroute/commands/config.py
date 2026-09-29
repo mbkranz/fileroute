@@ -29,6 +29,10 @@ def resolve_descriptor_path(path: Path | str | None = None) -> Path:
     if selected is not None:
         return selected
     for suffix in ("yaml", "yml", "json"):
+        candidate = Path(f"catalog.{suffix}")
+        if candidate.is_file():
+            return candidate
+    for suffix in ("yaml", "yml", "json"):
         candidate = Path(f"resources/descriptor.{suffix}")
         if candidate.is_file():
             return candidate

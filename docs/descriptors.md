@@ -199,3 +199,19 @@ Python attributes use snake_case; descriptor location fields use camelCase.
 `location.service_type` is the authoritative enum after resolution. See the
 generated [API reference](api.md), [CLI reference](cli.md), [Transfers](transfers.md),
 and [Diagrams](diagram.md).
+
+## Root catalogs and path templates
+
+A root `catalog.yaml` (also `.yml` or `.json`) is discovered after an explicitly
+activated descriptor and before `resources/descriptor.*`. Explicit arguments win.
+No parent-directory search is performed, and stale activations remain errors.
+
+`pathTemplate` is optional Catalog metadata describing a naming pattern relative
+to `path`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
+interpret the pattern; transfers do not expand it or replace concrete paths.
+
+Stable releases attach `fileroute-catalog.schema.json`, generated from these
+models. Associate its versioned GitHub asset URL using a YAML language-server
+comment, retaining `profile: fileroute-catalog` as document data. Editor validation
+covers structural constraints; runtime checks still cover name collisions,
+local descriptor validity, filesystem state, and operational requirements.

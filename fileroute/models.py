@@ -16,6 +16,19 @@ from pydantic import (
 )
 
 CATALOG_PROFILE = "fileroute-catalog"
+_ARTIFACT_LEGACY_FIELDS = (
+    "name",
+    "$ref",
+    "descriptor",
+    "_cache",
+    "cache",
+    "accessURL",
+    "accessUrl",
+    "packages",
+    "serviceType",
+    "serviceId",
+    "syncTarget",
+)
 
 
 class ServiceType(StrEnum):
@@ -88,6 +101,12 @@ class Location(_Metadata):
     OpenMetadata's drive service vocabulary; it is resolved only for transfers.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "not": {"anyOf": [{"required": [key]} for key in ("descriptor", "$ref")]}
+        }
+    )
+
     path: str = Field(min_length=1)
     service_type: ServiceTypeField | None = Field(default=None, alias="serviceType")
     service_id: str | None = Field(default=None, alias="serviceId")
@@ -110,6 +129,12 @@ class Location(_Metadata):
 
 
 class _Artifact(_Metadata):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "not": {"anyOf": [{"required": [key]} for key in _ARTIFACT_LEGACY_FIELDS]}
+        }
+    )
+
     title: str | None = None
     description: str | None = None
     path: str | None = None
@@ -122,19 +147,7 @@ class _Artifact(_Metadata):
     @classmethod
     def _reject_legacy_fields(cls, value: Any) -> Any:
         if isinstance(value, dict):
-            legacy = {
-                "name",
-                "$ref",
-                "descriptor",
-                "_cache",
-                "cache",
-                "accessURL",
-                "accessUrl",
-                "packages",
-                "serviceType",
-                "serviceId",
-                "syncTarget",
-            } & value.keys()
+            legacy = set(_ARTIFACT_LEGACY_FIELDS) & value.keys()
             if legacy:
                 raise ValueError(
                     f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate for old descriptors"
@@ -184,9 +197,32 @@ class Catalog(_Artifact):
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "not": {
+                "anyOf": [
+                    {"required": [key]} for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema")
+                ]
+            }
+        }
+    )
+
+    path_template: str | None = Field(
+        default=None,
+        alias="pathTemplate",
+        pattern=r"\S",
+        description="Artifact naming pattern relative to this catalog path. Metadata only; transfers do not expand it.",
+        examples=["{surveyid}/{env}/v{version}/schema.json"],
+    )
     profile: str = CATALOG_PROFILE
-    resources: dict[str, Resource] = Field(default_factory=dict)
-    catalogs: dict[str, Catalog | CatalogLink] = Field(default_factory=dict)
+    resources: dict[str, Resource] = Field(
+        default_factory=dict,
+        json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
+    )
+    catalogs: dict[str, Catalog | CatalogLink] = Field(
+        default_factory=dict,
+        json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
+    )
     # Runtime-only origins: expanded pointer -> (source file, source pointer, chain).
     _origins: dict[str, tuple[Path, str, tuple[Path, ...]]] = PrivateAttr(
         default_factory=dict
