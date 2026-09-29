@@ -206,7 +206,7 @@ A root `catalog.yaml` (also `.yml` or `.json`) is discovered after an explicitly
 activated descriptor and before `resources/descriptor.*`. Explicit arguments win.
 No parent-directory search is performed, and stale activations remain errors.
 
-`pathTemplate` is optional Catalog metadata describing a naming pattern relative
+`resourcePathTemplate` is optional Catalog metadata describing a naming pattern relative
 to `path`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
 interpret the pattern; transfers do not expand it or replace concrete paths.
 

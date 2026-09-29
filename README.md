@@ -140,7 +140,7 @@ Discovery checks an explicit argument, then the activated descriptor, then a roo
 catalog, then `resources/descriptor.*`. A stale activation remains an error;
 Fileroute does not search parent directories.
 
-`Catalog.pathTemplate` describes an artifact naming pattern relative to `path`:
+`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to `path`:
 
 ```yaml
 profile: fileroute-catalog
@@ -148,7 +148,7 @@ targets: []
 catalogs:
   surveys:
     path: data
-    pathTemplate: "{surveyid}/{env}/v{version}/schema.json"
+    resourcePathTemplate: "{surveyid}/{env}/v{version}/schema.json"
 ```
 
 Applications interpret the pattern. Transfers do not expand placeholders,

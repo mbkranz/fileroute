@@ -14,7 +14,7 @@ from fileroute.commands.config import resolve_descriptor_path, set_active_descri
 @pytest.mark.parametrize(
     "value",
     [
-        {"catalogs": {"surveys": {"path": "data", "pathTemplate": "{id}.csv"}}},
+        {"catalogs": {"surveys": {"path": "data", "resourcePathTemplate": "{id}.csv"}}},
         {"resources": {"guide": {"path": "guide.txt", "custom": True}}},
         {"catalogs": {"linked": {"descriptor": "child.yaml"}}},
     ],
@@ -38,9 +38,10 @@ def test_valid_schema(value):
                 "x": {"path": "x", "sources": [{"path": "x", "descriptor": "y"}]}
             }
         },
-        {"pathTemplate": ""},
-        {"pathTemplate": "   "},
-        {"pathTemplate": 2},
+        {"pathTemplate": "old spelling"},
+        {"resourcePathTemplate": ""},
+        {"resourcePathTemplate": "   "},
+        {"resourcePathTemplate": 2},
     ],
 )
 def test_invalid_schema(value):
@@ -55,12 +56,12 @@ def test_invalid_schema(value):
 
 def test_template_roundtrip(tmp_path):
     path = tmp_path / "catalog.yaml"
-    path.write_text('path: data\npathTemplate: "{id}.csv"\n')
+    path.write_text('path: data\nresourcePathTemplate: "{id}.csv"\n')
     model = load(path)
     save(model, path)
     model = load(path)
-    assert model.path_template == "{id}.csv"
-    assert model.model_dump(by_alias=True)["pathTemplate"] == "{id}.csv"
+    assert model.resource_path_template == "{id}.csv"
+    assert model.model_dump(by_alias=True)["resourcePathTemplate"] == "{id}.csv"
 
 
 def test_discovery_precedence(tmp_path, monkeypatch):
@@ -104,7 +105,7 @@ def test_template_does_not_expand_transfers(tmp_path):
     descriptor.write_text("""catalogs:
   output:
     path: out
-    pathTemplate: "{missing}.csv"
+    resourcePathTemplate: "{missing}.csv"
     targets:
       - path: https://example.sharepoint.com/sites/dev/Shared%20Documents/output
 """)

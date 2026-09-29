@@ -159,7 +159,7 @@ Auto-generated from source signatures and docstrings.
 #### `Catalog`
 - Keyed resources and catalogs; paths retain transfer-root semantics.
 - Fields:
-  - `path_template: str | None`
+  - `resource_path_template: str | None`
   - `profile: str`
   - `resources: dict[str, Resource]`
   - `catalogs: dict[str, Catalog | CatalogLink]`

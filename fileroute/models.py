@@ -201,15 +201,16 @@ class Catalog(_Artifact):
         json_schema_extra={
             "not": {
                 "anyOf": [
-                    {"required": [key]} for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema")
+                    {"required": [key]}
+                    for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema", "pathTemplate")
                 ]
             }
         }
     )
 
-    path_template: str | None = Field(
+    resource_path_template: str | None = Field(
         default=None,
-        alias="pathTemplate",
+        alias="resourcePathTemplate",
         pattern=r"\S",
         description="Artifact naming pattern relative to this catalog path. Metadata only; transfers do not expand it.",
         examples=["{surveyid}/{env}/v{version}/schema.json"],
@@ -236,6 +237,8 @@ class Catalog(_Artifact):
             raise ValueError(
                 "Use 'profile' instead of '$schema' in catalog descriptors"
             )
+        if isinstance(value, dict) and "pathTemplate" in value:
+            raise ValueError("Use 'resourcePathTemplate' instead of 'pathTemplate'")
         return value
 
     @field_validator("resources", "catalogs", mode="before")
