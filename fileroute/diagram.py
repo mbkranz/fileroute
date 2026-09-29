@@ -10,7 +10,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from fileroute.descriptor import load, resolve
+from fileroute.descriptor import load, resolve, walk
 from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
 
 
@@ -47,7 +47,7 @@ class DescriptorGraph:
 
 
 def _artifact_label(artifact: Catalog | Resource, fallback: str) -> str:
-    return artifact.title or fallback or artifact.path or "Catalog"
+    return artifact.title or fallback or "Catalog"
 
 
 def _location_label(location: Location) -> str:
@@ -68,6 +68,9 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
     edges: list[DiagramEdge] = []
     locations: dict[str, str] = {}
     anchor_counts: dict[str, int] = {}
+    paths = {
+        id(row.model): row.effective_path for row in walk(catalog, include_self=True)
+    }
 
     def node_details(
         model: Catalog | Resource | Location | CatalogLink,
@@ -144,7 +147,7 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                 key=key,
                 label=_artifact_label(current, fallback),
                 kind="catalog",
-                path=current.path,
+                path=paths[id(current)],
                 entity_type=current.entity_type,
                 **node_details(current, identity, fallback if parent_key else None),
             )
@@ -165,7 +168,7 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                     key=resource_key,
                     label=_artifact_label(resource, name),
                     kind="resource",
-                    path=resource.path,
+                    path=paths[id(resource)],
                     entity_type=resource.entity_type,
                     **node_details(resource, identity + "/resource:" + name, name),
                 )

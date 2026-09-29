@@ -120,9 +120,12 @@ def test_html_escapes_metadata_and_rejects_executable_links(tmp_path):
             resources={
                 "entry0": Resource(
                     title="<img src=x onerror=alert(1)>",
-                    path="javascript:alert(1)",
+                    path="safe.txt",
                     description="</script><script>alert(2)</script>",
-                    sources=[Location(path="https://example.org/file?a=1&b=2")],
+                    sources=[
+                        Location(path="https://example.org/file?a=1&b=2"),
+                        Location(path="javascript:alert(1)"),
+                    ],
                 )
             }
         )

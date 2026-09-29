@@ -69,6 +69,7 @@ Auto-generated from source signatures and docstrings.
   - `origin_descriptor: Path | None`
   - `origin_pointer: str`
   - `reference_chain: tuple[Path, ...]`
+  - `effective_path: str | None`
 - Methods:
   - `def name(self) -> str | None`
   - `def json_path(self) -> str`
@@ -83,6 +84,8 @@ Auto-generated from source signatures and docstrings.
   - `effective_targets: tuple[Location, ...]`
   - `requested_selector: str`
 - Methods:
+  - `def effective_path(self) -> str | None`
+    - Working-root-relative artifact path including ancestor catalog bases.
   - `def as_dict(self) -> dict`
 
 
@@ -157,8 +160,9 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceType`
 
 #### `Catalog`
-- Keyed resources and catalogs; paths retain transfer-root semantics.
+- Keyed resources and catalogs with parent-relative directory bases.
 - Fields:
+  - `base_path: str | None`
   - `resource_path_template: str | None`
   - `profile: str`
   - `resources: dict[str, Resource]`

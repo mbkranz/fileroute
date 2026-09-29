@@ -325,12 +325,14 @@ class ServiceItem(ABC):
                 )
             entry = child.to_catalog()
             if isinstance(entry, Catalog):
+                entry.base_path = str(Path(child.path).relative_to(self.path))
                 catalogs[key] = entry
             elif isinstance(entry, Resource):
+                entry.path = str(Path(child.path).relative_to(self.path))
                 resources[key] = entry
         return Catalog(
             title=self.name,
-            path=self.path,
+            base_path=self.path or ".",
             sources=[source],
             entityType="Directory",
             resources=resources,

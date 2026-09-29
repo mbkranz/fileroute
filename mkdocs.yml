@@ -18,6 +18,7 @@ nav:
       - Provider setup: authentication.md
       - Google Drive: google-auth.md
   - Reference:
+      - Descriptor specification: specification.md
       - CLI: cli.md
       - Python API: api.md
   - Development:

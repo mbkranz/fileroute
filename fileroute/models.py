@@ -137,7 +137,6 @@ class _Artifact(_Metadata):
 
     title: str | None = None
     description: str | None = None
-    path: str | None = None
     sources: list[Location] = Field(default_factory=list)
     # None inherits catalog targets; [] explicitly disables publication.
     targets: list[Location] | None = None
@@ -150,7 +149,7 @@ class _Artifact(_Metadata):
             legacy = set(_ARTIFACT_LEGACY_FIELDS) & value.keys()
             if legacy:
                 raise ValueError(
-                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate for old descriptors"
+                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links"
                 )
         return value
 
@@ -191,7 +190,7 @@ def validate_name(name: str) -> str:
 
 
 class Catalog(_Artifact):
-    """Keyed resources and catalogs; paths retain transfer-root semantics.
+    """Keyed resources and catalogs with parent-relative directory bases.
 
     Map keys are registered names. Links are recognized before union validation
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
@@ -202,17 +201,29 @@ class Catalog(_Artifact):
             "not": {
                 "anyOf": [
                     {"required": [key]}
-                    for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema", "pathTemplate")
+                    for key in (
+                        *_ARTIFACT_LEGACY_FIELDS,
+                        "$schema",
+                        "pathTemplate",
+                        "path",
+                    )
                 ]
             }
         }
     )
 
+    base_path: str | None = Field(
+        default=None,
+        alias="basePath",
+        min_length=1,
+        description="Local directory relative to the parent catalog base; omitted inherits that base.",
+        examples=["build/resources"],
+    )
     resource_path_template: str | None = Field(
         default=None,
         alias="resourcePathTemplate",
         pattern=r"\S",
-        description="Artifact naming pattern relative to this catalog path. Metadata only; transfers do not expand it.",
+        description="Artifact naming pattern relative to the effective basePath. Metadata only; transfers do not expand it.",
         examples=["{surveyid}/{env}/v{version}/schema.json"],
     )
     profile: str = CATALOG_PROFILE
@@ -233,6 +244,10 @@ class Catalog(_Artifact):
     @model_validator(mode="before")
     @classmethod
     def _reject_schema_key(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "path" in value:
+            raise ValueError(
+                "Catalog.path has been replaced by parent-relative basePath"
+            )
         if isinstance(value, dict) and "$schema" in value:
             raise ValueError(
                 "Use 'profile' instead of '$schema' in catalog descriptors"
@@ -245,9 +260,7 @@ class Catalog(_Artifact):
     @classmethod
     def _require_mapping(cls, children: Any) -> Any:
         if not isinstance(children, dict):
-            raise ValueError(
-                "resources/catalogs must be keyed mappings; run fileroute migrate INPUT OUTPUT_DIR"
-            )
+            raise ValueError("resources/catalogs must be keyed mappings")
         for key in children:
             validate_name(key)
         return children

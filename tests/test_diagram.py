@@ -13,11 +13,11 @@ def test_build_graph_applies_catalog_targets_to_resources():
     graph = build_graph(
         Catalog(
             title="docs",
-            path="docs/_output",
+            base_path="docs/_output",
             targets=[target],
             resources={
                 "guide": Resource(
-                    path="docs/_output/guide.docx",
+                    path="guide.docx",
                     sources=[Location(path="docs/guide.qmd")],
                 )
             },

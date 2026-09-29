@@ -16,9 +16,9 @@ Fileroute does not transform files or transfer directly between cloud providers.
 Catalogs and resources are now keyed maps: `resources: {report: {path: report.csv}}`.
 The map key is the registered name. Cross-file catalogs use
 `catalogs: {archive: {descriptor: catalogs/archive.yaml}}`.
-Run `fileroute migrate OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
-converting existing named lists and `$ref` links. See the
-[migration guide](docs/descriptors.md#migrate-the-old-format).
+Catalog directories use parent-relative `basePath`; resource `path` values are
+relative to their containing catalog. Legacy formats are not supported.
+See the [descriptor specification](docs/specification.md).
 
 ## Get started
 
@@ -112,7 +112,7 @@ for nested folders, shared drives, and ambiguous names.
 - [Transfer behavior and provider support](docs/transfers.md)
 - [Diagram formats and Python graph API](docs/diagram.md)
 - [CLI reference](docs/cli.md) and [Python API](docs/api.md)
-- [Development, migration, and package releases](docs/contributing.md)
+- [Development and package releases](docs/contributing.md)
 
 The descriptor `path` is a local artifact for transfers. `sources` are
 upstream inputs or provenance; `targets` are publication destinations.
@@ -140,14 +140,14 @@ Discovery checks an explicit argument, then the activated descriptor, then a roo
 catalog, then `resources/descriptor.*`. A stale activation remains an error;
 Fileroute does not search parent directories.
 
-`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to `path`:
+`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to the effective `basePath`:
 
 ```yaml
 profile: fileroute-catalog
 targets: []
 catalogs:
   surveys:
-    path: data
+    basePath: data
     resourcePathTemplate: "{surveyid}/{env}/v{version}/schema.json"
 ```
 

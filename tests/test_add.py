@@ -78,11 +78,11 @@ def test_add_catalog_with_target(tmp_path: Path) -> None:
     catalog = _add_resource_to_descriptor(
         descriptor,
         name="docs",
-        path="docs/_output",
+        base_path="docs/_output",
         catalog=True,
         target="https://tenant.sharepoint.com/sites/dev/Docs",
     )
-    assert catalog["path"] == "docs/_output"
+    assert catalog["basePath"] == "docs/_output"
     assert catalog["targets"][0]["path"].endswith("/Docs")
     assert yaml.safe_load(descriptor.read_text())["catalogs"]["docs"] == catalog
 

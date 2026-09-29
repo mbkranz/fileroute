@@ -14,7 +14,7 @@ from fileroute.commands.config import resolve_descriptor_path, set_active_descri
 @pytest.mark.parametrize(
     "value",
     [
-        {"catalogs": {"surveys": {"path": "data", "resourcePathTemplate": "{id}.csv"}}},
+        {"catalogs": {"surveys": {"basePath": "data", "resourcePathTemplate": "{id}.csv"}}},
         {"resources": {"guide": {"path": "guide.txt", "custom": True}}},
         {"catalogs": {"linked": {"descriptor": "child.yaml"}}},
     ],
@@ -56,7 +56,7 @@ def test_invalid_schema(value):
 
 def test_template_roundtrip(tmp_path):
     path = tmp_path / "catalog.yaml"
-    path.write_text('path: data\nresourcePathTemplate: "{id}.csv"\n')
+    path.write_text('basePath: data\nresourcePathTemplate: "{id}.csv"\n')
     model = load(path)
     save(model, path)
     model = load(path)
@@ -104,7 +104,7 @@ def test_template_does_not_expand_transfers(tmp_path):
     descriptor = tmp_path / "catalog.yaml"
     descriptor.write_text("""catalogs:
   output:
-    path: out
+    basePath: out
     resourcePathTemplate: "{missing}.csv"
     targets:
       - path: https://example.sharepoint.com/sites/dev/Shared%20Documents/output

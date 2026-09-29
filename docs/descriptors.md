@@ -9,17 +9,17 @@ field. `CatalogLink` composes another catalog file through `descriptor`.
 profile: fileroute-catalog
 catalogs:
   documentation:
-    path: docs/_output
+    basePath: docs/_output
     targets:
       - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs
         serviceType: SharePoint
     resources:
       guide:
-        path: docs/_output/guide.docx
+        basePath: docs/_output/guide.docx
         sources:
           - path: docs/guide.qmd
       internal:
-        path: docs/_output/internal.docx
+        basePath: docs/_output/internal.docx
         targets: []
   research:
     descriptor: catalogs/research.yaml
@@ -37,7 +37,8 @@ name. Root descriptors may have a `title` for display.
 | `profile` | Optional catalog profile label (defaults to `fileroute-catalog`) |
 | `catalogs`, `resources` | Maps of registered names to catalogs/links or resources |
 | `descriptor` | Link to another **local catalog document**, relative to the containing file |
-| Catalog/resource `path` | Local artifact or directory, relative to the transfer working root |
+| Catalog `basePath` | Directory relative to the parent catalog base |
+| Resource `path` | Local artifact relative to its containing catalog base |
 | `sources`, `targets` | Ordered location lists; missing/null targets inherit, `[]` opts out |
 | Location `path` | Local provenance, remote path, or clickable URL |
 | `serviceType` | Location provider: `GoogleDrive`, `SharePoint`, or `S3` |
@@ -54,8 +55,7 @@ A bare name works when unique. Links cannot mix `descriptor` with inline fields.
 Unknown extension metadata survives round trips. YAML comments, styles, and
 mapping order are preserved where practical; exact whitespace is not guaranteed.
 Custom tags such as `!include` are rejected. `profile` is a label, not a
-network-fetched schema. Use `fileroute migrate` to convert older descriptors
-with `$schema` to `profile`. The format uses Data Package and
+network-fetched schema. Legacy descriptors are not supported. The format uses Data Package and
 OpenMetadata vocabulary but is not an implementation of their full schemas.
 
 ## Discover and select
@@ -70,7 +70,7 @@ fileroute list --kind resource --format json
 fileroute list --select documentation.guide
 fileroute resolve --select documentation.guide
 fileroute update --select documentation.guide --title "Guide"
-fileroute add appendix --parent documentation --path docs/_output/appendix.docx
+fileroute add appendix --parent documentation --path appendix.docx
 ```
 
 The positional argument of `list` and `resolve` is always a descriptor **file**;
@@ -149,29 +149,6 @@ content. Offline resolution and `list` do not authenticate. Selected output sepa
 IDs remain optional; transfer planning resolves relevant locations in memory.
 An S3 directory prefix should end in `/` to distinguish it from an object key.
 
-## Migrate the old format
-
-This is a breaking descriptor-format change. Normal loading accepts keyed maps
-and `descriptor` links. For the previous named lists and `$ref` syntax:
-
-```bash
-fileroute migrate config/fileroute.yaml migrated/ --dry-run
-fileroute migrate config/fileroute.yaml migrated/
-fileroute list migrated/fileroute.yaml
-```
-
-The command converts the whole linked file graph, preserves separate child files,
-and reports every source/output path, registered name, and link. Output must be
-a new directory. Conversion stages and validates all files before publishing the
-directory atomically; inputs remain untouched. Shared children are written once.
-Missing, invalid, or colliding names produce a file/entry error; edit those names
-explicitly and rerun. URI fragments are not silently translated. Root `name`
-metadata becomes `title` when no title was supplied.
-
-Artifact paths are **not rebased** into the migration directory. Run transfers
-from the original project working root or supply `root` through the Python API.
-Historical pre-`path`/`sources`/`targets` descriptor shapes are intentionally
-not carried forward as a second compatibility layer.
 
 ## Python API
 
@@ -207,7 +184,7 @@ activated descriptor and before `resources/descriptor.*`. Explicit arguments win
 No parent-directory search is performed, and stale activations remain errors.
 
 `resourcePathTemplate` is optional Catalog metadata describing a naming pattern relative
-to `path`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
+to the effective `basePath`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
 interpret the pattern; transfers do not expand it or replace concrete paths.
 
 Stable releases attach `fileroute-catalog.schema.json`, generated from these

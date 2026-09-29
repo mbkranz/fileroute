@@ -78,7 +78,7 @@ def plan_pull(
             raise ValueError(
                 f"{row.name_path or 'root'}: pull requires exactly one source; build derived artifacts separately"
             )
-        if entity.path is None:
+        if row.effective_path is None:
             raise ValueError(
                 f"{row.name_path or 'root'}: set path for the local artifact before pulling"
             )
@@ -93,7 +93,7 @@ def plan_pull(
         provider = get_provider(service)
         if not provider.capabilities.supports_download:
             raise ValueError(f"Pull is not implemented for {service}")
-        local = local_path(entity.path, root, reject_symlinks=True)
+        local = local_path(row.effective_path, root, reject_symlinks=True)
         directory = isinstance(entity, Catalog)
         for previous in entries:
             if (
@@ -185,9 +185,10 @@ def plan_push(
 ) -> tuple[PushEntry, ...]:
     """Publish path to targets, never sources; validate everything before auth.
 
-    Paths are relative to root (cwd by default). Catalog targets are folders;
-    children inherit them using paths relative to the declaring catalog's path,
-    or root when absent. Explicit child targets replace inherited ones; [] opts
+    Catalog basePath values compose parent-relative, and resource paths are
+    relative to their containing catalog. The composed paths are relative to
+    root (cwd by default). Catalog targets are folders; children inherit them
+    relative to the declaring catalog's effective base, or root when absent. Explicit child targets replace inherited ones; [] opts
     out. A catalog with children publishes only those children. A leaf catalog
     publishes its directory tree. Explicit resource targets are file URLs unless
     entityType is Directory/Container. Google Drive folder URLs also identify
@@ -195,6 +196,9 @@ def plan_push(
     """
     root = (root or Path.cwd()).resolve()
     document, selected = _scope(descriptor, selector, "push")
+    effective_paths = {
+        id(row.model): row.effective_path for row in walk(document, include_self=True)
+    }
     # Keep ancestors for inherited targets and path anchors, while skipping
     # sibling branches before their locations or local artifacts are checked.
     branch = None
@@ -296,8 +300,8 @@ def plan_push(
             for target in targets or []:
                 parse_location(target, required=True)
         local = (
-            local_path(entity.path, root, reject_symlinks=True)
-            if entity.path is not None
+            local_path(effective_paths[id(entity)], root, reject_symlinks=True)
+            if effective_paths[id(entity)] is not None
             else None
         )
         if isinstance(entity, Catalog):
@@ -314,7 +318,7 @@ def plan_push(
                 return
             if local is None or not local.is_dir():
                 raise ValueError(
-                    f"Upload directory missing or not a directory: {entity.path}"
+                    f"Upload directory missing or not a directory: {effective_paths[id(entity)]}"
                 )
             for file in sorted(local.rglob("*")):
                 safe = local_path(str(file), root, reject_symlinks=True)

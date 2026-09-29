@@ -19,7 +19,6 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
 * `resolve`: Resolve locators offline by default;...
-* `migrate`: Convert named-list descriptors and $ref...
 * `update`: Update descriptor-root or resource...
 * `activate`: Activate a descriptor for later commands.
 * `list`: List registered names, origins, exact...
@@ -87,26 +86,6 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 * `--select TEXT`: Registered name or exact address. Use fileroute list for names and selectors.
 * `--write`: Save resolved metadata back to this descriptor.
 * `--online`: Verify and enrich remote locations using provider credentials.
-* `--help`: Show this message and exit.
-
-## `fileroute migrate`
-
-Convert named-list descriptors and $ref links to the keyed format.
-
-**Usage**:
-
-```console
-$ fileroute migrate [OPTIONS] DESCRIPTOR OUTPUT
-```
-
-**Arguments**:
-
-* `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New directory for the converted descriptor graph.  [required]
-
-**Options**:
-
-* `--dry-run`: Validate and report outputs without writing.
 * `--help`: Show this message and exit.
 
 ## `fileroute update`

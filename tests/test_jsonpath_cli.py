@@ -182,11 +182,11 @@ def test_registered_names_take_precedence_over_rootless_address():
     model = Catalog(
         catalogs={
             "catalogs": Catalog(resources={"foo": Resource(path="x")}),
-            "foo": Catalog(path="y"),
+            "foo": Catalog(base_path="y"),
         }
     )
     assert find(model, "catalogs.foo").path == "x"
-    assert find(model, "$.catalogs.foo").path == "y"
+    assert find(model, "$.catalogs.foo").base_path == "y"
 
 
 def test_selected_online_write_reuses_verified_metadata(tmp_path, monkeypatch):

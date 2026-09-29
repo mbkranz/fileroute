@@ -25,22 +25,22 @@ def test_targets_inherit_override_and_opt_out(tmp_path):
         (out / name).write_text("artifact")
     path = descriptor(
         tmp_path,
-        path="out",
+        base_path="out",
         targets=[Location(path=REMOTE)],
         resources={
             "entry0": Resource(
-                title="one", path="out/one.docx", sources=[Location(path="one.qmd")]
+                title="one", path="one.docx", sources=[Location(path="one.qmd")]
             ),
             "entry1": Resource(
                 title="renamed",
-                path="out/three.docx",
+                path="three.docx",
                 targets=[Location(path=REMOTE + "/renamed.docx")],
             ),
-            "entry2": Resource(title="private", path="out/private.docx", targets=[]),
+            "entry2": Resource(title="private", path="private.docx", targets=[]),
         },
         catalogs={
             "nested": Catalog(
-                title="nested", resources={"two": Resource(path="out/sub/two.docx")}
+                title="nested", resources={"two": Resource(path="sub/two.docx")}
             )
         },
     )
@@ -108,6 +108,10 @@ def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
     else:
         with (tmp_path / "file").open("wb") as stream:
             stream.truncate(250000001)
+    if kind == "escape":
+        with pytest.raises(ValueError, match="relative local artifact path"):
+            descriptor(tmp_path, resources=resources)
+        return
     path = descriptor(tmp_path, resources=resources)
     monkeypatch.setattr(
         "fileroute.clients.sharepoint.SharepointClient.build_default",
@@ -123,9 +127,9 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
     child = tmp_path / "child.yaml"
     save(
         Catalog(
-            path="out",
+            base_path="out",
             targets=[Location(path=REMOTE)],
-            resources={"entry0": Resource(path="out/guide #1.docx")},
+            resources={"entry0": Resource(path="guide #1.docx")},
         ),
         child,
     )
@@ -237,13 +241,13 @@ def test_selected_push_inherits_targets_and_skips_unsupported_sibling(
 ):
     (tmp_path / "out/sub").mkdir(parents=True)
     (tmp_path / "out/sub/good.csv").write_text("good")
-    (tmp_path / "bad.csv").write_text("bad")
+    (tmp_path / "out/bad.csv").write_text("bad")
     path = descriptor(
         tmp_path,
-        path="out",
+        base_path="out",
         targets=[Location(path=REMOTE)],
         catalogs={
-            "batch": Catalog(resources={"good": Resource(path="out/sub/good.csv")}),
+            "batch": Catalog(resources={"good": Resource(path="sub/good.csv")}),
             "other": Catalog(
                 resources={
                     "bad": Resource(
@@ -327,7 +331,7 @@ def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monke
         tmp_path,
         catalogs={
             "entry0": Catalog(
-                path="downloads", sources=[Location(path="s3://bucket/root/")]
+                base_path="downloads", sources=[Location(path="s3://bucket/root/")]
             )
         },
     )
@@ -383,7 +387,7 @@ def test_planning_before_and_after_resolve_write_is_identical(tmp_path):
 
     (tmp_path / "out").mkdir()
     (tmp_path / "out/guide.docx").write_text("doc")
-    path = descriptor(tmp_path, path="out", targets=[Location(path=REMOTE)])
+    path = descriptor(tmp_path, base_path="out", targets=[Location(path=REMOTE)])
     before = plan_push(path, root=tmp_path)
     save(resolve(load(path)), path)
     assert plan_push(path, root=tmp_path) == before
@@ -471,7 +475,7 @@ def _descriptor(root: Path) -> Path:
     descriptor = root / "config" / "fileroute.yaml"
     descriptor.parent.mkdir()
     descriptor.write_text(
-        "profile: fileroute-catalog\ncatalogs:\n  documentation:\n    path: docs/_output\n    targets:\n    - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n      serviceType: SharePoint\n"
+        "profile: fileroute-catalog\ncatalogs:\n  documentation:\n    basePath: docs/_output\n    targets:\n    - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n      serviceType: SharePoint\n"
     )
     return descriptor
 
@@ -585,7 +589,7 @@ def test_google_drive_scoped_directory_and_mixed_targets_dry_run(tmp_path, monke
     (tmp_path / "out" / "report.csv").write_bytes(b"data")
     path = descriptor(
         tmp_path,
-        path="out",
+        base_path="out",
         targets=[
             Location(
                 path="reports",

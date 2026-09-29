@@ -12,7 +12,7 @@ import tempfile
 from io import StringIO
 from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from ruamel.yaml import YAML
@@ -220,6 +220,7 @@ class EntityPath:
     origin_descriptor: Path | None = None
     origin_pointer: str = ""
     reference_chain: tuple[Path, ...] = ()
+    effective_path: str | None = None
 
     @property
     def name(self) -> str | None:
@@ -237,22 +238,53 @@ class EntityPath:
 def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]:
     """Walk keyed metadata without I/O, retaining origins from load()."""
 
-    def row(name, model, pointer):
+    def row(name, model, pointer, base):
         origin = catalog._origins.get(pointer, (None, pointer, ()))
-        return EntityPath(name, model, pointer, *origin)
+        relative = (
+            model.base_path
+            if isinstance(model, Catalog)
+            else getattr(model, "path", None)
+        )
+        effective = (
+            None
+            if isinstance(model, CatalogLink)
+            else _join_artifact_path(base, relative)
+        )
+        return EntityPath(name, model, pointer, *origin, effective)
 
-    def descend(parent: Catalog, prefix: str = "", pointer: str = ""):
+    def descend(parent: Catalog, prefix: str, pointer: str, base: str | None):
         for collection in ("resources", "catalogs"):
             for name, child in getattr(parent, collection).items():
                 name_path = ".".join(filter(None, (prefix, name)))
                 child_pointer = f"{pointer}/{collection}/{name}"
-                yield row(name_path, child, child_pointer)
+                entry = row(name_path, child, child_pointer, base)
+                yield entry
                 if isinstance(child, Catalog):
-                    yield from descend(child, name_path, child_pointer)
+                    yield from descend(
+                        child, name_path, child_pointer, entry.effective_path
+                    )
 
+    root = row("", catalog, "", None)
     if include_self:
-        yield row("", catalog, "")
-    yield from descend(catalog)
+        yield root
+    yield from descend(catalog, "", "", root.effective_path)
+
+
+def _join_artifact_path(base: str | None, relative: str | None) -> str | None:
+    """Compose portable local paths without filesystem access or template expansion."""
+    if relative is None:
+        return base
+    if (
+        not relative.strip()
+        or "\\" in relative
+        or ":" in relative
+        or relative.startswith("/")
+        or ".." in relative.split("/")
+    ):
+        raise ValueError(
+            f"Expected a relative local artifact path without traversal: {relative!r}"
+        )
+    return str(PurePosixPath(base or ".") / relative)
 
 
 def find(
@@ -458,6 +490,11 @@ class Selection:
     effective_targets: tuple[Location, ...] = ()
     requested_selector: str = "$"
 
+    @property
+    def effective_path(self) -> str | None:
+        """Working-root-relative artifact path including ancestor catalog bases."""
+        return None if isinstance(self.model, Location) else self.entry.effective_path
+
     def as_dict(self) -> dict:
         entity = self.model
         return {
@@ -475,6 +512,7 @@ class Selection:
             "artifactPath": getattr(entity, "path", None)
             if not isinstance(entity, Location)
             else None,
+            "effectivePath": self.effective_path,
             "referenceDescriptor": (
                 str(self.entry.origin_descriptor)
                 if not self.entry.origin_pointer and len(self.entry.reference_chain) > 1

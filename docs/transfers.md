@@ -71,11 +71,13 @@ Remote files absent from the plan are never deleted.
 
 ```yaml
 catalogs:
-  - path: docs/_output
+  documentation:
+    basePath: docs/_output
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
     resources:
-      - path: docs/_output/reports/summary.pdf
+      summary:
+        path: reports/summary.pdf
 ```
 
 For a path-based target, specify the namespace explicitly, for example
