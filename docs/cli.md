@@ -44,6 +44,7 @@ $ fileroute push [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
+* `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: List files without authenticating or writing.
 * `--help`: Show this message and exit.
 
@@ -63,6 +64,7 @@ $ fileroute pull [OPTIONS] [DESCRIPTOR]
 
 **Options**:
 
+* `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: Plan without authenticating or writing.
 * `--help`: Show this message and exit.
 

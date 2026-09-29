@@ -9,6 +9,14 @@ uv run fileroute pull config/fileroute.yaml --dry-run
 uv run fileroute push config/fileroute.yaml --dry-run
 ```
 
+Use `--select NAME` with either command to transfer one resource or a catalog
+and its descendants. Names, qualified names, JSON Pointers, and exact JSONPaths
+shown by `fileroute list` work. Select the owning resource or catalog rather
+than a source or target location. Without `--select`, all eligible entries are
+planned. A selected plan checks only its relevant entries before authentication;
+inherited targets and relative paths still apply. `--dry-run` checks the same
+selected plan without transferring files.
+
 See the exact [`pull`](cli.md#fileroute-pull) and
 [`push`](cli.md#fileroute-push) options in the CLI reference.
 
@@ -18,9 +26,9 @@ See the exact [`pull`](cli.md#fileroute-pull) and
 | Publication target for `push` | Supported | Supported | Not implemented |
 
 Descriptors and diagrams may include unsupported publication targets. However,
-`push --dry-run` also fails planning if **any** target is unsupported; it
-does not partially publish to the supported targets. To publish without S3,
-use a separate descriptor or remove that target.
+`push --dry-run` fails planning if any target in its selected scope is
+unsupported; it does not partially publish to supported targets. Select an
+unrelated resource or catalog to leave an unsupported target outside the plan.
 Offline `resolve`, `diagram`, and dry runs do not authenticate or inspect remote
 permissions. `resolve --online` reads provider metadata to verify locations.
 

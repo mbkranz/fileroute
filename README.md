@@ -46,8 +46,8 @@ See uv's [project](https://docs.astral.sh/uv/concepts/projects/run/),
 [dependency](https://docs.astral.sh/uv/concepts/projects/dependencies/), and
 [tool](https://docs.astral.sh/uv/concepts/tools/) guides.
 
-One supported workflow downloads a SharePoint file to a local artifact and
-publishes that artifact to two SharePoint destinations:
+One supported workflow downloads a selected SharePoint file to a local artifact
+and publishes it to two SharePoint destinations:
 
 ```yaml
 resources:
@@ -58,6 +58,12 @@ resources:
     targets:
       - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/monthly-report.csv
       - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv
+  annual-report:
+    path: artifacts/annual-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/annual-report.csv
+    targets:
+      - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/annual-report.csv
 ```
 
 Save this as `config/fileroute.yaml`, replace the example URLs, and run:
@@ -65,11 +71,16 @@ Save this as `config/fileroute.yaml`, replace the example URLs, and run:
 ```bash
 uv run fileroute resolve config/fileroute.yaml
 uv run fileroute diagram config/fileroute.yaml
-uv run fileroute pull config/fileroute.yaml --dry-run
-uv run fileroute pull config/fileroute.yaml
-uv run fileroute push config/fileroute.yaml --dry-run
-uv run fileroute push config/fileroute.yaml
+uv run fileroute list config/fileroute.yaml
+uv run fileroute pull config/fileroute.yaml --select monthly-report --dry-run
+uv run fileroute pull config/fileroute.yaml --select monthly-report
+uv run fileroute push config/fileroute.yaml --select monthly-report --dry-run
+uv run fileroute push config/fileroute.yaml --select monthly-report
 ```
+
+Omit `--select` to process all eligible resources; selecting a catalog includes
+its descendants. A selected pull uses its remote source, while a selected push
+publishes to all effective targets.
 
 `resolve` parses URLs and scoped paths offline; `resolve --online --write`
 verifies remote locations and saves their IDs and entity types. `diagram` and

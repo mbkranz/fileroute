@@ -196,6 +196,132 @@ def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
 
 
+def test_selected_pull_skips_invalid_sibling_and_dispatches_only_selection(
+    tmp_path, monkeypatch
+):
+    path = descriptor(
+        tmp_path,
+        resources={
+            "good": Resource(
+                path="good.csv", sources=[Location(path="s3://bucket/good.csv")]
+            ),
+            "bad": Resource(
+                path="bad.csv", sources=[Location(path="not-a-remote-source")]
+            ),
+        },
+    )
+    assert [
+        entry.remote for entry in plan_pull(path, root=tmp_path, selector="good")
+    ] == ["s3://bucket/good.csv"]
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        app, ["pull", str(path), "--select", "good", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "good.csv" in result.output and "bad.csv" not in result.output
+    calls = []
+    item = SimpleNamespace(
+        is_directory=False, download=lambda target: calls.append(target)
+    )
+    monkeypatch.setattr(
+        "fileroute.clients.s3.S3Client.build_default",
+        lambda: SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item),
+    )
+    result = CliRunner().invoke(app, ["pull", str(path), "--select", "good"])
+    assert result.exit_code == 0, result.output
+    assert calls == ["s3://bucket/good.csv", tmp_path / "good.csv"]
+
+
+def test_selected_push_inherits_targets_and_skips_unsupported_sibling(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "out/sub").mkdir(parents=True)
+    (tmp_path / "out/sub/good.csv").write_text("good")
+    (tmp_path / "bad.csv").write_text("bad")
+    path = descriptor(
+        tmp_path,
+        path="out",
+        targets=[Location(path=REMOTE)],
+        catalogs={
+            "batch": Catalog(resources={"good": Resource(path="out/sub/good.csv")}),
+            "other": Catalog(
+                resources={
+                    "bad": Resource(
+                        path="bad.csv", targets=[Location(path="s3://bucket/bad.csv")]
+                    )
+                }
+            ),
+        },
+    )
+    selected = plan_push(path, root=tmp_path, selector="batch")
+    assert [entry.destination for entry in selected] == [REMOTE + "/sub/good.csv"]
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        app, ["push", str(path), "--select", "batch", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "sub/good.csv" in result.output and "bad.csv" not in result.output
+    calls = []
+    monkeypatch.setattr(
+        "fileroute.transfer.push", lambda entries: calls.extend(entries)
+    )
+    result = CliRunner().invoke(app, ["push", str(path), "--select", "batch"])
+    assert result.exit_code == 0, result.output
+    assert calls == list(selected)
+    with pytest.raises(ValueError, match="Upload is not implemented"):
+        plan_push(path, root=tmp_path, selector="other")
+
+
+def test_selected_linked_catalog_and_selector_errors(tmp_path):
+    (tmp_path / "file.csv").write_text("data")
+    linked = tmp_path / "linked.yaml"
+    save(
+        Catalog(
+            resources={
+                "file": Resource(
+                    path="file.csv",
+                    sources=[Location(path="s3://bucket/file.csv")],
+                    targets=[Location(path=REMOTE + "/file.csv")],
+                )
+            }
+        ),
+        linked,
+    )
+    path = tmp_path / "root.yaml"
+    path.write_text("catalogs:\n  linked:\n    descriptor: linked.yaml\n")
+    assert len(plan_pull(path, root=tmp_path, selector="linked")) == 1
+    assert len(plan_push(path, root=tmp_path, selector="linked")) == 1
+    assert len(plan_pull(path, root=tmp_path, selector="linked.file")) == 1
+    assert (
+        len(plan_push(path, root=tmp_path, selector="/catalogs/linked/resources/file"))
+        == 1
+    )
+    with pytest.raises(ValueError, match="not found"):
+        plan_pull(path, root=tmp_path, selector="unknown")
+    with pytest.raises(ValueError, match="owning resource or catalog"):
+        plan_pull(
+            path, root=tmp_path, selector="/catalogs/linked/resources/file/sources/0"
+        )
+    with pytest.raises(ValueError, match="owning resource or catalog"):
+        plan_push(
+            path, root=tmp_path, selector="/catalogs/linked/resources/file/targets/0"
+        )
+
+
+def test_selected_name_ambiguity_and_empty_scope(tmp_path):
+    path = descriptor(
+        tmp_path,
+        catalogs={
+            "first": Catalog(resources={"file": Resource(path="one")}),
+            "second": Catalog(resources={"file": Resource(path="two")}),
+        },
+    )
+    with pytest.raises(ValueError, match="ambiguous"):
+        plan_pull(path, root=tmp_path, selector="file")
+    with pytest.raises(ValueError, match="first.file"):
+        plan_pull(path, root=tmp_path, selector="first.file")
+
+
 def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monkeypatch):
     path = descriptor(
         tmp_path,

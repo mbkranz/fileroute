@@ -6,9 +6,9 @@ Auto-generated from source signatures and docstrings.
 
 ### Functions
 
-- `def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]`
+- `def plan_pull(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PullEntry, ...]`
   - Plan remote sources to local paths, offline.
-- `def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry, ...]`
+- `def plan_push(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
 - `def pull(entries: tuple[PullEntry, ...]) -> None`
   - Resolve remote items, check their paths, then download planned files.

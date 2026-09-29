@@ -78,6 +78,9 @@ The positional argument of `list` and `resolve` is always a descriptor **file**;
 structural selectors, and origin files. JSON retains the `entities`, `selectors`,
 and `locations` arrays and adds registered names, kinds, and source addresses.
 A catalog can involve several services, so it has no single provider identity.
+`pull` and `push` also accept `--select` for one resource or catalog. A catalog
+includes its descendants, including linked catalogs; locations cannot be
+transferred individually. Push retains ancestor targets and path anchors.
 
 Exact JSONPath and JSON Pointer addresses remain available:
 

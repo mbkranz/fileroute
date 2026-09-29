@@ -92,6 +92,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
     )
     def push_command(
         descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        select: Optional[str] = typer.Option(
+            None,
+            "--select",
+            help="Resource or catalog name or exact selector; use fileroute list.",
+        ),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="List files without authenticating or writing."
         ),
@@ -100,7 +105,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         from fileroute.transfer import plan_push, push
 
         try:
-            files = plan_push(prepare_descriptor_path(descriptor))
+            files = plan_push(prepare_descriptor_path(descriptor), selector=select)
             for file in files:
                 target = file.destination
                 typer.echo(
@@ -115,6 +120,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
     @app.command("pull")
     def pull_command(
         descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        select: Optional[str] = typer.Option(
+            None,
+            "--select",
+            help="Resource or catalog name or exact selector; use fileroute list.",
+        ),
         dry_run: bool = typer.Option(
             False, "--dry-run", help="Plan without authenticating or writing."
         ),
@@ -123,7 +133,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         from fileroute.transfer import plan_pull, pull
 
         try:
-            entries = plan_pull(prepare_descriptor_path(descriptor))
+            entries = plan_pull(prepare_descriptor_path(descriptor), selector=select)
             for entry in entries:
                 typer.echo(
                     f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"

@@ -12,8 +12,25 @@ from urllib.parse import quote, unquote, urlparse
 
 from fileroute.models import Catalog, Resource, Location, ServiceType
 from fileroute.clients import get_provider
-from fileroute.descriptor import load, walk, resolve, local_path
-from fileroute.resolution import lookup_item
+from fileroute.descriptor import find, load, walk, resolve, local_path
+from fileroute.resolution import lookup_item, parse_location
+
+
+def _scope(
+    descriptor: Path, selector: str | None, direction: str
+) -> tuple[Catalog, Catalog | Resource | None]:
+    """Expand links and identify one transfer scope before parsing locations."""
+    document = load(descriptor, resolve_references=True)
+    if selector is None:
+        return resolve(document, direction=direction), None
+    selected = find(document, selector)
+    if isinstance(selected, Location):
+        raise ValueError(
+            "Transfers select a resource or catalog, not a location; select its owning resource or catalog"
+        )
+    if not isinstance(selected, (Catalog, Resource)):
+        raise ValueError(f"{selector!r} must select a resource or catalog")
+    return document, selected
 
 
 @dataclass(frozen=True)
@@ -25,7 +42,9 @@ class PullEntry:
     location: Location | None = field(default=None, compare=False, repr=False)
 
 
-def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry, ...]:
+def plan_pull(
+    descriptor: Path, *, root: Path | None = None, selector: str | None = None
+) -> tuple[PullEntry, ...]:
     """Plan remote sources to local paths, offline.
 
     Multiple sources can describe a transformation; Fileroute cannot reproduce
@@ -33,9 +52,23 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
     not a download instruction. Targets are never used for retrieval.
     """
     root = (root or Path.cwd()).resolve()
-    document = resolve(load(descriptor, resolve_references=True), direction="pull")
+    document, selected = _scope(descriptor, selector, "pull")
     entries = []
+    pointer = next(
+        (
+            row.json_pointer
+            for row in walk(document, include_self=True)
+            if row.model is selected
+        ),
+        None,
+    )
     for row in walk(document, include_self=True):
+        if (
+            pointer is not None
+            and row.json_pointer != pointer
+            and not row.json_pointer.startswith(pointer + "/")
+        ):
+            continue
         entity = row.model
         if isinstance(entity, Catalog) and (entity.resources or entity.catalogs):
             continue
@@ -50,6 +83,8 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
                 f"{row.name_path or 'root'}: set path for the local artifact before pulling"
             )
         source = entity.sources[0]
+        if selected is not None:
+            parse_location(source, required=False)
         service = source.service_type
         if service is None:
             raise ValueError(
@@ -75,7 +110,9 @@ def plan_pull(descriptor: Path, *, root: Path | None = None) -> tuple[PullEntry,
             )
         entries.append(PullEntry(local, source.path, service, directory, source))
     if not entries:
-        raise ValueError("Pull needs at least one artifact with a remote source")
+        raise ValueError(
+            f"Pull needs at least one artifact with a remote source{f' in {selector!r}' if selector else ''}"
+        )
     return tuple(entries)
 
 
@@ -143,7 +180,9 @@ class PushEntry:
         )
 
 
-def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry, ...]:
+def plan_push(
+    descriptor: Path, *, root: Path | None = None, selector: str | None = None
+) -> tuple[PushEntry, ...]:
     """Publish path to targets, never sources; validate everything before auth.
 
     Paths are relative to root (cwd by default). Catalog targets are folders;
@@ -155,7 +194,23 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
     directory targets without an entityType hint.
     """
     root = (root or Path.cwd()).resolve()
-    document = resolve(load(descriptor, resolve_references=True), direction="push")
+    document, selected = _scope(descriptor, selector, "push")
+    # Keep ancestors for inherited targets and path anchors, while skipping
+    # sibling branches before their locations or local artifacts are checked.
+    branch = None
+    if selected is not None:
+        pointer = next(
+            row.json_pointer
+            for row in walk(document, include_self=True)
+            if row.model is selected
+        )
+        branch = {
+            id(row.model)
+            for row in walk(document, include_self=True)
+            if pointer == row.json_pointer
+            or pointer.startswith(row.json_pointer + "/")
+            or row.json_pointer.startswith(pointer + "/")
+        }
     entries: list[PushEntry] = []
     destinations: dict[str, Path] = {}
 
@@ -233,8 +288,13 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
     def visit(
         entity: Catalog | Resource, inherited: list[Location], anchor: Path
     ) -> None:
+        if branch is not None and id(entity) not in branch:
+            return
         explicit = entity.targets is not None
         targets = entity.targets if explicit else inherited
+        if selected is not None and explicit:
+            for target in targets or []:
+                parse_location(target, required=True)
         local = (
             local_path(entity.path, root, reject_symlinks=True)
             if entity.path is not None
@@ -282,7 +342,9 @@ def plan_push(descriptor: Path, *, root: Path | None = None) -> tuple[PushEntry,
 
     visit(document, [], root)
     if not entries:
-        raise ValueError("Upload needs at least one local file with targets")
+        raise ValueError(
+            f"Upload needs at least one local file with targets{f' in {selector!r}' if selector else ''}"
+        )
     return tuple(entries)
 
 
