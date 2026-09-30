@@ -1,8 +1,8 @@
 "profile": fileroute-catalog
 resources:
-  placeholder:
+  - name: placeholder
     path: background/.gitkeep
     description: Placeholder for background information
-  exports:
+  - name: exports
     path: exports/.gitkeep
     description: Placeholder for export files

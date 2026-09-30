@@ -25,14 +25,10 @@ Field names draw on [Data Resource](https://datapackage.org/standard/data-resour
 [DCAT](https://www.w3.org/TR/vocab-dcat-3/), and
 [OpenMetadata Drive Service](https://docs.open-metadata.org/latest/main-concepts/metadata-standard/schemas/entity/services/driveservice).
 
-## Keyed descriptor transition (0.2)
+## Descriptor contract
 
-The keyed format is a breaking change. Use `fileroute migrate INPUT OUTPUT_DIR`
-for the preceding named-list format and `$ref` links; see the
-[descriptor migration guide](descriptors.md#migrate-the-old-format).
-The normal loader has one canonical representation. Legacy interpretation stays
-in the migration module. The release baseline is intentionally `0.2.0.dev0` so
-the existing main-branch release workflow promotes it to `0.2.0`.
+The current contract is documented in the [normative specification](specification.md).
+Legacy named lists, `$ref`, and Catalog `path` are not supported.
 
 ## Package releases
 
@@ -78,8 +74,7 @@ contacts cloud providers.
 `descriptor.py` handles local I/O, traversal, references, and offline
 resolution. `diagram.py` and `diagram_reports.py` project that metadata
 into a provider-neutral graph and SVG/HTML/Markdown outputs. `transfer.py`
-plans and executes pull/push; `migration.py` performs explicit legacy
-conversion. `item.py` models live provider-backed hierarchies, while
+plans and executes pull/push. `item.py` models live provider-backed hierarchies, while
 `clients/` and `auth/` own provider API and credentials and `commands/`
 owns CLI interaction. Descriptor traversal is separate from live remote
 traversal: diagramming does not authenticate or transfer data.

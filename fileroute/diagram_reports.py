@@ -41,6 +41,8 @@ def _metadata(node: DiagramNode, detail: Detail) -> dict[str, Any]:
                 "description",
                 "kind",
                 "path",
+                "pathTemplate",
+                "effectivePathTemplate",
                 "format",
                 "serviceType",
                 "entityType",

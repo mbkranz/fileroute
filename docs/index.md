@@ -18,7 +18,7 @@ when Python code also imports Fileroute or automation must use a locked version.
 
 ```yaml
 resources:
-  report:
+  - name: report
     path: artifacts/report.csv
     sources:
       - path: s3://my-bucket/exports/report.csv
@@ -43,4 +43,4 @@ also gives a quick start for GitHub visitors.
 - [Descriptor diagrams](diagram.md): SVG, Mermaid, HTML, Markdown, and graph API.
 - [Authentication](authentication.md): SharePoint, Google Drive, and S3 setup.
 - [CLI reference](cli.md) and [Python API](api.md): generated from the code.
-- [Contributing and releases](contributing.md): development, migration, CI.
+- [Contributing and releases](contributing.md): development and CI.

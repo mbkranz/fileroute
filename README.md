@@ -13,12 +13,12 @@ Fileroute does not transform files or transfer directly between cloud providers.
 
 ## Descriptor format change
 
-Catalogs and resources are now keyed maps: `resources: {report: {path: report.csv}}`.
-The map key is the registered name. Cross-file catalogs use
-`catalogs: {archive: {descriptor: catalogs/archive.yaml}}`.
-Run `fileroute migrate OLD_DESCRIPTOR NEW_DIRECTORY --dry-run` before
-converting existing named lists and `$ref` links. See the
-[migration guide](docs/descriptors.md#migrate-the-old-format).
+Catalogs and resources are lists of named entries:
+`resources: [{name: report, path: report.csv}]`. Cross-file catalogs use
+`catalogs: [{name: archive, descriptor: catalogs/archive.yaml}]`.
+Catalog directories use parent-relative `basePath`; resource `path` values are
+relative to their containing catalog. Legacy formats are not supported.
+See the [descriptor specification](docs/specification.md).
 
 ## Get started
 
@@ -51,14 +51,14 @@ and publishes it to two SharePoint destinations:
 
 ```yaml
 resources:
-  monthly-report:
+  - name: monthly-report
     path: artifacts/monthly-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/monthly-report.csv
     targets:
       - path: https://contoso.sharepoint.com/sites/reports/Shared%20Documents/monthly-report.csv
       - path: https://contoso.sharepoint.com/sites/archive/Shared%20Documents/monthly-report.csv
-  annual-report:
+  - name: annual-report
     path: artifacts/annual-report.csv
     sources:
       - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/annual-report.csv
@@ -95,7 +95,7 @@ file by ID and preserves its existing name:
 
 ```yaml
 resources:
-  report:
+  - name: report
     path: artifacts/report.csv
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
@@ -112,7 +112,7 @@ for nested folders, shared drives, and ambiguous names.
 - [Transfer behavior and provider support](docs/transfers.md)
 - [Diagram formats and Python graph API](docs/diagram.md)
 - [CLI reference](docs/cli.md) and [Python API](docs/api.md)
-- [Development, migration, and package releases](docs/contributing.md)
+- [Development and package releases](docs/contributing.md)
 
 The descriptor `path` is a local artifact for transfers. `sources` are
 upstream inputs or provenance; `targets` are publication destinations.
@@ -140,20 +140,25 @@ Discovery checks an explicit argument, then the activated descriptor, then a roo
 catalog, then `resources/descriptor.*`. A stale activation remains an error;
 Fileroute does not search parent directories.
 
-`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to `path`:
+`Resource.pathTemplate` describes a parameterized artifact location relative
+to its containing catalog's effective `basePath`:
 
 ```yaml
 profile: fileroute-catalog
 targets: []
 catalogs:
-  surveys:
-    path: data
-    resourcePathTemplate: "{surveyid}/{env}/v{version}/schema.json"
+  - name: surveys
+    basePath: data
+    resources:
+      - name: schema
+        pathTemplate: "{surveyid}/{env}/v{version}/schema.json"
 ```
 
-Applications interpret the pattern. Transfers do not expand placeholders,
-discover matching files, or replace explicit resource paths. Select publication
-scope explicitly, for example `fileroute push catalog.yaml --select documentation`.
+Applications provide concrete paths before transferring template resources.
+Fileroute does not expand placeholders or discover matching files. A participating
+unresolved template fails a parent transfer plan before authentication or writes.
+Select publication scope explicitly, for example
+`fileroute push catalog.yaml --select documentation`.
 
 `poe schema-export` generates `dist/schemas/fileroute-catalog.schema.json` from
 the models. Stable releases attach that exact version's schema as a GitHub asset.

@@ -1,9 +1,6 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 import pytest
-
 from fileroute import AmbiguousPathError
 from fileroute.item import ServiceItem
 from fileroute.models import Catalog, Resource
@@ -77,9 +74,7 @@ def test_file_to_catalog_uses_artifact_path_and_remote_source() -> None:
         path="reports/Report.CSV",
         source_url="https://drive.google.com/file/d/file-1",
     )
-
     resource = item.to_catalog()
-
     assert isinstance(resource, Resource)
     assert resource.title == "Report.CSV"
     assert resource.path == "reports/Report.CSV"
@@ -98,9 +93,7 @@ def test_file_to_catalog_leaves_format_empty_without_extension() -> None:
         source_url="s3://example-bucket/README",
         service_type="S3",
     )
-
     resource = item.to_catalog()
-
     assert isinstance(resource, Resource)
     assert resource.format is None
 
@@ -145,9 +138,14 @@ def test_directory_to_catalog_preserves_child_resources_and_catalogs() -> None:
     assert catalog.sources[0].service_id == "root-folder"
     assert catalog.sources[0].service_type == "S3"
     assert catalog.entity_type == "Directory"
-    assert list(catalog.resources) == ["summary-csv"]
-    assert list(catalog.catalogs) == ["archive"]
-    assert list(catalog.catalogs["archive"].resources) == ["detail-parquet"]
+    assert [x.name for x in catalog.resources] == ["summary-csv"]
+    assert [x.name for x in catalog.catalogs] == ["archive"]
+    assert [
+        x.name
+        for x in next(
+            (_entry for _entry in catalog.catalogs if _entry.name == "archive")
+        ).resources
+    ] == ["detail-parquet"]
 
 
 def test_directory_download_writes_leaf_files_relative_to_target(
@@ -167,13 +165,12 @@ def test_directory_download_writes_leaf_files_relative_to_target(
         is_directory=True,
         children=[leaf],
     )
-
     root.download(tmp_path)
-
     assert leaf.downloaded_to == [tmp_path / "reports" / "report.csv"]
 
 
 def test_file_download_default_requires_subclass_override(tmp_path: Path) -> None:
+
     class _UndownloadableFile(_Item):
         def download(self, target: Path | str) -> None:
             ServiceItem.download(self, target)
@@ -184,7 +181,6 @@ def test_file_download_default_requires_subclass_override(tmp_path: Path) -> Non
         path="report.csv",
         source_url="https://drive.google.com/file/d/file-1",
     )
-
     with pytest.raises(NotImplementedError, match="File download is not implemented"):
         item.download(tmp_path)
 
@@ -212,7 +208,6 @@ def test_get_path_returns_descendant_item() -> None:
         is_directory=True,
         children=[reports],
     )
-
     assert root.get_path("reports/report.csv") is target
 
 
@@ -225,7 +220,6 @@ def test_get_path_raises_when_segment_missing() -> None:
         is_directory=True,
         children=[],
     )
-
     with pytest.raises(FileNotFoundError, match="missing"):
         root.get_path("missing")
 
@@ -249,7 +243,6 @@ def test_get_path_rejects_ambiguous_sibling_names() -> None:
         is_directory=True,
         children=children,
     )
-
     with pytest.raises(AmbiguousPathError):
         root.get_path("reports")
 
@@ -263,10 +256,9 @@ def test_get_path_normalizes_current_directory_and_rejects_parent_segments() -> 
         is_directory=True,
         children=[],
     )
-
     assert root.get_path("") is root
     assert root.get_path(".") is root
-    with pytest.raises(ValueError, match=r"\.\."):
+    with pytest.raises(ValueError, match="\\.\\."):
         root.get_path("../outside")
 
 
@@ -305,7 +297,6 @@ def test_iter_items_and_iter_files_have_distinct_contracts() -> None:
         is_directory=True,
         children=[reports, top_csv],
     )
-
     assert list(root.iter_items(recursive=False)) == [reports, top_csv]
     assert list(root.iter_files(recursive=False)) == [top_csv]
     assert list(root.iter_items()) == [reports, nested_csv, nested_txt, top_csv]
@@ -331,9 +322,7 @@ def test_cached_direct_children_infer_parent_without_native_metadata() -> None:
         is_directory=True,
         children=[child],
     )
-
     root._cache_children(root.children)
-
     assert child.parent_id == root.id
     assert child.parent is root
     assert child._traversal_parent_id == root.id
@@ -355,9 +344,7 @@ def test_cached_direct_children_preserve_native_parent_metadata() -> None:
         is_directory=True,
         children=[child],
     )
-
     root._cache_children(root.children)
-
     assert child.parent_id == "provider-parent"
     assert child.parent is None
     assert getattr(child, "_traversal_parent_id", None) is None
@@ -378,6 +365,5 @@ def test_get_path_requires_directory_for_trailing_slash() -> None:
         is_directory=True,
         children=[child],
     )
-
     with pytest.raises(NotADirectoryError):
         root.get_path("report.csv/")

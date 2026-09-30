@@ -305,32 +305,38 @@ class ServiceItem(ABC):
             if "." in self.name:
                 format_str = self.name.rsplit(".", 1)[-1].lower()
             return Resource(
+                name="item",
                 title=self.name,
                 path=self.path,
                 sources=[source],
                 entityType="File",
                 format=format_str,
             )
-        resources: dict[str, Resource] = {}
-        catalogs: dict[str, Catalog] = {}
+        resources: list[Resource] = []
+        catalogs: list[Catalog] = []
         import re
 
         for child in self.children:
             key = re.sub(r"[^A-Za-z0-9_-]+", "-", child.name).strip("-") or "item"
             if not re.match(r"[A-Za-z_]", key):
                 key = "item-" + key
-            if key.casefold() in {name.casefold() for name in [*catalogs, *resources]}:
+            if key.casefold() in {
+                entry.name.casefold() for entry in [*catalogs, *resources]
+            }:
                 raise ValueError(
                     f"Generated registered name collision: {key}; author a descriptor explicitly"
                 )
             entry = child.to_catalog()
+            entry.name = key
             if isinstance(entry, Catalog):
-                catalogs[key] = entry
+                entry.base_path = str(Path(child.path).relative_to(self.path))
+                catalogs.append(entry)
             elif isinstance(entry, Resource):
-                resources[key] = entry
+                entry.path = str(Path(child.path).relative_to(self.path))
+                resources.append(entry)
         return Catalog(
             title=self.name,
-            path=self.path,
+            base_path=self.path or ".",
             sources=[source],
             entityType="Directory",
             resources=resources,

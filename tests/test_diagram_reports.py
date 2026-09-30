@@ -2,10 +2,8 @@
 
 import re
 from xml.etree import ElementTree
-
 import pytest
 from typer.testing import CliRunner
-
 from fileroute.cli import app
 from fileroute.diagram import build_graph, render_svg
 from fileroute.diagram_reports import render_html, render_markdown
@@ -18,20 +16,22 @@ def test_metadata_and_target_origin_survive_projection():
         Catalog(
             title="root",
             targets=[target],
-            catalogs={
-                "nested": Catalog(
-                    resources={
-                        "inherited": Resource(
+            catalogs=[
+                Catalog(
+                    name="nested",
+                    resources=[
+                        Resource(
+                            name="inherited",
                             path="one.csv",
                             description="A table",
                             format="csv",
                             owner={"team": "analytics"},
                         ),
-                        "disabled": Resource(path="two.csv", targets=[]),
-                        "explicit": Resource(path="three.csv", targets=[target]),
-                    }
+                        Resource(name="disabled", path="two.csv", targets=[]),
+                        Resource(name="explicit", path="three.csv", targets=[target]),
+                    ],
                 )
-            },
+            ],
         )
     )
     nodes = {node.label: node for node in graph.nodes}
@@ -61,28 +61,34 @@ def test_metadata_and_target_origin_survive_projection():
 
 
 def test_anchors_survive_reordering_and_duplicate_labels_are_unique():
-    a, b = (Resource(title="a", path="a.csv"), Resource(title="b", path="b.csv"))
-    graph = build_graph(Catalog(resources={"a": a, "b": b}))
-    reverse = build_graph(Catalog(resources={"b": b, "a": a}))
+    a, b = (
+        Resource(name="entry0", title="a", path="a.csv"),
+        Resource(name="entry1", title="b", path="b.csv"),
+    )
+    graph = build_graph(Catalog(resources=[a, b]))
+    reverse = build_graph(Catalog(resources=[b, a]))
     assert {node.label: node.anchor for node in graph.nodes} == {
         node.label: node.anchor for node in reverse.nodes
     }
-    duplicates = build_graph(Catalog(resources={"entry0": a, "entry1": a.model_copy()}))
+    duplicates = build_graph(
+        Catalog(resources=[a, a.model_copy(update={"name": "entry2"})])
+    )
     assert len({node.anchor for node in duplicates.nodes}) == len(duplicates.nodes)
 
 
 def test_locations_with_different_metadata_are_not_silently_merged():
     graph = build_graph(
         Catalog(
-            resources={
-                "entry0": Resource(
+            resources=[
+                Resource(
+                    name="entry0",
                     path="a",
                     sources=[
                         Location(path="https://example.org/file", description="first"),
                         Location(path="https://example.org/file", description="second"),
                     ],
                 )
-            }
+            ]
         )
     )
     sources = [node for node in graph.nodes if node.kind == "source"]
@@ -96,13 +102,14 @@ def test_locations_with_different_metadata_are_not_silently_merged():
 def test_detail_controls_export_not_just_visibility(tmp_path, render, extension):
     graph = build_graph(
         Catalog(
-            resources={
-                "entry0": Resource(
+            resources=[
+                Resource(
+                    name="entry0",
                     path="data.csv",
                     description="A table",
                     internal_note="PRIVATE-MARKER",
                 )
-            }
+            ]
         )
     )
     summary = render(graph, tmp_path / ("summary" + extension)).read_text()
@@ -117,14 +124,18 @@ def test_detail_controls_export_not_just_visibility(tmp_path, render, extension)
 def test_html_escapes_metadata_and_rejects_executable_links(tmp_path):
     graph = build_graph(
         Catalog(
-            resources={
-                "entry0": Resource(
+            resources=[
+                Resource(
+                    name="entry0",
                     title="<img src=x onerror=alert(1)>",
-                    path="javascript:alert(1)",
+                    path="safe.txt",
                     description="</script><script>alert(2)</script>",
-                    sources=[Location(path="https://example.org/file?a=1&b=2")],
+                    sources=[
+                        Location(path="https://example.org/file?a=1&b=2"),
+                        Location(path="javascript:alert(1)"),
+                    ],
                 )
-            }
+            ]
         )
     )
     report = render_html(graph, tmp_path / "report.html").read_text()
@@ -142,7 +153,9 @@ def test_html_escapes_metadata_and_rejects_executable_links(tmp_path):
 
 def test_markdown_companion_and_dictionary_links(tmp_path):
     graph = build_graph(
-        Catalog(title="Root", resources={"bad-javascript-x": Resource(path="a.csv")})
+        Catalog(
+            title="Root", resources=[Resource(name="bad-javascript-x", path="a.csv")]
+        )
     )
     path = render_markdown(graph, tmp_path / "my report.md")
     text = path.read_text()
@@ -167,7 +180,7 @@ def test_markdown_companion_and_dictionary_links(tmp_path):
 )
 def test_cli_formats(tmp_path, suffix):
     descriptor = tmp_path / "fileroute.yaml"
-    descriptor.write_text("resources:\n  entry0:\n    path: data.csv\n")
+    descriptor.write_text("resources:\n  - name: entry0\n    path: data.csv\n")
     output = tmp_path / ("workflow" + suffix)
     result = CliRunner().invoke(
         app, ["diagram", str(descriptor), "-o", str(output), "--detail", "full"]
@@ -187,7 +200,7 @@ def test_cli_rejects_bad_format_before_writing(tmp_path):
 def test_svg_retains_full_label_tooltip(tmp_path):
     label = "A very long file title " * 5
     graph = build_graph(
-        Catalog(resources={"entry0": Resource(title=label, path="data.csv")})
+        Catalog(resources=[Resource(name="entry0", title=label, path="data.csv")])
     )
     root = ElementTree.parse(render_svg(graph, tmp_path / "diagram.svg"))
     assert any(

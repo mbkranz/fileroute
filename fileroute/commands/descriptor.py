@@ -62,22 +62,30 @@ def _add_resource_to_descriptor(
         raise ValueError(f"Parent {parent!r} must select a catalog in this descriptor")
     normalized_name = entity_name.casefold()
     top_level_entries = [*parent_catalog.resources, *parent_catalog.catalogs]
-    if any(key.casefold() == normalized_name for key in top_level_entries):
+    if any(entry.name.casefold() == normalized_name for entry in top_level_entries):
         raise ValueError(f"Entity '{entity_name}' already exists in the descriptor")
 
     if "source" in kwargs:
         kwargs.setdefault("sources", [{"path": kwargs.pop("source")}])
     if "target" in kwargs:
         kwargs.setdefault("targets", [{"path": kwargs.pop("target")}])
+    for option, field in (("path-template", "pathTemplate"), ("base-path", "basePath")):
+        if option in kwargs:
+            kwargs[field] = kwargs.pop(option)
+    if "path" in kwargs and "pathTemplate" in kwargs:
+        raise ValueError("Supply only --path or --path-template")
     from fileroute.models import validate_name
 
     validate_name(entity_name)
+    kwargs["name"] = entity_name
     if catalog:
+        if "path_template" in kwargs or "pathTemplate" in kwargs:
+            raise ValueError("Place pathTemplate on a named resource, not a catalog")
         entry = Catalog.model_validate(kwargs)
-        parent_catalog.catalogs[entity_name] = entry
+        parent_catalog.catalogs.append(entry)
     else:
         entry = Resource.model_validate(kwargs)
-        parent_catalog.resources[entity_name] = entry
+        parent_catalog.resources.append(entry)
 
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
     save(document, descriptor_path)
@@ -187,27 +195,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 
-    @app.command(
-        "migrate",
-        help="Convert named-list descriptors and $ref links to the keyed format.",
-    )
-    def migrate_command(
-        descriptor: Path = typer.Argument(..., help="Legacy descriptor to read."),
-        output: Path = typer.Argument(
-            ..., help="New directory for the converted descriptor graph."
-        ),
-        dry_run: bool = typer.Option(
-            False, "--dry-run", help="Validate and report outputs without writing."
-        ),
-    ) -> None:
-        """Convert the complete linked descriptor graph without overwriting inputs."""
-        from fileroute.migration import migrate
-
-        try:
-            echo_json(migrate(descriptor, output, dry_run=dry_run))
-        except (OSError, ValueError) as exc:
-            raise typer.BadParameter(str(exc)) from exc
-
     @clone_app.command(
         "descriptor",
         epilog=examples_epilog(
@@ -258,7 +245,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         epilog=examples_epilog(
             'fileroute update --title "Hello" --description "hello"',
             'fileroute update --name file1 --title "Hello" --description "hello"',
-            "fileroute update --select '$.catalogs.docs.resources.guide' --title 'Hello'",
+            "fileroute update --select '$.catalogs[0].resources[0]' --title 'Hello'",
         ),
     )
     def update_command(
@@ -304,6 +291,10 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             target_label = f"{name} in {descriptor_path}"
 
         changed_properties: list[str] = []
+        if ("path" in parsed) and (
+            {"path-template", "pathTemplate", "path_template"} & parsed.keys()
+        ):
+            raise typer.BadParameter("Supply only --path or --path-template")
         for property_name, raw_value in parsed.items():
             property_path = {
                 "service-type": "service_type",
@@ -318,6 +309,10 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 "siteId": "site_id",
                 "drive-id": "drive_id",
                 "driveId": "drive_id",
+                "path-template": "path_template",
+                "pathTemplate": "path_template",
+                "base-path": "base_path",
+                "basePath": "base_path",
             }.get(property_name, property_name)
             value = raw_value
             if property_path == "service_type":
@@ -325,6 +320,19 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             elif property_path == "entity_type":
                 value = normalize_entity_type(value)
             field_target = target
+            if property_path in {"path", "path_template"}:
+                if property_path == "path_template" and not isinstance(
+                    target, Resource
+                ):
+                    raise typer.BadParameter("--path-template requires a resource")
+                if property_path == "path" and isinstance(target, Catalog):
+                    raise typer.BadParameter("Use --base-path for a catalog")
+                if isinstance(target, Resource):
+                    setattr(
+                        target,
+                        "path_template" if property_path == "path" else "path",
+                        None,
+                    )
             if (
                 property_path == "service_type"
                 and name is not None
@@ -348,7 +356,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             } and not isinstance(field_target, Location):
                 raise typer.BadParameter(
                     f"--{property_name} requires a source or target location; "
-                    "select it with --select '$.resources.guide.sources[0]'"
+                    "select it with --select '$.resources[0].sources[0]'"
                 )
             if getattr(field_target, property_path, None) != value:
                 setattr(field_target, property_path, value)
@@ -360,9 +368,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             typer.echo("No changes needed.")
             return
 
-        document = Catalog.model_validate(
-            document.model_dump(by_alias=True, exclude_unset=True, warnings=False)
-        )
+        try:
+            Catalog.model_validate(
+                document.model_dump(by_alias=True, exclude_unset=True, warnings=False)
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         if dry_run:
             for change in changed_properties:
                 typer.echo(f"Would update {target_label}: {change}")
@@ -394,7 +405,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "fileroute list",
             "fileroute list resources/descriptor.yaml",
             "fileroute list resources/descriptor.yaml --format json",
-            "fileroute list --select '$.catalogs.docs.resources.guide'",
+            "fileroute list --select '$.catalogs[0].resources[0]'",
         ),
     )
     def list_command(
@@ -492,6 +503,8 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                             and len(reference.reference_chain) > 1
                             else None
                         ),
+                        "effectivePath": reference.effective_path,
+                        "effectivePathTemplate": reference.effective_path_template,
                         "serviceTypes": sorted({
                             location.service_type.value
                             for field in ("sources", "targets")
@@ -540,12 +553,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             node = parent_node.add(label)
             nodes[reference.name_path] = node
             details = []
-            resource_path = getattr(item, "path", None) or getattr(
+            resource_path = reference.effective_path or getattr(
                 item, "descriptor", None
             )
             entity_type = getattr(item, "entity_type", None)
             if resource_path:
                 details.append(f"path={resource_path}")
+            if reference.effective_path_template:
+                details.append(f"pathTemplate={reference.effective_path_template}")
             for field in ("sources", "targets"):
                 for index, location in enumerate(getattr(item, field, None) or []):
                     pointer = f"{reference.json_pointer}/{field}/{index}"
@@ -572,7 +587,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         epilog=examples_epilog(
             "fileroute add my-resource --path downloads/file.csv --source https://drive.google.com/file/d/123...",
-            "fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs.docs'",
+            "fileroute add my-folder --catalog --base-path docs/_output --parent '$.catalogs[0]'",
         ),
     )
     def add(

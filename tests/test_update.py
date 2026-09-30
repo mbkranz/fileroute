@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 import yaml_support as yaml
 from typer.testing import CliRunner
-
 from fileroute.cli import app
 
 RUNNER = CliRunner()
@@ -17,8 +14,9 @@ def _write_descriptor(path: Path) -> None:
                 "profile": "fileroute-catalog",
                 "title": "Original title",
                 "description": "Original description",
-                "resources": {
-                    "spec-workbook": {
+                "resources": [
+                    {
+                        "name": "spec-workbook",
                         "path": "background/specs/spec-workbook.xlsx",
                         "sources": [
                             {
@@ -28,7 +26,8 @@ def _write_descriptor(path: Path) -> None:
                             }
                         ],
                     },
-                    "other-resource": {
+                    {
+                        "name": "other-resource",
                         "path": "background/specs/other-resource.xlsx",
                         "sources": [
                             {
@@ -38,8 +37,8 @@ def _write_descriptor(path: Path) -> None:
                             }
                         ],
                     },
-                },
-                "catalogs": {},
+                ],
+                "catalogs": [],
             },
             sort_keys=False,
         ),
@@ -50,7 +49,6 @@ def _write_descriptor(path: Path) -> None:
 def test_update_descriptor_root_properties(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
-
     result = RUNNER.invoke(
         app,
         [
@@ -64,7 +62,6 @@ def test_update_descriptor_root_properties(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     assert result.exit_code == 0
     assert document["title"] == "Hello"
@@ -74,7 +71,6 @@ def test_update_descriptor_root_properties(tmp_path: Path) -> None:
 def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
-
     result = RUNNER.invoke(
         app,
         [
@@ -90,29 +86,22 @@ def test_update_resource_properties_exact_match(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert document["resources"]["spec-workbook"]["title"] == "Updated title"
-    assert (
-        document["resources"]["spec-workbook"]["description"] == "Updated description"
-    )
-    assert "title" not in document["resources"]["other-resource"]
+    assert document["resources"][0]["title"] == "Updated title"
+    assert document["resources"][0]["description"] == "Updated description"
+    assert "title" not in document["resources"][1]
     assert document["profile"] == "fileroute-catalog"
-    assert (
-        document["resources"]["spec-workbook"]["path"]
-        == "background/specs/spec-workbook.xlsx"
-    )
+    assert document["resources"][0]["path"] == "background/specs/spec-workbook.xlsx"
 
 
 def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
-    nested = document["resources"].pop("spec-workbook")
-    document["catalogs"] = {"archive": {"resources": {"spec-workbook": nested}}}
+    nested = document["resources"].pop(0)
+    document["catalogs"] = [{"name": "archive", "resources": [nested]}]
     descriptor.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-
     result = RUNNER.invoke(
         app,
         [
@@ -126,14 +115,10 @@ def test_update_nested_entity_by_dot_path(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     assert result.exit_code == 0
     updated = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
-    assert (
-        updated["catalogs"]["archive"]["resources"]["spec-workbook"]["title"]
-        == "Nested"
-    )
-    assert "title" not in updated["resources"]["other-resource"]
+    assert updated["catalogs"][0]["resources"][0]["title"] == "Nested"
+    assert "title" not in updated["resources"][0]
 
 
 def test_update_resource_uses_active_descriptor(monkeypatch, tmp_path: Path) -> None:
@@ -141,21 +126,18 @@ def test_update_resource_uses_active_descriptor(monkeypatch, tmp_path: Path) -> 
     descriptor = tmp_path / "resources" / "descriptor.yaml"
     descriptor.parent.mkdir(parents=True, exist_ok=True)
     _write_descriptor(descriptor)
-
     activate_result = RUNNER.invoke(
         app, ["activate", "resources/descriptor.yaml"], prog_name="fileroute"
     )
     assert activate_result.exit_code == 0
-
     result = RUNNER.invoke(
         app,
         ["update", "--name", "spec-workbook", "--title", "Active title"],
         prog_name="fileroute",
     )
-
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert document["resources"]["spec-workbook"]["title"] == "Active title"
+    assert document["resources"][0]["title"] == "Active title"
 
 
 def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -> None:
@@ -165,12 +147,10 @@ def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -
     _write_descriptor(active)
     override = tmp_path / "override.yaml"
     _write_descriptor(override)
-
     activate_result = RUNNER.invoke(
         app, ["activate", "resources/descriptor.yaml"], prog_name="fileroute"
     )
     assert activate_result.exit_code == 0
-
     result = RUNNER.invoke(
         app,
         [
@@ -184,18 +164,16 @@ def test_update_descriptor_override_with_resource(monkeypatch, tmp_path: Path) -
         ],
         prog_name="fileroute",
     )
-
     active_doc = yaml.safe_load(active.read_text(encoding="utf-8"))
     override_doc = yaml.safe_load(override.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert "title" not in active_doc["resources"]["spec-workbook"]
-    assert override_doc["resources"]["spec-workbook"]["title"] == "Override title"
+    assert "title" not in active_doc["resources"][0]
+    assert override_doc["resources"][0]["title"] == "Override title"
 
 
 def test_update_resource_normalizes_service_type(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
-
     result = RUNNER.invoke(
         app,
         [
@@ -209,20 +187,15 @@ def test_update_resource_normalizes_service_type(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
     assert result.exit_code == 0
-    assert (
-        document["resources"]["spec-workbook"]["sources"][0]["serviceType"]
-        == "SharePoint"
-    )
+    assert document["resources"][0]["sources"][0]["serviceType"] == "SharePoint"
 
 
 def test_update_dry_run_does_not_write(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
     before = descriptor.read_text(encoding="utf-8")
-
     result = RUNNER.invoke(
         app,
         [
@@ -237,7 +210,6 @@ def test_update_dry_run_does_not_write(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     assert result.exit_code == 0
     assert "Would update" in result.stdout
     assert descriptor.read_text(encoding="utf-8") == before
@@ -246,11 +218,9 @@ def test_update_dry_run_does_not_write(tmp_path: Path) -> None:
 def test_update_requires_fields(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
-
     result = RUNNER.invoke(
         app, ["update", "--descriptor", str(descriptor)], prog_name="fileroute"
     )
-
     assert result.exit_code != 0
     assert "Provide one or more field values to update" in result.output
 
@@ -258,7 +228,6 @@ def test_update_requires_fields(tmp_path: Path) -> None:
 def test_update_missing_resource_errors(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_descriptor(descriptor)
-
     result = RUNNER.invoke(
         app,
         [
@@ -272,6 +241,5 @@ def test_update_missing_resource_errors(tmp_path: Path) -> None:
         ],
         prog_name="fileroute",
     )
-
     assert result.exit_code != 0
     assert "was not found" in result.output

@@ -42,11 +42,11 @@ Auto-generated from source signatures and docstrings.
 ### Functions
 
 - `def load(path: Path | str, *, resolve_references: bool = False) -> Catalog`
-  - Load keyed YAML/JSON; optionally expand links with per-entry provenance.
+  - Load named YAML/JSON lists; optionally expand links with provenance.
 - `def save(catalog: Catalog, path: Path | str) -> None`
   - Atomically save canonical metadata, including authored defaults/extensions.
 - `def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]`
-  - Walk keyed metadata without I/O, retaining origins from load().
+  - Walk named metadata without I/O, retaining origins from load().
 - `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogLink | Location`
   - Find one registered name, JSON Pointer, or exact JSONPath (optional $).
 - `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
@@ -69,6 +69,8 @@ Auto-generated from source signatures and docstrings.
   - `origin_descriptor: Path | None`
   - `origin_pointer: str`
   - `reference_chain: tuple[Path, ...]`
+  - `effective_path: str | None`
+  - `effective_path_template: str | None`
 - Methods:
   - `def name(self) -> str | None`
   - `def json_path(self) -> str`
@@ -83,6 +85,9 @@ Auto-generated from source signatures and docstrings.
   - `effective_targets: tuple[Location, ...]`
   - `requested_selector: str`
 - Methods:
+  - `def effective_path(self) -> str | None`
+    - Working-root-relative artifact path including ancestor catalog bases.
+  - `def effective_path_template(self) -> str | None`
   - `def as_dict(self) -> dict`
 
 
@@ -148,7 +153,7 @@ Auto-generated from source signatures and docstrings.
 ### Functions
 
 - `def validate_name(name: str) -> str`
-  - Registered names are stable map keys; titles hold display text.
+  - Registered names are stable selectors; titles hold display text.
 - `def normalize_entity_type(value: str | None) -> str | None`
   - Normalize OpenMetadata-style drive/storage entity names.
 
@@ -157,17 +162,23 @@ Auto-generated from source signatures and docstrings.
 #### `ServiceType`
 
 #### `Catalog`
-- Keyed resources and catalogs; paths retain transfer-root semantics.
+- Named resources and catalogs with parent-relative directory bases.
 - Fields:
-  - `resource_path_template: str | None`
+  - `base_path: str | None`
+  - `name: str | None`
   - `profile: str`
-  - `resources: dict[str, Resource]`
-  - `catalogs: dict[str, Catalog | CatalogLink]`
+  - `resources: list[Resource]`
+  - `catalogs: list[Catalog | CatalogLink]`
+- Methods:
+  - `def model_json_schema(cls, **kwargs: Any) -> dict[str, Any]`
+    - Require child names in the exported schema while allowing unnamed roots.
 
 #### `Resource`
-- A materialized artifact and its provenance/publication locations.
+- A concrete artifact or an unresolved parameterized artifact location.
 - Fields:
-  - `path: str`
+  - `name: str`
+  - `path: str | None`
+  - `path_template: str | None`
   - `format: str | None`
 
 #### `Location`
@@ -187,6 +198,7 @@ Auto-generated from source signatures and docstrings.
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.
 - Fields:
+  - `name: str`
   - `descriptor: str`
 
 

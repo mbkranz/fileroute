@@ -19,7 +19,6 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
 * `resolve`: Resolve locators offline by default;...
-* `migrate`: Convert named-list descriptors and $ref...
 * `update`: Update descriptor-root or resource...
 * `activate`: Activate a descriptor for later commands.
 * `list`: List registered names, origins, exact...
@@ -89,26 +88,6 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 * `--online`: Verify and enrich remote locations using provider credentials.
 * `--help`: Show this message and exit.
 
-## `fileroute migrate`
-
-Convert named-list descriptors and $ref links to the keyed format.
-
-**Usage**:
-
-```console
-$ fileroute migrate [OPTIONS] DESCRIPTOR OUTPUT
-```
-
-**Arguments**:
-
-* `DESCRIPTOR`: Legacy descriptor to read.  [required]
-* `OUTPUT`: New directory for the converted descriptor graph.  [required]
-
-**Options**:
-
-* `--dry-run`: Validate and report outputs without writing.
-* `--help`: Show this message and exit.
-
 ## `fileroute update`
 
 Update descriptor-root or resource properties using flag-style field edits.
@@ -137,7 +116,7 @@ fileroute update --name file1 --title "Hello" --description "hello"
 ```
 
 ```bash
-fileroute update --select '$.catalogs.docs.resources.guide' --title 'Hello'
+fileroute update --select '$.catalogs[0].resources[0]' --title 'Hello'
 ```
 
 ## `fileroute activate`
@@ -200,7 +179,7 @@ fileroute list resources/descriptor.yaml --format json
 ```
 
 ```bash
-fileroute list --select '$.catalogs.docs.resources.guide'
+fileroute list --select '$.catalogs[0].resources[0]'
 ```
 
 ## `fileroute add`
@@ -231,7 +210,7 @@ fileroute add my-resource --path downloads/file.csv --source https://drive.googl
 ```
 
 ```bash
-fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs.docs'
+fileroute add my-folder --catalog --base-path docs/_output --parent '$.catalogs[0]'
 ```
 
 ## `fileroute diagram`
