@@ -14,9 +14,17 @@ from fileroute.commands.config import resolve_descriptor_path, set_active_descri
 @pytest.mark.parametrize(
     "value",
     [
-        {"catalogs": {"surveys": {"basePath": "data", "resourcePathTemplate": "{id}.csv"}}},
-        {"resources": {"guide": {"path": "guide.txt", "custom": True}}},
-        {"catalogs": {"linked": {"descriptor": "child.yaml"}}},
+        {
+            "catalogs": [
+                {
+                    "name": "surveys",
+                    "basePath": "data",
+                    "resources": [{"name": "data", "pathTemplate": "{id}.csv"}],
+                }
+            ]
+        },
+        {"resources": [{"name": "guide", "path": "guide.txt", "custom": True}]},
+        {"catalogs": [{"name": "linked", "descriptor": "child.yaml"}]},
     ],
 )
 def test_valid_schema(value):
@@ -28,20 +36,27 @@ def test_valid_schema(value):
     "value",
     [
         {"$schema": "fileroute-catalog"},
-        {"name": "legacy"},
-        {"resources": []},
-        {"catalogs": {"bad": {"descriptor": "x.yaml", "path": "out"}}},
-        {"catalogs": {"bad": {"name": "legacy"}}},
-        {"resources": {"bad.key": {"path": "x"}}},
+        {"resources": {}},
+        {"resources": None},
+        {"catalogs": [{"name": "bad", "descriptor": "x.yaml", "path": "out"}]},
+        {"catalogs": [{"basePath": "missing-name"}]},
+        {"resources": [{"name": "bad.key", "path": "x"}]},
         {
-            "resources": {
-                "x": {"path": "x", "sources": [{"path": "x", "descriptor": "y"}]}
-            }
+            "resources": [
+                {
+                    "name": "x",
+                    "path": "x",
+                    "sources": [{"path": "x", "descriptor": "y"}],
+                }
+            ]
         },
         {"pathTemplate": "old spelling"},
         {"resourcePathTemplate": ""},
         {"resourcePathTemplate": "   "},
         {"resourcePathTemplate": 2},
+        {"catalogType": "template"},
+        {"resources": [{"name": "x", "path": "x", "pathTemplate": "{id}.csv"}]},
+        {"resources": [{"name": "x"}]},
     ],
 )
 def test_invalid_schema(value):
@@ -56,12 +71,14 @@ def test_invalid_schema(value):
 
 def test_template_roundtrip(tmp_path):
     path = tmp_path / "catalog.yaml"
-    path.write_text('basePath: data\nresourcePathTemplate: "{id}.csv"\n')
+    path.write_text(
+        'basePath: data\nresources:\n  - name: report\n    pathTemplate: "{id}.csv"\n'
+    )
     model = load(path)
     save(model, path)
     model = load(path)
-    assert model.resource_path_template == "{id}.csv"
-    assert model.model_dump(by_alias=True)["resourcePathTemplate"] == "{id}.csv"
+    assert model.resources[0].path_template == "{id}.csv"
+    assert model.model_dump(by_alias=True)["resources"][0]["pathTemplate"] == "{id}.csv"
 
 
 def test_discovery_precedence(tmp_path, monkeypatch):
@@ -94,6 +111,19 @@ def test_export_version_and_determinism(tmp_path):
     schema = json.loads(first)
     assert "/v1.2.3/" in schema["$id"]
     Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    validator.validate({
+        "resources": [{"name": "report", "pathTemplate": "{id}.json"}],
+        "catalogs": [{"name": "archive", "descriptor": "archive.yaml"}],
+    })
+    assert list(validator.iter_errors({"catalogs": [{"basePath": "unnamed"}]}))
+    assert list(
+        validator.iter_errors({
+            "resources": [
+                {"name": "report", "path": "report.json", "pathTemplate": "{id}.json"}
+            ]
+        })
+    )
 
 
 def test_template_does_not_expand_transfers(tmp_path):
@@ -103,15 +133,16 @@ def test_template_does_not_expand_transfers(tmp_path):
     (tmp_path / "out/actual.csv").write_text("data")
     descriptor = tmp_path / "catalog.yaml"
     descriptor.write_text("""catalogs:
-  output:
+  - name: output
     basePath: out
-    resourcePathTemplate: "{missing}.csv"
+    resources:
+      - name: report
+        pathTemplate: "{missing}.csv"
     targets:
       - path: https://example.sharepoint.com/sites/dev/Shared%20Documents/output
 """)
-    entries = plan_push(descriptor, root=tmp_path, selector="output")
-    assert len(entries) == 1
-    assert entries[0].local.name == "actual.csv"
+    with pytest.raises(ValueError, match="output.report uses pathTemplate"):
+        plan_push(descriptor, root=tmp_path, selector="output")
 
 
 @pytest.mark.parametrize("existing", [None, "same", "different"])

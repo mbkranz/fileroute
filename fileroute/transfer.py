@@ -70,6 +70,14 @@ def plan_pull(
         ):
             continue
         entity = row.model
+        if (
+            isinstance(entity, Resource)
+            and entity.path_template is not None
+            and (entity.sources or entity is selected)
+        ):
+            raise ValueError(
+                f"{row.name_path} uses pathTemplate and has no concrete path. Resolve it in the consuming application before transferring it."
+            )
         if isinstance(entity, Catalog) and (entity.resources or entity.catalogs):
             continue
         if not isinstance(entity, (Resource, Catalog)) or not entity.sources:
@@ -199,6 +207,7 @@ def plan_push(
     effective_paths = {
         id(row.model): row.effective_path for row in walk(document, include_self=True)
     }
+    names = {id(row.model): row.name_path for row in walk(document, include_self=True)}
     # Keep ancestors for inherited targets and path anchors, while skipping
     # sibling branches before their locations or local artifacts are checked.
     branch = None
@@ -296,6 +305,14 @@ def plan_push(
             return
         explicit = entity.targets is not None
         targets = entity.targets if explicit else inherited
+        if (
+            isinstance(entity, Resource)
+            and entity.path_template is not None
+            and (targets or entity is selected)
+        ):
+            raise ValueError(
+                f"{names[id(entity)]} uses pathTemplate and has no concrete path. Resolve it in the consuming application before transferring it."
+            )
         if selected is not None and explicit:
             for target in targets or []:
                 parse_location(target, required=True)
@@ -309,7 +326,7 @@ def plan_push(
                 raise ValueError("Catalog targets must be folders, not files")
             if explicit:
                 anchor = local or root
-            children = [*entity.resources.values(), *entity.catalogs.values()]
+            children = [*entity.resources, *entity.catalogs]
             if children:
                 for child in children:
                     visit(child, targets or [], anchor)

@@ -1,5 +1,4 @@
 import pytest
-
 from fileroute.descriptor import resolve
 from fileroute.models import Catalog, Location, Resource, ServiceType
 
@@ -21,22 +20,20 @@ def test_service_alias_is_enum(alias):
 def test_resolution_preserves_clickable_urls_and_local_provenance():
     url = "https://tenant.sharepoint.com/sites/dev/Shared%20Documents/Guide.docx"
     original = Catalog(
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="out.docx",
                 sources=[Location(path="guide.qmd")],
                 targets=[Location(path=url)],
             )
-        }
+        ]
     )
     result = resolve(original)
-    assert list(original.resources.values())[0].targets[0].service_type is None
-    assert (
-        list(result.resources.values())[0].targets[0].service_type
-        is ServiceType.SHAREPOINT
-    )
-    assert list(result.resources.values())[0].targets[0].path == url
-    assert list(result.resources.values())[0].sources[0].service_type is None
+    assert list(original.resources)[0].targets[0].service_type is None
+    assert list(result.resources)[0].targets[0].service_type is ServiceType.SHAREPOINT
+    assert list(result.resources)[0].targets[0].path == url
+    assert list(result.resources)[0].sources[0].service_type is None
     assert resolve(result) == result
 
 
@@ -90,13 +87,14 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     url = "https://tenant.sharepoint.com/sites/dev/Docs/guide%20one.docx"
     path.write_text(
         yaml.safe_dump({
-            "resources": {
-                "guide": {
+            "resources": [
+                {
+                    "name": "guide",
                     "path": "out.docx",
                     "sources": [{"path": "guide.qmd"}],
                     "targets": [{"path": url}],
                 }
-            }
+            ]
         })
     )
     before = path.read_bytes()
@@ -106,7 +104,7 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     runner = CliRunner()
     preview = runner.invoke(app, ["resolve", str(path)])
     assert preview.exit_code == 0, preview.output
-    target = json.loads(preview.output)["resources"]["guide"]["targets"][0]
+    target = json.loads(preview.output)["resources"][0]["targets"][0]
     assert target == {
         "path": url,
         "serviceType": "SharePoint",
@@ -120,9 +118,7 @@ def test_resolve_cli_preview_write_and_idempotence(tmp_path, monkeypatch):
     first = path.read_bytes()
     assert runner.invoke(app, ["resolve", str(path), "--write"]).exit_code == 0
     assert path.read_bytes() == first
-    assert yaml.safe_load(first)["resources"]["guide"]["sources"] == [
-        {"path": "guide.qmd"}
-    ]
+    assert yaml.safe_load(first)["resources"][0]["sources"] == [{"path": "guide.qmd"}]
 
 
 def test_resolve_preserves_references_and_does_not_edit_referenced_files(tmp_path):
@@ -133,14 +129,14 @@ def test_resolve_preserves_references_and_does_not_edit_referenced_files(tmp_pat
 
     child = tmp_path / "child.yaml"
     child.write_text(
-        "resources:\n  entry0:\n    path: file\n    sources:\n    - path: s3://bucket/file\n"
+        "resources:\n  - name: entry0\n    path: file\n    sources:\n      - path: s3://bucket/file\n"
     )
     before = child.read_bytes()
     parent = tmp_path / "parent.yaml"
-    parent.write_text("catalogs:\n  entry0:\n    descriptor: child.yaml\n")
+    parent.write_text("catalogs:\n  - name: entry0\n    descriptor: child.yaml\n")
     result = CliRunner().invoke(app, ["resolve", str(parent), "--write"])
     assert result.exit_code == 0, result.output
-    assert isinstance(list(load(parent).catalogs.values())[0], CatalogLink)
+    assert isinstance(list(load(parent).catalogs)[0], CatalogLink)
     assert child.read_bytes() == before
 
 
@@ -314,7 +310,6 @@ def test_online_google_named_drive_and_id_url(monkeypatch):
         )()
 
     monkeypatch.setattr(GoogleDriveClient, "get_from_location", lookup)
-    # Exercise provider behavior with a client instance that needs no credentials.
     client = object.__new__(GoogleDriveClient)
     result = GoogleDriveClient.resolve_location(
         client,

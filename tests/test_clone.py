@@ -17,8 +17,8 @@ def _write_descriptor(path: Path) -> None:
         yaml.safe_dump(
             {
                 "profile": "fileroute-catalog",
-                "resources": {
-                    "source-export": {
+                "resources": [{
+                        "name": "source-export",
                         "path": "downloads/source.csv",
                         "sources": [
                             {
@@ -27,9 +27,8 @@ def _write_descriptor(path: Path) -> None:
                                 "entityType": "File",
                             }
                         ],
-                    }
-                },
-                "catalogs": {},
+                    }],
+                "catalogs": [],
             },
             sort_keys=False,
         ),
@@ -81,8 +80,8 @@ def test_clone_descriptor_uses_target_suffix_format(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = json.loads(target_descriptor.read_text(encoding="utf-8"))
     assert payload["profile"] == "fileroute-catalog"
-    assert "source-export" in payload["resources"]
-    assert payload["resources"]["source-export"]["sources"][0]["serviceType"] == "S3"
+    assert payload["resources"][0]["name"] == "source-export"
+    assert payload["resources"][0]["sources"][0]["serviceType"] == "S3"
 
 
 def test_clone_descriptor_dry_run_does_not_write(tmp_path: Path) -> None:
@@ -151,6 +150,5 @@ def test_clone_descriptor_force_overwrites_existing_target(tmp_path: Path) -> No
     )
     assert result.exit_code == 0
     assert (
-        "source-export"
-        in yaml.safe_load(target_descriptor.read_text(encoding="utf-8"))["resources"]
+        yaml.safe_load(target_descriptor.read_text(encoding="utf-8"))["resources"][0]["name"] == "source-export"
     )

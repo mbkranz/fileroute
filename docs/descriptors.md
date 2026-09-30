@@ -1,44 +1,43 @@
 # Descriptors
 
 A descriptor is a local YAML or JSON `Catalog`. Its `catalogs` and `resources`
-are **keyed maps**: each key is the registered name, with no repeated `name`
-field. `CatalogLink` composes another catalog file through `descriptor`.
+are **lists of named entries**. `CatalogLink` composes another catalog file through `descriptor`.
 `Location` records upstream provenance or a publication destination.
 
 ```yaml
 profile: fileroute-catalog
 catalogs:
-  documentation:
+  - name: documentation
     basePath: docs/_output
     targets:
       - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs
         serviceType: SharePoint
     resources:
-      guide:
-        basePath: docs/_output/guide.docx
+      - name: guide
+        path: guide.docx
         sources:
           - path: docs/guide.qmd
-      internal:
-        basePath: docs/_output/internal.docx
+      - name: internal
+        path: internal.docx
         targets: []
-  research:
+  - name: research
     descriptor: catalogs/research.yaml
 ```
 
 Build the guide with Quarto before pushing it. `internal` opts out of publication.
-The research file is another catalog document with the same keyed structure;
-its root is registered as `research` by the parent key. It does not repeat that
-name. Root descriptors may have a `title` for display.
+The research file is another catalog document. Its parent link registers it as
+`research` without changing its root name. Root descriptors may omit `name`.
 
 ## Fields and identity
 
 | Field | Meaning |
 | --- | --- |
 | `profile` | Optional catalog profile label (defaults to `fileroute-catalog`) |
-| `catalogs`, `resources` | Maps of registered names to catalogs/links or resources |
+| `catalogs`, `resources` | Lists of entries with explicit child `name` |
 | `descriptor` | Link to another **local catalog document**, relative to the containing file |
 | Catalog `basePath` | Directory relative to the parent catalog base |
 | Resource `path` | Local artifact relative to its containing catalog base |
+| Resource `pathTemplate` | Parameterized artifact location; applications supply concrete paths before transfer |
 | `sources`, `targets` | Ordered location lists; missing/null targets inherit, `[]` opts out |
 | Location `path` | Local provenance, remote path, or clickable URL |
 | `serviceType` | Location provider: `GoogleDrive`, `SharePoint`, or `S3` |
@@ -48,12 +47,12 @@ name. Root descriptors may have a `title` for display.
 
 Names match `[A-Za-z_][A-Za-z0-9_-]*`. Use `title` for spaces and punctuation.
 Names are case-insensitive for lookup and cannot collide within one parent,
-including across its resource and catalog maps. Names reused under different
+including across its resource and catalog lists. Names reused under different
 parents are addressed by a qualified name such as `documentation.guide`.
 A bare name works when unique. Links cannot mix `descriptor` with inline fields.
 
 Unknown extension metadata survives round trips. YAML comments, styles, and
-mapping order are preserved where practical; exact whitespace is not guaranteed.
+entry order are preserved where practical; exact whitespace is not guaranteed.
 Custom tags such as `!include` are rejected. `profile` is a label, not a
 network-fetched schema. Legacy descriptors are not supported. The format uses Data Package and
 OpenMetadata vocabulary but is not an implementation of their full schemas.
@@ -85,17 +84,17 @@ transferred individually. Push retains ancestor targets and path anchors.
 Exact JSONPath and JSON Pointer addresses remain available:
 
 ```bash
-fileroute list --select 'catalogs.documentation.resources.guide'
-fileroute update --select '$.catalogs.documentation.resources.guide.targets[0]' --drive-id 'b!ABC'
-fileroute list --select '/catalogs/documentation/resources/guide'
+fileroute list --select 'documentation.guide'
+fileroute update --select '$.catalogs[0].resources[0].targets[0]' --drive-id 'b!ABC'
+fileroute list --select '/catalogs/0/resources/0'
 ```
 
 The target-edit example requires an authored target on `guide`; inherited targets
 must be edited on their owner. The leading `$` is optional. Quoted keys such as
-`$['resources']['monthly-report']` work. `sources` and `targets` use numeric
+`$['resources'][0]` work. `sources` and `targets` use numeric
 indices and must be the final step. Wildcards, filters, projections, and arbitrary
 extension-field selection are not supported. Use `fileroute list` to copy exact
-addresses. Names remain stable when map order changes; location indices do not.
+addresses. Names remain stable when lists are reordered; structural indices do not.
 Registered names take precedence over rootless structural syntax. Use the explicit
 `$`/Pointer address shown by `list` to request a structural address unambiguously.
 
@@ -183,9 +182,12 @@ A root `catalog.yaml` (also `.yml` or `.json`) is discovered after an explicitly
 activated descriptor and before `resources/descriptor.*`. Explicit arguments win.
 No parent-directory search is performed, and stale activations remain errors.
 
-`resourcePathTemplate` is optional Catalog metadata describing a naming pattern relative
-to the effective `basePath`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
-interpret the pattern; transfers do not expand it or replace concrete paths.
+`pathTemplate` on a named Resource describes a parameterized location relative
+to the enclosing catalog's effective `basePath`. Exactly one of `path` and
+`pathTemplate` is required. Applications interpret placeholders and supply
+concrete resources before transfer; Fileroute does not expand or match them.
+Direct transfer of a template fails. A template participating in a parent
+transfer fails the whole plan; unrelated and opted-out templates do not.
 
 Stable releases attach `fileroute-catalog.schema.json`, generated from these
 models. Associate its versioned GitHub asset URL using a YAML language-server

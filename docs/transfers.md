@@ -35,13 +35,13 @@ permissions. `resolve --online` reads provider metadata to verify locations.
 ## Push
 
 - Catalog targets identify existing remote folders. Children inherit them
-  using paths relative to the declaring catalog's `path` (or the working
-  root when the catalog has no path).
+  using paths relative to the declaring catalog's effective `basePath` (or
+  the working root when the catalog has no base).
 - An explicit child `targets` list replaces inherited targets. `targets: []`
   disables publication for it and its descendants unless a descendant
   declares its own targets.
 - A catalog with children publishes only those children. A leaf catalog with
-  a path publishes the files in its directory tree.
+  a `basePath` publishes the files in its directory tree.
 - An explicit resource target is an exact file URL. SharePoint URLs can rename
   the file. Google Drive file URLs update that exact ID and keep its remote
   name; the target must already exist. Set `entityType: Directory` to append
@@ -51,6 +51,9 @@ permissions. `resolve --online` reads provider metadata to verify locations.
   destination fail before transfer.
 
 The planner validates local inputs and target support before authentication.
+An unresolved `pathTemplate` in the selected transfer scope fails planning
+when it has a pull source or effective push targets. Select a concrete sibling
+to exclude an unrelated template; `targets: []` opts out of inherited publication.
 SharePoint execution creates missing child folders and creates/replaces files;
 it never deletes remote files. Files above Microsoft Graph's 250 MB
 single-request limit fail planning. A dry run cannot verify remote folders,
@@ -71,12 +74,12 @@ Remote files absent from the plan are never deleted.
 
 ```yaml
 catalogs:
-  documentation:
+  - name: documentation
     basePath: docs/_output
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
     resources:
-      summary:
+      - name: summary
         path: reports/summary.pdf
 ```
 

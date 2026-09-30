@@ -1,5 +1,4 @@
 from typer.testing import CliRunner
-
 from fileroute.cli import app
 from fileroute.diagram import build_graph, load_graph, render_mermaid, render_svg
 from fileroute.models import Catalog, Location, Resource, ServiceType
@@ -15,12 +14,13 @@ def test_build_graph_applies_catalog_targets_to_resources():
             title="docs",
             base_path="docs/_output",
             targets=[target],
-            resources={
-                "guide": Resource(
+            resources=[
+                Resource(
+                    name="guide",
                     path="guide.docx",
                     sources=[Location(path="docs/guide.qmd")],
                 )
-            },
+            ],
         )
     )
     nodes = {node.key: node for node in graph.nodes}
@@ -50,12 +50,12 @@ def test_build_graph_applies_catalog_targets_to_resources():
 def test_load_graph_resolves_providers_and_references(tmp_path):
     child = tmp_path / "child.yaml"
     child.write_text(
-        "resources:\n  data:\n    path: data.csv\n    sources:\n    - path: s3://bucket/data.csv\n",
+        "resources:\n  - name: data\n    path: data.csv\n    sources:\n      - path: s3://bucket/data.csv\n",
         encoding="utf-8",
     )
     descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
-        "catalogs:\n  entry0:\n    descriptor: child.yaml\ntargets:\n- path: https://tenant.sharepoint.com/sites/docs/Shared%20Documents/out\n",
+        "catalogs:\n  - name: entry0\n    descriptor: child.yaml\ntargets:\n  - path: https://tenant.sharepoint.com/sites/docs/Shared%20Documents/out\n",
         encoding="utf-8",
     )
     graph = load_graph(descriptor)
@@ -77,8 +77,9 @@ def test_load_graph_resolves_providers_and_references(tmp_path):
 def test_mermaid_shows_distinct_destinations_and_local_provenance(tmp_path):
     graph = build_graph(
         Catalog(
-            resources={
-                "guide": Resource(
+            resources=[
+                Resource(
+                    name="guide",
                     path="output/guide.docx",
                     sources=[Location(path="docs/guide.qmd")],
                     targets=[
@@ -91,7 +92,7 @@ def test_mermaid_shows_distinct_destinations_and_local_provenance(tmp_path):
                         ),
                     ],
                 )
-            }
+            ]
         )
     )
     content = render_mermaid(graph, tmp_path / "guide.mmd").read_text()
@@ -106,7 +107,7 @@ def test_mermaid_shows_distinct_destinations_and_local_provenance(tmp_path):
 def test_render_svg_and_cli_default_output(tmp_path, monkeypatch):
     descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
-        "resources:\n  guide:\n    path: guide.docx\n    sources:\n    - path: guide.qmd\n    targets:\n    - path: \n        https://tenant.sharepoint.com/sites/docs/Shared%20Documents/guide.docx\n",
+        "resources:\n  - name: guide\n    path: guide.docx\n    sources:\n      - path: guide.qmd\n    targets:\n      - path: \n          https://tenant.sharepoint.com/sites/docs/Shared%20Documents/guide.docx\n",
         encoding="utf-8",
     )
     direct = render_svg(load_graph(descriptor), tmp_path / "direct.svg")

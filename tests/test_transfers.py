@@ -27,22 +27,28 @@ def test_targets_inherit_override_and_opt_out(tmp_path):
         tmp_path,
         base_path="out",
         targets=[Location(path=REMOTE)],
-        resources={
-            "entry0": Resource(
-                title="one", path="one.docx", sources=[Location(path="one.qmd")]
+        resources=[
+            Resource(
+                name="entry0",
+                title="one",
+                path="one.docx",
+                sources=[Location(path="one.qmd")],
             ),
-            "entry1": Resource(
+            Resource(
+                name="entry1",
                 title="renamed",
                 path="three.docx",
                 targets=[Location(path=REMOTE + "/renamed.docx")],
             ),
-            "entry2": Resource(title="private", path="private.docx", targets=[]),
-        },
-        catalogs={
-            "nested": Catalog(
-                title="nested", resources={"two": Resource(path="sub/two.docx")}
+            Resource(name="entry2", title="private", path="private.docx", targets=[]),
+        ],
+        catalogs=[
+            Catalog(
+                name="nested",
+                title="nested",
+                resources=[Resource(name="two", path="sub/two.docx")],
             )
-        },
+        ],
     )
     plan = plan_push(path, root=tmp_path)
     assert [entry.destination for entry in plan] == [
@@ -56,15 +62,16 @@ def test_multiple_targets_and_folder_target(tmp_path):
     (tmp_path / "guide.docx").write_text("artifact")
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="guide.docx",
                 targets=[
                     Location(path=REMOTE, entityType="Directory"),
                     Location(path=REMOTE + "/copy.docx"),
                 ],
             )
-        },
+        ],
     )
     assert [entry.destination for entry in plan_push(path, root=tmp_path)] == [
         REMOTE + "/guide.docx",
@@ -75,9 +82,11 @@ def test_multiple_targets_and_folder_target(tmp_path):
 def test_push_never_uses_provenance_as_destination(tmp_path):
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(path="file", sources=[Location(path=REMOTE + "/source")])
-        },
+        resources=[
+            Resource(
+                name="entry0", path="file", sources=[Location(path=REMOTE + "/source")]
+            )
+        ],
     )
     with pytest.raises(ValueError, match="targets"):
         plan_push(path, root=tmp_path)
@@ -90,16 +99,20 @@ def test_push_never_uses_provenance_as_destination(tmp_path):
 def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
     (tmp_path / "file").write_text("one")
     (tmp_path / "other").write_text("two")
-    resource = Resource(path="file", targets=[Location(path=REMOTE + "/file")])
-    resources = {"file": resource}
+    resource = Resource(
+        name="file", path="file", targets=[Location(path=REMOTE + "/file")]
+    )
+    resources = [resource]
     if kind == "escape":
         resource.path = "../outside"
     elif kind == "parent_symlink":
         (tmp_path / "link").symlink_to(tmp_path, target_is_directory=True)
         resource.path = "link/file"
     elif kind == "collision":
-        resources["other"] = Resource(
-            path="other", targets=[Location(path=REMOTE + "/file")]
+        resources.append(
+            Resource(
+                name="other", path="other", targets=[Location(path=REMOTE + "/file")]
+            )
         )
     elif kind == "unsupported":
         resource.targets = [Location(path="s3://bucket/file")]
@@ -129,12 +142,12 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
         Catalog(
             base_path="out",
             targets=[Location(path=REMOTE)],
-            resources={"entry0": Resource(path="guide #1.docx")},
+            resources=[Resource(name="entry0", path="guide #1.docx")],
         ),
         child,
     )
     path = tmp_path / "root.yaml"
-    path.write_text("catalogs:\n  entry0:\n    descriptor: child.yaml\n")
+    path.write_text("catalogs:\n  - name: entry0\n    descriptor: child.yaml\n")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "fileroute.clients.sharepoint.SharepointClient.build_default",
@@ -148,13 +161,14 @@ def test_push_dry_run_and_reference_targets(tmp_path, monkeypatch):
 def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="download/file.csv",
                 sources=[Location(path="s3://bucket/source.csv")],
                 targets=[Location(path=REMOTE + "/file")],
             )
-        },
+        ],
     )
     calls = []
     item = SimpleNamespace(
@@ -170,15 +184,16 @@ def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
 def test_pull_refuses_multiple_sources(tmp_path):
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="output",
                 sources=[
                     Location(path="s3://bucket/one"),
                     Location(path="s3://bucket/two"),
                 ],
             )
-        },
+        ],
     )
     with pytest.raises(ValueError, match="exactly one source"):
         plan_pull(path, root=tmp_path)
@@ -187,9 +202,11 @@ def test_pull_refuses_multiple_sources(tmp_path):
 def test_pull_dry_run_no_auth(tmp_path, monkeypatch):
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(path="file", sources=[Location(path="s3://bucket/file")])
-        },
+        resources=[
+            Resource(
+                name="entry0", path="file", sources=[Location(path="s3://bucket/file")]
+            )
+        ],
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -205,14 +222,18 @@ def test_selected_pull_skips_invalid_sibling_and_dispatches_only_selection(
 ):
     path = descriptor(
         tmp_path,
-        resources={
-            "good": Resource(
-                path="good.csv", sources=[Location(path="s3://bucket/good.csv")]
+        resources=[
+            Resource(
+                name="good",
+                path="good.csv",
+                sources=[Location(path="s3://bucket/good.csv")],
             ),
-            "bad": Resource(
-                path="bad.csv", sources=[Location(path="not-a-remote-source")]
+            Resource(
+                name="bad",
+                path="bad.csv",
+                sources=[Location(path="not-a-remote-source")],
             ),
-        },
+        ],
     )
     assert [
         entry.remote for entry in plan_pull(path, root=tmp_path, selector="good")
@@ -246,16 +267,21 @@ def test_selected_push_inherits_targets_and_skips_unsupported_sibling(
         tmp_path,
         base_path="out",
         targets=[Location(path=REMOTE)],
-        catalogs={
-            "batch": Catalog(resources={"good": Resource(path="sub/good.csv")}),
-            "other": Catalog(
-                resources={
-                    "bad": Resource(
-                        path="bad.csv", targets=[Location(path="s3://bucket/bad.csv")]
-                    )
-                }
+        catalogs=[
+            Catalog(
+                name="batch", resources=[Resource(name="good", path="sub/good.csv")]
             ),
-        },
+            Catalog(
+                name="other",
+                resources=[
+                    Resource(
+                        name="bad",
+                        path="bad.csv",
+                        targets=[Location(path="s3://bucket/bad.csv")],
+                    )
+                ],
+            ),
+        ],
     )
     selected = plan_push(path, root=tmp_path, selector="batch")
     assert [entry.destination for entry in selected] == [REMOTE + "/sub/good.csv"]
@@ -281,44 +307,38 @@ def test_selected_linked_catalog_and_selector_errors(tmp_path):
     linked = tmp_path / "linked.yaml"
     save(
         Catalog(
-            resources={
-                "file": Resource(
+            resources=[
+                Resource(
+                    name="file",
                     path="file.csv",
                     sources=[Location(path="s3://bucket/file.csv")],
                     targets=[Location(path=REMOTE + "/file.csv")],
                 )
-            }
+            ]
         ),
         linked,
     )
     path = tmp_path / "root.yaml"
-    path.write_text("catalogs:\n  linked:\n    descriptor: linked.yaml\n")
+    path.write_text("catalogs:\n  - name: linked\n    descriptor: linked.yaml\n")
     assert len(plan_pull(path, root=tmp_path, selector="linked")) == 1
     assert len(plan_push(path, root=tmp_path, selector="linked")) == 1
     assert len(plan_pull(path, root=tmp_path, selector="linked.file")) == 1
-    assert (
-        len(plan_push(path, root=tmp_path, selector="/catalogs/linked/resources/file"))
-        == 1
-    )
+    assert len(plan_push(path, root=tmp_path, selector="/catalogs/0/resources/0")) == 1
     with pytest.raises(ValueError, match="not found"):
         plan_pull(path, root=tmp_path, selector="unknown")
     with pytest.raises(ValueError, match="owning resource or catalog"):
-        plan_pull(
-            path, root=tmp_path, selector="/catalogs/linked/resources/file/sources/0"
-        )
+        plan_pull(path, root=tmp_path, selector="/catalogs/0/resources/0/sources/0")
     with pytest.raises(ValueError, match="owning resource or catalog"):
-        plan_push(
-            path, root=tmp_path, selector="/catalogs/linked/resources/file/targets/0"
-        )
+        plan_push(path, root=tmp_path, selector="/catalogs/0/resources/0/targets/0")
 
 
 def test_selected_name_ambiguity_and_empty_scope(tmp_path):
     path = descriptor(
         tmp_path,
-        catalogs={
-            "first": Catalog(resources={"file": Resource(path="one")}),
-            "second": Catalog(resources={"file": Resource(path="two")}),
-        },
+        catalogs=[
+            Catalog(name="first", resources=[Resource(name="file", path="one")]),
+            Catalog(name="second", resources=[Resource(name="file", path="two")]),
+        ],
     )
     with pytest.raises(ValueError, match="ambiguous"):
         plan_pull(path, root=tmp_path, selector="file")
@@ -329,11 +349,13 @@ def test_selected_name_ambiguity_and_empty_scope(tmp_path):
 def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monkeypatch):
     path = descriptor(
         tmp_path,
-        catalogs={
-            "entry0": Catalog(
-                base_path="downloads", sources=[Location(path="s3://bucket/root/")]
+        catalogs=[
+            Catalog(
+                name="entry0",
+                base_path="downloads",
+                sources=[Location(path="s3://bucket/root/")],
             )
-        },
+        ],
     )
     calls = []
     children = [
@@ -360,24 +382,26 @@ def test_directional_planning_ignores_opposite_location_errors(tmp_path):
     (tmp_path / "file").write_text("data")
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="file",
                 sources=[Location(path="s3://bucket/file")],
                 targets=[Location(path="not-a-remote-target")],
             )
-        },
+        ],
     )
     assert plan_pull(path, root=tmp_path)[0].remote == "s3://bucket/file"
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="file",
                 sources=[Location(path="s3://bucket/file", service_type="SharePoint")],
                 targets=[Location(path=REMOTE + "/file")],
             )
-        },
+        ],
     )
     assert plan_push(path, root=tmp_path)[0].destination == REMOTE + "/file"
 
@@ -398,14 +422,15 @@ def test_pull_prefers_saved_id_to_url(tmp_path, monkeypatch):
 
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="download.csv",
                 sources=[
                     Location(path="s3://bucket/file.csv", serviceId="bucket:file.csv")
                 ],
             )
-        },
+        ],
     )
     calls = []
     item = SimpleNamespace(
@@ -429,8 +454,9 @@ def test_push_uses_saved_sharepoint_folder_id(tmp_path, monkeypatch):
     (tmp_path / "file.csv").write_text("data")
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="file.csv",
                 targets=[
                     Location(
@@ -444,7 +470,7 @@ def test_push_uses_saved_sharepoint_folder_id(tmp_path, monkeypatch):
                     )
                 ],
             )
-        },
+        ],
     )
     client = SharepointClient(access_token="fake")
     calls = []
@@ -475,7 +501,7 @@ def _descriptor(root: Path) -> Path:
     descriptor = root / "config" / "fileroute.yaml"
     descriptor.parent.mkdir()
     descriptor.write_text(
-        "profile: fileroute-catalog\ncatalogs:\n  documentation:\n    basePath: docs/_output\n    targets:\n    - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n      serviceType: SharePoint\n"
+        "profile: fileroute-catalog\ncatalogs:\n  - name: documentation\n    basePath: docs/_output\n    targets:\n      - path: https://contoso.sharepoint.com/sites/dev/Shared%20Documents/Docs\n        serviceType: SharePoint\n"
     )
     return descriptor
 
@@ -533,7 +559,7 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     (tmp_path / "local.docx").write_bytes(b"document")
     descriptor = tmp_path / "fileroute.yaml"
     descriptor.write_text(
-        "profile: fileroute-catalog\nresources:\n  guide:\n    path: local.docx\n    targets:\n    - path: \n        https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
+        "profile: fileroute-catalog\nresources:\n  - name: guide\n    path: local.docx\n    targets:\n      - path: \n          https://example.sharepoint.com/sites/dev/Shared%20Documents/Docs/published.docx\n"
     )
     files = plan_push(descriptor, root=tmp_path)
     calls = []
@@ -557,11 +583,13 @@ def test_google_drive_folder_and_exact_file_targets(tmp_path, monkeypatch):
     file = "https://drive.google.com/file/d/file-id/view?usp=sharing"
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
-                path="report.pdf", targets=[Location(path=folder), Location(path=file)]
+        resources=[
+            Resource(
+                name="entry0",
+                path="report.pdf",
+                targets=[Location(path=folder), Location(path=file)],
             )
-        },
+        ],
     )
     calls = []
     client = SimpleNamespace(
@@ -621,23 +649,26 @@ def test_google_drive_exact_file_collision_and_unresolved_path(tmp_path):
     (tmp_path / "two.csv").write_bytes(b"two")
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="one.csv",
                 targets=[Location(path="https://drive.google.com/file/d/same/view")],
             ),
-            "entry1": Resource(
+            Resource(
+                name="entry1",
                 path="two.csv",
                 targets=[Location(path="https://drive.google.com/open?id=same")],
             ),
-        },
+        ],
     )
     with pytest.raises(ValueError, match="Multiple local files"):
         plan_push(path, root=tmp_path)
     path = descriptor(
         tmp_path,
-        resources={
-            "entry0": Resource(
+        resources=[
+            Resource(
+                name="entry0",
                 path="one.csv",
                 targets=[
                     Location(
@@ -647,7 +678,7 @@ def test_google_drive_exact_file_collision_and_unresolved_path(tmp_path):
                     )
                 ],
             )
-        },
+        ],
     )
     with pytest.raises(ValueError, match="needs an ID"):
         plan_push(path, root=tmp_path)

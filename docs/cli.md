@@ -116,7 +116,7 @@ fileroute update --name file1 --title "Hello" --description "hello"
 ```
 
 ```bash
-fileroute update --select '$.catalogs.docs.resources.guide' --title 'Hello'
+fileroute update --select '$.catalogs[0].resources[0]' --title 'Hello'
 ```
 
 ## `fileroute activate`
@@ -179,7 +179,7 @@ fileroute list resources/descriptor.yaml --format json
 ```
 
 ```bash
-fileroute list --select '$.catalogs.docs.resources.guide'
+fileroute list --select '$.catalogs[0].resources[0]'
 ```
 
 ## `fileroute add`
@@ -210,7 +210,7 @@ fileroute add my-resource --path downloads/file.csv --source https://drive.googl
 ```
 
 ```bash
-fileroute add my-folder --catalog --path docs/_output --parent '$.catalogs.docs'
+fileroute add my-folder --catalog --base-path docs/_output --parent '$.catalogs[0]'
 ```
 
 ## `fileroute diagram`

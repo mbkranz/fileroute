@@ -10,16 +10,18 @@ from fileroute.models import Catalog, Resource, Location
 
 def document():
     return Catalog(
-        catalogs={
-            "docs": Catalog(
-                resources={
-                    "report": Resource(
+        catalogs=[
+            Catalog(
+                name="docs",
+                resources=[
+                    Resource(
+                        name="report",
                         path="report.csv",
                         targets=[Location(path="s3://bucket/report.csv")],
                     )
-                }
+                ],
             )
-        }
+        ]
     )
 
 
@@ -28,11 +30,11 @@ def document():
     [
         "docs.report",
         "report",
-        "$.catalogs.docs.resources.report",
-        "catalogs.docs.resources.report",
-        ".catalogs.docs.resources.report",
-        "$['catalogs']['docs']['resources']['report']",
-        "/catalogs/docs/resources/report",
+        "$.catalogs[0].resources[0]",
+        "catalogs[0].resources[0]",
+        ".catalogs[0].resources[0]",
+        "$['catalogs'][0]['resources'][0]",
+        "/catalogs/0/resources/0",
     ],
 )
 def test_exact_selector(address):
@@ -43,9 +45,9 @@ def test_exact_selector(address):
     "address",
     [
         "$.catalogs[*]",
-        "$.catalogs[0]",
-        "$.catalogs.docs.resources.report.targets[0].sources[0]",
-        "$.catalogs.docs.resources.report.path",
+        "$.catalogs[-1]",
+        "$.catalogs[0].resources[0].targets[0].sources[0]",
+        "$.catalogs[0].resources[0].path",
     ],
 )
 def test_unsupported_queries(address):
@@ -56,7 +58,7 @@ def test_unsupported_queries(address):
 def test_locations_and_cli_edits(tmp_path):
     path = tmp_path / "root.yaml"
     save(document(), path)
-    address = "catalogs.docs.resources.report.targets[0]"
+    address = "catalogs[0].resources[0].targets[0]"
     result = CliRunner().invoke(
         app,
         [
@@ -71,7 +73,7 @@ def test_locations_and_cli_edits(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert find(load(path), address).bucket == "new-bucket"
-    assert list(walk(load(path)))[1].json_path == "$.catalogs.docs.resources.report"
+    assert list(walk(load(path)))[1].json_path == "$.catalogs[0].resources[0]"
     result = CliRunner().invoke(
         app, ["list", str(path), "--select", address, "--format", "json"]
     )
@@ -81,7 +83,7 @@ def test_locations_and_cli_edits(tmp_path):
 
 def test_add_under_keyed_parent(tmp_path):
     path = tmp_path / "root.yaml"
-    save(Catalog(catalogs={"docs": Catalog()}), path)
+    save(Catalog(catalogs=[Catalog(name="docs")]), path)
     result = CliRunner().invoke(
         app,
         [
@@ -96,20 +98,36 @@ def test_add_under_keyed_parent(tmp_path):
         ],
     )
     assert result.exit_code == 0, result.output
-    assert load(path).catalogs["docs"].resources["guide"].path == "guide.docx"
+    assert (
+        next(
+            (
+                _entry
+                for _entry in next(
+                    (_entry for _entry in load(path).catalogs if _entry.name == "docs")
+                ).resources
+                if _entry.name == "guide"
+            )
+        ).path
+        == "guide.docx"
+    )
 
 
 def test_selected_resolution_writes_only_origin(tmp_path):
     child = tmp_path / "child.yaml"
     child.write_text(
-        "resources:\n  report:\n    path: report.csv\n    targets:\n      - path: s3://bucket/report.csv\n"
+        "resources:\n  - name: report\n    path: report.csv\n    targets:\n      - path: s3://bucket/report.csv\n"
     )
     root = tmp_path / "root.yaml"
-    root.write_text("catalogs:\n  external:\n    descriptor: child.yaml\n")
+    root.write_text("catalogs:\n  - name: external\n    descriptor: child.yaml\n")
     before = root.read_bytes()
     result = resolve_selection(root, "external.report", write=True)
     assert result.entry.origin_descriptor == child
-    assert load(child).resources["report"].targets[0].bucket == "bucket"
+    assert (
+        next((_entry for _entry in load(child).resources if _entry.name == "report"))
+        .targets[0]
+        .bucket
+        == "bucket"
+    )
     assert root.read_bytes() == before
     edit = CliRunner().invoke(
         app,
@@ -131,26 +149,32 @@ def test_selected_resolution_keeps_inheritance_out_of_child(tmp_path):
     save(
         Catalog(
             targets=[Location(path="s3://bucket/root/")],
-            resources={"file": Resource(path="file.csv")},
+            resources=[Resource(name="file", path="file.csv")],
         ),
         path,
     )
     result = resolve_selection(path, "file", write=True)
     assert result.effective_targets[0].bucket == "bucket"
-    assert load(path).resources["file"].targets is None
+    assert (
+        next(
+            (_entry for _entry in load(path).resources if _entry.name == "file")
+        ).targets
+        is None
+    )
 
 
 def test_selected_location_does_not_resolve_unrelated_targets(tmp_path, monkeypatch):
     path = tmp_path / "root.yaml"
     save(
         Catalog(
-            resources={
-                "file": Resource(
+            resources=[
+                Resource(
+                    name="file",
                     path="x",
                     sources=[Location(path="local.qmd")],
                     targets=[Location(path="unresolved-remote-target")],
                 )
-            }
+            ]
         ),
         path,
     )
@@ -158,20 +182,20 @@ def test_selected_location_does_not_resolve_unrelated_targets(tmp_path, monkeypa
         "fileroute.clients.get_provider",
         lambda _: pytest.fail("unrelated provider lookup"),
     )
-    result = resolve_selection(path, "$.resources.file.sources[0]", online=True)
+    result = resolve_selection(path, "$.resources[0].sources[0]", online=True)
     assert result.model.path == "local.qmd"
     assert result.effective_targets == ()
 
 
 def test_scoped_catalog_write_keeps_nested_links(tmp_path):
     child = tmp_path / "child.yaml"
-    child.write_text("catalogs:\n  nested:\n    descriptor: leaf.yaml\n")
+    child.write_text("catalogs:\n  - name: nested\n    descriptor: leaf.yaml\n")
     leaf = tmp_path / "leaf.yaml"
     leaf.write_text(
-        "resources:\n  file:\n    path: x\n    targets:\n      - path: s3://bucket/x\n"
+        "resources:\n  - name: file\n    path: x\n    targets:\n      - path: s3://bucket/x\n"
     )
     root = tmp_path / "root.yaml"
-    root.write_text("catalogs:\n  external:\n    descriptor: child.yaml\n")
+    root.write_text("catalogs:\n  - name: external\n    descriptor: child.yaml\n")
     before = leaf.read_bytes()
     resolve_selection(root, "external", write=True)
     assert leaf.read_bytes() == before
@@ -180,13 +204,13 @@ def test_scoped_catalog_write_keeps_nested_links(tmp_path):
 
 def test_registered_names_take_precedence_over_rootless_address():
     model = Catalog(
-        catalogs={
-            "catalogs": Catalog(resources={"foo": Resource(path="x")}),
-            "foo": Catalog(base_path="y"),
-        }
+        catalogs=[
+            Catalog(name="catalogs", resources=[Resource(name="foo", path="x")]),
+            Catalog(name="foo", base_path="y"),
+        ]
     )
     assert find(model, "catalogs.foo").path == "x"
-    assert find(model, "$.catalogs.foo").base_path == "y"
+    assert find(model, "$.catalogs[1]").base_path == "y"
 
 
 def test_selected_online_write_reuses_verified_metadata(tmp_path, monkeypatch):
@@ -195,9 +219,11 @@ def test_selected_online_write_reuses_verified_metadata(tmp_path, monkeypatch):
     path = tmp_path / "root.yaml"
     save(
         Catalog(
-            resources={
-                "file": Resource(path="x", targets=[Location(path="s3://bucket/x")])
-            }
+            resources=[
+                Resource(
+                    name="file", path="x", targets=[Location(path="s3://bucket/x")]
+                )
+            ]
         ),
         path,
     )

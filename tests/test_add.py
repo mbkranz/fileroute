@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 import pytest
 import yaml_support as yaml
-
 from fileroute.commands.descriptor import _add_resource_to_descriptor
 from fileroute.models import Catalog, Location
 from fileroute.descriptor import resolve
@@ -13,7 +10,7 @@ from fileroute.descriptor import resolve
 def _write_catalog_descriptor(path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
-            {"profile": "fileroute-catalog", "resources": {}, "catalogs": {}},
+            {"profile": "fileroute-catalog", "resources": [], "catalogs": []},
             sort_keys=False,
         ),
         encoding="utf-8",
@@ -23,7 +20,6 @@ def _write_catalog_descriptor(path: Path) -> None:
 def test_add_resource_writes_artifact_path_and_source(tmp_path: Path) -> None:
     descriptor = tmp_path / "descriptor.yaml"
     _write_catalog_descriptor(descriptor)
-
     resource = _add_resource_to_descriptor(
         descriptor,
         name="source-export",
@@ -34,14 +30,11 @@ def test_add_resource_writes_artifact_path_and_source(tmp_path: Path) -> None:
         title="Source export",
         description="Exported source data",
     )
-
     document = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
-
-    # assert
     assert resource["path"] == "background/exports/source-export.csv"
     assert "_cache" not in resource
     assert resource["sources"][0]["path"] == "s3://my-bucket/path/to/source-export.csv"
-    assert document["resources"]["source-export"]["sources"][0]["serviceType"] == "S3"
+    assert document["resources"][0]["sources"][0]["serviceType"] == "S3"
 
 
 def test_add_resource_to_descriptor_rejects_duplicate_names(tmp_path: Path) -> None:
@@ -53,7 +46,6 @@ def test_add_resource_to_descriptor_rejects_duplicate_names(tmp_path: Path) -> N
         path="existing.csv",
         source="s3://bucket/existing.csv",
     )
-
     with pytest.raises(ValueError, match="already exists"):
         _add_resource_to_descriptor(
             descriptor,
@@ -84,14 +76,13 @@ def test_add_catalog_with_target(tmp_path: Path) -> None:
     )
     assert catalog["basePath"] == "docs/_output"
     assert catalog["targets"][0]["path"].endswith("/Docs")
-    assert yaml.safe_load(descriptor.read_text())["catalogs"]["docs"] == catalog
+    assert yaml.safe_load(descriptor.read_text())["catalogs"][0] == catalog
 
 
 def test_add_resource_to_descriptor_requires_existing_descriptor_by_default(
     tmp_path: Path,
 ) -> None:
     descriptor = tmp_path / "missing.yaml"
-
     with pytest.raises(FileNotFoundError, match="does not exist"):
         _add_resource_to_descriptor(
             descriptor,
@@ -103,7 +94,6 @@ def test_add_resource_to_descriptor_requires_existing_descriptor_by_default(
 
 def test_add_resource_to_descriptor_allows_create_if_missing(tmp_path: Path) -> None:
     descriptor = tmp_path / "created.yaml"
-
     resource = _add_resource_to_descriptor(
         descriptor,
         name="source-export",
@@ -113,10 +103,12 @@ def test_add_resource_to_descriptor_allows_create_if_missing(tmp_path: Path) -> 
         ],
         create_if_missing=True,
     )
-
     assert resource["path"] == "background/exports/source-export.csv"
     assert descriptor.exists()
-    assert "source-export" in yaml.safe_load(descriptor.read_text())["resources"]
+    assert (
+        yaml.safe_load(descriptor.read_text())["resources"][0]["name"]
+        == "source-export"
+    )
 
 
 @pytest.mark.parametrize(

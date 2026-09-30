@@ -17,7 +17,6 @@ from pydantic import (
 
 CATALOG_PROFILE = "fileroute-catalog"
 _ARTIFACT_LEGACY_FIELDS = (
-    "name",
     "$ref",
     "descriptor",
     "_cache",
@@ -136,6 +135,7 @@ class _Artifact(_Metadata):
     )
 
     title: str | None = None
+    name: str | None = None
     description: str | None = None
     sources: list[Location] = Field(default_factory=list)
     # None inherits catalog targets; [] explicitly disables publication.
@@ -149,23 +149,71 @@ class _Artifact(_Metadata):
             legacy = set(_ARTIFACT_LEGACY_FIELDS) & value.keys()
             if legacy:
                 raise ValueError(
-                    f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links"
+                    f"Unsupported fields {sorted(legacy)}; use named resources/catalogs and descriptor links"
                 )
         return value
 
 
 class Resource(_Artifact):
-    """A materialized artifact and its provenance/publication locations."""
+    """A concrete artifact or an unresolved parameterized artifact location."""
 
-    path: str = Field(min_length=1)
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$")
+    path: str | None = Field(default=None, min_length=1, pattern=r"\S")
+    path_template: str | None = Field(
+        default=None, alias="pathTemplate", min_length=1, pattern=r"\S"
+    )
     format: str | None = None
+
+    @model_validator(mode="after")
+    def _check_locator(self) -> Resource:
+        validate_name(self.name)
+        if (self.path is None) == (self.path_template is None):
+            raise ValueError("Resource requires exactly one of path or pathTemplate")
+        if (
+            self.path is not None
+            and not self.path.strip()
+            or self.path_template is not None
+            and not self.path_template.strip()
+        ):
+            raise ValueError("Resource path or pathTemplate must be non-empty")
+        return self
+
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+        json_schema_extra={
+            "not": {"anyOf": [{"required": [key]} for key in _ARTIFACT_LEGACY_FIELDS]},
+            "oneOf": [
+                {
+                    "required": ["path"],
+                    "properties": {
+                        "path": {"type": "string"},
+                        "pathTemplate": {"type": "null"},
+                    },
+                },
+                {
+                    "required": ["pathTemplate"],
+                    "properties": {
+                        "pathTemplate": {"type": "string"},
+                        "path": {"type": "null"},
+                    },
+                },
+            ],
+        },
+    )
 
 
 class CatalogLink(BaseModel):
     """Link to a local catalog document, relative to its containing file."""
 
     model_config = ConfigDict(extra="forbid")
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$")
     descriptor: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return validate_name(value)
 
     @field_validator("descriptor")
     @classmethod
@@ -181,7 +229,7 @@ NAME_PATTERN = r"[A-Za-z_][A-Za-z0-9_-]*"
 
 
 def validate_name(name: str) -> str:
-    """Registered names are stable map keys; titles hold display text."""
+    """Registered names are stable selectors; titles hold display text."""
     if not isinstance(name, str) or re.fullmatch(NAME_PATTERN, name) is None:
         raise ValueError(
             f"Invalid registered name {name!r}; use {NAME_PATTERN}; put display text in title"
@@ -190,9 +238,9 @@ def validate_name(name: str) -> str:
 
 
 class Catalog(_Artifact):
-    """Keyed resources and catalogs with parent-relative directory bases.
+    """Named resources and catalogs with parent-relative directory bases.
 
-    Map keys are registered names. Links are recognized before union validation
+    Names are registered identities. Links are recognized before union validation
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
@@ -205,6 +253,8 @@ class Catalog(_Artifact):
                         *_ARTIFACT_LEGACY_FIELDS,
                         "$schema",
                         "pathTemplate",
+                        "resourcePathTemplate",
+                        "catalogType",
                         "path",
                     )
                 ]
@@ -219,27 +269,32 @@ class Catalog(_Artifact):
         description="Local directory relative to the parent catalog base; omitted inherits that base.",
         examples=["build/resources"],
     )
-    resource_path_template: str | None = Field(
-        default=None,
-        alias="resourcePathTemplate",
-        pattern=r"\S",
-        description="Artifact naming pattern relative to the effective basePath. Metadata only; transfers do not expand it.",
-        examples=["{surveyid}/{env}/v{version}/schema.json"],
-    )
+    name: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$")
     profile: str = CATALOG_PROFILE
-    resources: dict[str, Resource] = Field(
-        default_factory=dict,
-        json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
-    )
-    catalogs: dict[str, Catalog | CatalogLink] = Field(
-        default_factory=dict,
-        json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
-    )
+    resources: list[Resource] = Field(default_factory=list)
+    catalogs: list[Catalog | CatalogLink] = Field(default_factory=list)
     # Runtime-only origins: expanded pointer -> (source file, source pointer, chain).
     _origins: dict[str, tuple[Path, str, tuple[Path, ...]]] = PrivateAttr(
         default_factory=dict
     )
+    _registered_names: dict[str, str] = PrivateAttr(default_factory=dict)
     _expanded: bool = PrivateAttr(default=False)
+
+    @classmethod
+    def model_json_schema(cls, **kwargs: Any) -> dict[str, Any]:
+        """Require child names in the exported schema while allowing unnamed roots."""
+        schema = super().model_json_schema(**kwargs)
+        children = schema["$defs"]["Catalog"]["properties"]["catalogs"]["items"]
+        children["anyOf"] = [
+            {
+                "allOf": [
+                    {"$ref": "#/$defs/Catalog"},
+                    {"required": ["name"], "properties": {"name": {"type": "string"}}},
+                ]
+            },
+            {"$ref": "#/$defs/CatalogLink"},
+        ]
+        return schema
 
     @model_validator(mode="before")
     @classmethod
@@ -253,25 +308,40 @@ class Catalog(_Artifact):
                 "Use 'profile' instead of '$schema' in catalog descriptors"
             )
         if isinstance(value, dict) and "pathTemplate" in value:
-            raise ValueError("Use 'resourcePathTemplate' instead of 'pathTemplate'")
+            raise ValueError("Place pathTemplate on a named resource")
+        if isinstance(value, dict) and "resourcePathTemplate" in value:
+            raise ValueError(
+                "Place resourcePathTemplate on a named resource as pathTemplate"
+            )
+        if isinstance(value, dict) and "catalogType" in value:
+            raise ValueError("catalogType is not supported")
+        if isinstance(value, dict):
+            for field in ("resources", "catalogs"):
+                if field in value and not isinstance(value[field], list):
+                    raise ValueError(f"{field} must be a named list")
+            for child in value.get("catalogs", []):
+                if (
+                    isinstance(child, dict)
+                    and "descriptor" in child
+                    and set(child) != {"name", "descriptor"}
+                ):
+                    raise ValueError("Catalog links contain only name and descriptor")
         return value
 
-    @field_validator("resources", "catalogs", mode="before")
+    @field_validator("name")
     @classmethod
-    def _require_mapping(cls, children: Any) -> Any:
-        if not isinstance(children, dict):
-            raise ValueError("resources/catalogs must be keyed mappings")
-        for key in children:
-            validate_name(key)
-        return children
+    def _validate_optional_name(cls, value: str | None) -> str | None:
+        return validate_name(value) if value is not None else None
 
     @model_validator(mode="after")
     def _reject_name_collisions(self) -> Catalog:
         seen: set[str] = set()
-        for key in [*self.resources, *self.catalogs]:
-            folded = key.casefold()
+        for child in [*self.resources, *self.catalogs]:
+            if child.name is None:
+                raise ValueError("Child catalog requires a name")
+            folded = child.name.casefold()
             if folded in seen:
-                raise ValueError(f"Duplicate registered name: {key}")
+                raise ValueError(f"Duplicate registered name: {child.name}")
             seen.add(folded)
         return self
 

@@ -39,6 +39,35 @@ def _container(value: object) -> object:
     return None
 
 
+def _move_named_sequence_comments(parent: dict, key: str) -> None:
+    """Attach preceding sequence comments to names before entries move."""
+    sequence = parent.get(key)
+    if not isinstance(sequence, CommentedSeq) or not sequence:
+        return
+
+    def attach(entry: object, tokens: list) -> None:
+        if not isinstance(entry, CommentedMap) or not tokens:
+            return
+        lines = [token.value.strip().removeprefix("#").strip() for token in tokens]
+        entry.yaml_set_start_comment(
+            "\n".join(lines), indent=tokens[0].start_mark.column
+        )
+
+    marker = parent.ca.items.get(key)
+    if marker and marker[3]:
+        attach(sequence[0], marker[3])
+        marker[3] = None
+        sequence.ca.comment = None
+    for before, after in zip(sequence, sequence[1:]):
+        if not isinstance(before, CommentedMap) or not before:
+            continue
+        last = next(reversed(before))
+        comment = before.ca.items.get(last)
+        if comment and comment[2]:
+            attach(after, [comment[2]])
+            comment[2] = None
+
+
 def _synchronize(authored: object, canonical: object) -> object:
     """Update matching YAML nodes in place so their comments and styles survive."""
     if isinstance(authored, dict) and isinstance(canonical, dict):
@@ -47,11 +76,33 @@ def _synchronize(authored: object, canonical: object) -> object:
                 del authored[key]
         for key, value in canonical.items():
             if key in authored:
+                if key in {"resources", "catalogs"} and isinstance(value, list):
+                    _move_named_sequence_comments(authored, key)
                 authored[key] = _synchronize(authored[key], value)
             else:
                 authored[key] = _synchronize(_container(value), value)
         return authored
     if isinstance(authored, list) and isinstance(canonical, list):
+        if all(
+            isinstance(item, dict) and isinstance(item.get("name"), str)
+            for item in [*authored, *canonical]
+        ):
+            by_name = {item["name"]: item for item in authored}
+            original_comments = getattr(authored, "ca", None)
+            comments = dict(original_comments.items) if original_comments else {}
+            positions = {item["name"]: index for index, item in enumerate(authored)}
+            updated = [
+                _synchronize(by_name.get(item["name"], _container(item)), item)
+                for item in canonical
+            ]
+            authored[:] = updated
+            if original_comments is not None:
+                original_comments.items.clear()
+                for index, item in enumerate(canonical):
+                    old = positions.get(item["name"])
+                    if old in comments:
+                        original_comments.items[index] = comments[old]
+            return authored
         for index, value in enumerate(canonical):
             if index < len(authored):
                 authored[index] = _synchronize(authored[index], value)
@@ -109,13 +160,14 @@ def _read_document(path: Path) -> dict:
 
 
 def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
-    """Load keyed YAML/JSON; optionally expand links with per-entry provenance.
+    """Load named YAML/JSON lists; optionally expand links with provenance.
 
     The active file stack detects cycles; reusing a file in sibling branches is
     valid. Each occurrence gets an independent model and origin chain. Expanded
     views cannot be saved: write the physical source document instead.
     """
     origins = {}
+    registered_names = {}
 
     def read(target: Path, stack: tuple[Path, ...], prefix: str) -> Catalog:
         target = target.resolve()
@@ -132,19 +184,20 @@ def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
         def visit(current: Catalog, pointer: str, source_pointer: str):
             current._expanded = resolve_references
             origins[pointer] = (target, source_pointer, chain)
-            for key, child in current.resources.items():
-                origins[f"{pointer}/resources/{key}"] = (
+            for index, child in enumerate(current.resources):
+                origins[f"{pointer}/resources/{index}"] = (
                     target,
-                    f"{source_pointer}/resources/{key}",
+                    f"{source_pointer}/resources/{index}",
                     chain,
                 )
-            for key, child in list(current.catalogs.items()):
-                child_pointer = f"{pointer}/catalogs/{key}"
-                local_pointer = f"{source_pointer}/catalogs/{key}"
+            for index, child in enumerate(current.catalogs):
+                child_pointer = f"{pointer}/catalogs/{index}"
+                local_pointer = f"{source_pointer}/catalogs/{index}"
                 if isinstance(child, CatalogLink):
                     origins[child_pointer] = (target, local_pointer, chain)
                     if resolve_references:
-                        current.catalogs[key] = read(
+                        registered_names[child_pointer] = child.name
+                        current.catalogs[index] = read(
                             local_path(child.descriptor, target.parent),
                             chain,
                             child_pointer,
@@ -157,6 +210,7 @@ def load(path: Path | str, *, resolve_references: bool = False) -> Catalog:
 
     result = read(Path(path), (), "")
     result._origins = origins
+    result._registered_names = registered_names
     result._expanded = resolve_references
     return result
 
@@ -221,6 +275,7 @@ class EntityPath:
     origin_pointer: str = ""
     reference_chain: tuple[Path, ...] = ()
     effective_path: str | None = None
+    effective_path_template: str | None = None
 
     @property
     def name(self) -> str | None:
@@ -236,27 +291,34 @@ class EntityPath:
 
 
 def walk(catalog: Catalog, *, include_self: bool = False) -> Iterator[EntityPath]:
-    """Walk keyed metadata without I/O, retaining origins from load()."""
+    """Walk named metadata without I/O, retaining origins from load()."""
 
     def row(name, model, pointer, base):
         origin = catalog._origins.get(pointer, (None, pointer, ()))
-        relative = (
-            model.base_path
-            if isinstance(model, Catalog)
-            else getattr(model, "path", None)
-        )
-        effective = (
-            None
-            if isinstance(model, CatalogLink)
-            else _join_artifact_path(base, relative)
-        )
-        return EntityPath(name, model, pointer, *origin, effective)
+        if isinstance(model, Catalog):
+            effective = _join_artifact_path(base, model.base_path)
+            template = None
+        elif isinstance(model, Resource):
+            effective = (
+                _join_artifact_path(base, model.path)
+                if model.path is not None
+                else None
+            )
+            template = (
+                _join_artifact_path(base, model.path_template)
+                if model.path_template is not None
+                else None
+            )
+        else:
+            effective = template = None
+        return EntityPath(name, model, pointer, *origin, effective, template)
 
     def descend(parent: Catalog, prefix: str, pointer: str, base: str | None):
         for collection in ("resources", "catalogs"):
-            for name, child in getattr(parent, collection).items():
+            for index, child in enumerate(getattr(parent, collection)):
+                child_pointer = f"{pointer}/{collection}/{index}"
+                name = catalog._registered_names.get(child_pointer, child.name)
                 name_path = ".".join(filter(None, (prefix, name)))
-                child_pointer = f"{pointer}/{collection}/{name}"
                 entry = row(name_path, child, child_pointer, base)
                 yield entry
                 if isinstance(child, Catalog):
@@ -295,7 +357,7 @@ def find(
 ) -> Catalog | Resource | CatalogLink | Location:
     """Find one registered name, JSON Pointer, or exact JSONPath (optional $).
 
-    Use fileroute list for names and addresses. Only catalog/resource map keys
+    Use fileroute list for names and addresses. Only catalog/resource indices
     and final sources/targets list indices are addressable, never projections.
     """
     is_path = (
@@ -378,9 +440,9 @@ def _json_path_pointer(path: str) -> str:
     for index in range(0, len(tokens), 2):
         field, key = tokens[index : index + 2]
         if field in {"catalogs", "resources"}:
-            if not isinstance(key, str):
+            if not isinstance(key, int):
                 raise ValueError(
-                    "Catalog/resource selectors need registered map keys, not array indices"
+                    "Catalog/resource structural selectors need array indices"
                 )
             if (
                 field == "resources"
@@ -413,7 +475,12 @@ def _pointer_json_path(pointer: str) -> str:
     )
     result = "$"
     for index, key in enumerate(parts):
-        if index % 2 and parts[index - 1] in {"sources", "targets"}:
+        if index % 2 and parts[index - 1] in {
+            "sources",
+            "targets",
+            "resources",
+            "catalogs",
+        }:
             result += f"[{key}]"
         elif re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
             result += "." + key
@@ -495,6 +562,14 @@ class Selection:
         """Working-root-relative artifact path including ancestor catalog bases."""
         return None if isinstance(self.model, Location) else self.entry.effective_path
 
+    @property
+    def effective_path_template(self) -> str | None:
+        return (
+            None
+            if isinstance(self.model, Location)
+            else self.entry.effective_path_template
+        )
+
     def as_dict(self) -> dict:
         entity = self.model
         return {
@@ -513,6 +588,7 @@ class Selection:
             if not isinstance(entity, Location)
             else None,
             "effectivePath": self.effective_path,
+            "effectivePathTemplate": self.effective_path_template,
             "referenceDescriptor": (
                 str(self.entry.origin_descriptor)
                 if not self.entry.origin_pointer and len(self.entry.reference_chain) > 1
@@ -586,9 +662,7 @@ def resolve_selection(
         if isinstance(model, Catalog):
             return resolve(model, online=online)
         if isinstance(model, Resource):
-            return resolve(
-                Catalog(resources={"selected": model}), online=online
-            ).resources["selected"]
+            return resolve(Catalog(resources=[model]), online=online).resources[0]
         if isinstance(model, Location):
             field = "targets" if "/targets/" in selection.origin_pointer else "sources"
             return getattr(resolve(Catalog(**{field: [model]}), online=online), field)[
@@ -629,10 +703,10 @@ def resolve_selection(
             parts = selection.origin_pointer.strip("/").split("/")
             parent = document
             for field, key in zip(parts[:-2:2], parts[1:-2:2]):
-                parent = getattr(parent, field)[key]
+                parent = getattr(parent, field)[int(key)]
             field, key = parts[-2:]
             collection = getattr(parent, field)
-            collection[int(key) if isinstance(collection, list) else key] = updated
+            collection[int(key)] = updated
         save(document, source)
     return replace(selection, model=resolved, effective_targets=tuple(effective))
 

@@ -1,4 +1,4 @@
-"""Canonical keyed models reject ambiguous and legacy shapes."""
+"""Canonical named models reject ambiguous and legacy shapes."""
 
 import pytest
 from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
@@ -19,31 +19,31 @@ def test_catalog_profile_is_the_serialized_key():
         Catalog.model_validate({"$schema": "custom-catalog"})
 
 
-def test_keyed_children_and_strict_link_dispatch():
+def test_named_children_and_strict_link_dispatch():
     model = Catalog.model_validate({
-        "resources": {"guide": {"path": "guide.csv", "targets": []}},
-        "catalogs": {"child": {"descriptor": "child.yaml"}},
+        "resources": [{"name": "guide", "path": "guide.csv", "targets": []}],
+        "catalogs": [{"name": "child", "descriptor": "child.yaml"}],
     })
-    assert model.resources["guide"].targets == []
-    assert isinstance(model.catalogs["child"], CatalogLink)
+    assert model.resources[0].targets == []
+    assert isinstance(model.catalogs[0], CatalogLink)
     for bad in (
-        {"descriptor": "child.yaml", "path": "out"},
-        {"descriptor": "child.yaml", "resources": {}},
-        {"$ref": "child.yaml"},
+        {"name": "bad", "descriptor": "child.yaml", "path": "out"},
+        {"name": "bad", "descriptor": "child.yaml", "resources": []},
+        {"name": "bad", "$ref": "child.yaml"},
     ):
         with pytest.raises(ValueError):
-            Catalog(catalogs={"bad": bad})
+            Catalog(catalogs=[bad])
 
 
 @pytest.mark.parametrize(
     "data",
     [
-        {"resources": []},
-        {"catalogs": []},
+        {"resources": {}},
+        {"catalogs": None},
         {"resources": {"bad.name": {"path": "x"}}},
         {"resources": {"file": {"path": "x"}, "FILE": {"path": "y"}}},
         {"catalogs": {"file": {}}, "resources": {"file": {"path": "x"}}},
-        {"name": "old"},
+        {"catalogs": [{"basePath": "unnamed"}]},
         {"serviceType": "S3"},
         {"packages": []},
     ],
@@ -53,8 +53,8 @@ def test_invalid_or_legacy_shape(data):
         Catalog.model_validate(data)
 
 
-def test_resource_has_no_duplicate_name_and_preserves_extensions():
+def test_resource_requires_name_and_preserves_extensions():
     with pytest.raises(ValueError):
-        Resource(name="file", path="x")
-    item = Resource(path="x", custom={"owner": "team"})
+        Resource(path="x")
+    item = Resource(name="file", path="x", custom={"owner": "team"})
     assert item.model_dump()["custom"] == {"owner": "team"}

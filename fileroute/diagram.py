@@ -71,6 +71,11 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
     paths = {
         id(row.model): row.effective_path for row in walk(catalog, include_self=True)
     }
+    registered = {id(row.model): row.name for row in walk(catalog, include_self=True)}
+    templates = {
+        id(row.model): row.effective_path_template
+        for row in walk(catalog, include_self=True)
+    }
 
     def node_details(
         model: Catalog | Resource | Location | CatalogLink,
@@ -90,6 +95,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
         )
         if name is not None:
             metadata["name"] = name
+        if isinstance(model, Resource) and templates.get(id(model)):
+            metadata["effectivePathTemplate"] = templates[id(model)]
         return {"anchor": anchor, "metadata": metadata}
 
     def add_location(location: Location, kind: str) -> str:
@@ -158,7 +165,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
             key, current.sources, effective_targets, owner if owner != key else None
         )
 
-        for name, resource in current.resources.items():
+        for resource in current.resources:
+            name = resource.name
             resource_key = f"{key}/resource:{name}"
             resource_targets = (
                 resource.targets if resource.targets is not None else effective_targets
@@ -166,7 +174,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
             nodes.append(
                 DiagramNode(
                     key=resource_key,
-                    label=_artifact_label(resource, name),
+                    label=_artifact_label(resource, name)
+                    + (" (template)" if resource.path_template else ""),
                     kind="resource",
                     path=paths[id(resource)],
                     entity_type=resource.entity_type,
@@ -181,7 +190,8 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
                 owner if resource.targets is None else None,
             )
 
-        for name, child in current.catalogs.items():
+        for child in current.catalogs:
+            name = registered[id(child)]
             child_key = f"{key}/catalog:{name}"
             if isinstance(child, CatalogLink):
                 nodes.append(

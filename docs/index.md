@@ -18,7 +18,7 @@ when Python code also imports Fileroute or automation must use a locked version.
 
 ```yaml
 resources:
-  report:
+  - name: report
     path: artifacts/report.csv
     sources:
       - path: s3://my-bucket/exports/report.csv
