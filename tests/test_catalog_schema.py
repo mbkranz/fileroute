@@ -17,6 +17,7 @@ from fileroute.commands.config import resolve_descriptor_path, set_active_descri
         {"catalogs": {"surveys": {"path": "data", "resourcePathTemplate": "{id}.csv"}}},
         {"resources": {"guide": {"path": "guide.txt", "custom": True}}},
         {"catalogs": {"linked": {"descriptor": "child.yaml"}}},
+        {"pathTemplate": "{id}.csv"},
     ],
 )
 def test_valid_schema(value):
@@ -38,7 +39,6 @@ def test_valid_schema(value):
                 "x": {"path": "x", "sources": [{"path": "x", "descriptor": "y"}]}
             }
         },
-        {"pathTemplate": "old spelling"},
         {"resourcePathTemplate": ""},
         {"resourcePathTemplate": "   "},
         {"resourcePathTemplate": 2},

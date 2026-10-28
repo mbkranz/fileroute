@@ -140,7 +140,11 @@ Discovery checks an explicit argument, then the activated descriptor, then a roo
 catalog, then `resources/descriptor.*`. A stale activation remains an error;
 Fileroute does not search parent directories.
 
-`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to `path`:
+`Catalog.resourcePathTemplate` describes an artifact naming pattern relative to `path`.
+`pathTemplate` is also accepted as an input alias. During `resolve`, Fileroute
+uses the [`parse`](https://pypi.org/project/parse/) library to extract named
+fields into each resource's `pathProperties` (`resource.path_properties` in
+Python):
 
 ```yaml
 profile: fileroute-catalog
@@ -151,9 +155,35 @@ catalogs:
     resourcePathTemplate: "{surveyid}/{env}/v{version}/schema.json"
 ```
 
-Applications interpret the pattern. Transfers do not expand placeholders,
-discover matching files, or replace explicit resource paths. Select publication
-scope explicitly, for example `fileroute push catalog.yaml --select documentation`.
+Absolute paths and URI templates match the whole resource path. For example:
+
+```yaml
+pathTemplate: "drive://test/{var1}/{var2}/test.csv"
+resources:
+  file1:
+    path: "drive://test/xx/yy/file1.csv"
+```
+
+`fileroute resolve catalog.yaml` returns `pathProperties: {var1: xx, var2: yy}`
+for `file1`. A literal filename is a naming example: when it differs, directory
+fields are still extracted. If the filename contains a field, the complete
+template must match. Use `{filename}` to extract varying filenames. Matching is
+case-sensitive, normalizes path separators, and supports `parse` format types
+such as `{year:d}`. Named fields supply metadata; anonymous fields do not.
+
+The nearest catalog template applies to its resources and descendants. Relative
+templates use the declaring catalog's `path`; child templates replace inherited
+ones. Resolution replaces computed properties, clearing them to `{}` for a
+nonmatching path, so old folder metadata cannot survive a path change. Without
+an applicable template, authored `pathProperties` are preserved. Loading alone
+does not calculate properties; use `resolve` or `fileroute resolve --write` to
+calculate or persist them. Saves use the canonical `resourcePathTemplate` name;
+conflicting values for its two input names are rejected.
+
+Transfers do not expand placeholders, discover matching files, or replace
+explicit resource paths. Extracted properties are metadata, not authorization
+or approval decisions. Select publication scope explicitly, for example
+`fileroute push catalog.yaml --select documentation`.
 
 `poe schema-export` generates `dist/schemas/fileroute-catalog.schema.json` from
 the models. Stable releases attach that exact version's schema as a GitHub asset.
