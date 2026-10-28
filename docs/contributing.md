@@ -15,6 +15,12 @@ changes with their source changes; `poe docs-check` detects stale output.
 One-off task usage is `uvx --from poethepoet==0.48.0 poe <task>`.
 Provider tests use mocks and do not establish live tenant access.
 
+`poe schema-update` regenerates catalog and authentication-profile JSON Schemas
+in `schemas/`; commit both generated files with their model changes.
+`poe schema-check` compares the complete bundle without writing and runs in
+`poe release-check`. Field descriptions, examples, and provider/mode rules come
+from the models. See [JSON Schemas and editors](schemas.md).
+
 Documentation tasks use `uv.lock` with `--frozen`. Use `poe docs` to
 regenerate and build locally, or `poe docs-validate` to check generated files
 and build strictly without regenerating sources. Both PR and release CI call
@@ -36,7 +42,7 @@ the existing main-branch release workflow promotes it to `0.2.0`.
 
 ## Package releases
 
-`poe release-check` validates code, generated docs, and the strict site build; `poe build` creates
+`poe release-check` validates code, generated schemas/docs, and the strict site build; `poe build` creates
 a local wheel and source distribution. Normal releases should not edit the
 version manually. The `publish-to-pypi.yaml` workflow handles three jobs:
 prepare, publish, and (on `main`) GitHub Release.
@@ -48,7 +54,8 @@ prerelease or advance a stable patch. After a stable release, merge updated
 
 `poe release --branch dev --source <full-commit-sha>` prepares a release in
 a clean checkout: it uses `uv version --no-sync`, builds distributions,
-commits the version and creates an annotated tag locally. CI saves the
+regenerates the two versioned JSON Schemas, commits the version and source
+schemas, and creates an annotated tag locally. CI saves the
 distributions before atomically pushing the commit and tag. The workflow
 shares one release concurrency group across branches; a stale push fails
 instead of overwriting newer work. Its `GITHUB_TOKEN` push does not
@@ -59,6 +66,13 @@ PyPI uses Trusted Publishing bound to this repository and the exact
 a GitHub Release after PyPI succeeds. Branch rules must permit the version
 commit. README-only changes publish the documentation site, not a new
 package; PyPI displays the updated README at the next package release.
+
+Both schemas are saved under `dist/schemas/` with the build artifact and
+attached to stable GitHub Releases after publication. Release preparation and
+publishing reject incomplete bundles. Retries compare every existing schema
+asset with its saved bytes before uploading missing assets, and never replace
+an asset with different contents. The release identity permits only version
+files and the two expected source-schema paths.
 
 For a failed publish, rerun failed jobs on the **original Actions run**;
 the job reuses its saved distributions. A full rerun locates the unexpired

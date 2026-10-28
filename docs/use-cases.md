@@ -16,6 +16,7 @@ supported end-to-end transfer if credentials grant access to all sites.
 
 <!-- example:sharepoint-two-targets:start -->
 ```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
 resources:
   monthly-report:
     path: artifacts/monthly-report.csv
@@ -54,6 +55,7 @@ To create a new Drive file instead, target its existing folder URL.
 
 <!-- example:sharepoint-google-drive:start -->
 ```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
 resources:
   partner-report:
     path: artifacts/partner-report.csv
@@ -82,6 +84,7 @@ credentials permit access; it never deletes files outside the descriptor.
 
 <!-- example:sharepoint-mixed-targets:start -->
 ```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
 resources:
   partner-report:
     path: artifacts/partner-report.csv
@@ -113,6 +116,7 @@ The local source is provenance; `pull` neither copies nor renders it.
 
 <!-- example:local-three-targets:start -->
 ```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
 resources:
   guide:
     path: docs/_output/guide.docx
@@ -155,6 +159,7 @@ shows their settings. Each location selects its identity explicitly.
 
 <!-- example:profile-identities:start -->
 ```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
 resources:
   partner-report:
     path: artifacts/partner-report.csv

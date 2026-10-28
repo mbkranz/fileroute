@@ -57,6 +57,13 @@ configuration file. Credential paths passed to `auth configure` are anchored to
 the invocation's working directory. Guided setup records credential references,
 not raw secrets.
 
+YAML profiles saved by `auth configure` include an editor schema comment for
+field suggestions and validation. Stable packages pin their release schema;
+source checkouts use their local schema. For `.json` configuration files,
+Fileroute writes JSON and you associate the schema in editor settings. The
+[JSON Schemas guide](schemas.md) includes local/released schema URLs and starter
+configurations for both formats. Schema hints do not load credentials.
+
 Profile names are case-sensitive and use 1–64 ASCII letters, digits, `.`, `_` or
 `-`, starting with a letter or digit. See the synthetic
 [profile configuration template](https://github.com/mbkranz/fileroute/blob/main/examples/auth/profiles.yaml).

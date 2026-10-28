@@ -263,3 +263,8 @@ models. Associate its versioned GitHub asset URL using a YAML language-server
 comment, retaining `profile: fileroute-catalog` as document data. Editor validation
 covers structural constraints; runtime checks still cover name collisions,
 local descriptor validity, filesystem state, and operational requirements.
+
+The repository templates include local schema hints, and VS Code settings
+associate known catalog filenames with the checked-in schema. See
+[JSON Schemas and editor assistance](schemas.md) for field completion, JSON
+associations, version pinning, and the authentication-profile schema.

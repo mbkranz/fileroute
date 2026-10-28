@@ -1,0 +1,42 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "catalog.json",
+        "**/catalog.json",
+        "**/catalogs/*.json",
+        "fileroute.json",
+        "**/fileroute.json",
+        "resources/descriptor.json"
+      ],
+      "url": "./schemas/fileroute-catalog.schema.json"
+    },
+    {
+      "fileMatch": ["profiles.json", "**/profiles.json"],
+      "url": "./schemas/fileroute-auth-profiles.schema.json"
+    }
+  ],
+  "yaml.schemas": {
+    "./schemas/fileroute-catalog.schema.json": [
+      "catalog.yaml",
+      "catalog.yml",
+      "**/catalog.yaml",
+      "**/catalog.yml",
+      "**/catalogs/*.yaml",
+      "**/catalogs/*.yml",
+      "fileroute.yaml",
+      "fileroute.yml",
+      "**/fileroute.yaml",
+      "**/fileroute.yml",
+      "resources/descriptor.yaml",
+      "resources/descriptor.yml",
+      "examples/use-cases/*.yaml"
+    ],
+    "./schemas/fileroute-auth-profiles.schema.json": [
+      "profiles.yaml",
+      "profiles.yml",
+      "**/profiles.yaml",
+      "**/profiles.yml"
+    ]
+  }
+}

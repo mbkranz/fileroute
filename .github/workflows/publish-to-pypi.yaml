@@ -9,6 +9,7 @@ on:
       - "LICENSE*"
       - "scripts/export_schema.py"
       - "scripts/release.py"
+      - "schemas/**"
       - ".github/workflows/publish-to-pypi.yaml"
 
 permissions:
@@ -96,6 +97,10 @@ jobs:
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           version: "0.12.17"
+      - name: Require the complete saved schema bundle
+        run: |
+          test -s dist/schemas/fileroute-catalog.schema.json
+          test -s dist/schemas/fileroute-auth-profiles.schema.json
       - run: uv publish --trusted-publishing always dist/*.whl dist/*.tar.gz
 
   release:
@@ -118,15 +123,27 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
+          schemas=(fileroute-catalog.schema.json fileroute-auth-profiles.schema.json)
+          # Reject an incomplete saved bundle before creating a release or
+          # uploading any asset. Retries must use the original saved bytes.
+          for schema in "${schemas[@]}"; do
+            test -s "dist/schemas/$schema"
+          done
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
           fi
-          schema=dist/schemas/fileroute-catalog.schema.json
-          test -s "$schema"
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
           mkdir -p existing
-          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq fileroute-catalog.schema.json; then
-            gh release download "$TAG" --pattern fileroute-catalog.schema.json --dir existing
-            cmp "$schema" existing/fileroute-catalog.schema.json
-          else
-            gh release upload "$TAG" "$schema"
-          fi
+          # Check every existing asset before uploading missing ones, so a
+          # retry cannot silently mix generations or overwrite published bytes.
+          for schema in "${schemas[@]}"; do
+            if grep -Fxq "$schema" <<< "$assets"; then
+              gh release download "$TAG" --pattern "$schema" --dir existing
+              cmp "dist/schemas/$schema" "existing/$schema"
+            fi
+          done
+          for schema in "${schemas[@]}"; do
+            if ! grep -Fxq "$schema" <<< "$assets"; then
+              gh release upload "$TAG" "dist/schemas/$schema"
+            fi
+          done

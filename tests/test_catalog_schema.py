@@ -114,7 +114,23 @@ def test_template_does_not_expand_transfers(tmp_path):
     assert entries[0].local.name == "actual.csv"
 
 
-@pytest.mark.parametrize("existing", [None, "same", "different"])
+@pytest.mark.parametrize(
+    "existing",
+    [
+        {},
+        {"fileroute-catalog.schema.json": "same"},
+        {"fileroute-auth-profiles.schema.json": "same"},
+        {
+            "fileroute-catalog.schema.json": "same",
+            "fileroute-auth-profiles.schema.json": "same",
+        },
+        {"fileroute-auth-profiles.schema.json": "different"},
+        {
+            "fileroute-catalog.schema.json": "same",
+            "fileroute-auth-profiles.schema.json": "different",
+        },
+    ],
+)
 def test_release_schema_upload_is_idempotent(tmp_path, monkeypatch, existing):
     """Run the actual workflow shell with a local GitHub CLI stand-in."""
     import os
@@ -127,16 +143,27 @@ def test_release_schema_upload_is_idempotent(tmp_path, monkeypatch, existing):
         ).read_text()
     )
     command = workflow["jobs"]["release"]["steps"][-1]["run"]
-    schema = tmp_path / "dist/schemas/fileroute-catalog.schema.json"
-    schema.parent.mkdir(parents=True)
-    schema.write_text("same")
+    filenames = {"fileroute-catalog.schema.json", "fileroute-auth-profiles.schema.json"}
+    directory = tmp_path / "dist/schemas"
+    directory.mkdir(parents=True)
+    for filename in filenames:
+        (directory / filename).write_text("same")
     executable = tmp_path / "gh"
-    executable.write_text("""#!/bin/sh
-case "$2" in
-view) if [ "$4" = "--json" ] && [ -n "$EXISTING" ]; then echo fileroute-catalog.schema.json; fi;;
-download) printf %s "$EXISTING" > existing/fileroute-catalog.schema.json;;
-upload) echo upload >> events;;
-esac
+    executable.write_text("""#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+args = sys.argv[1:]
+existing = json.loads(os.environ["EXISTING"])
+if args[1] == "view" and "--json" in args:
+    print("\\n".join(existing))
+elif args[1] == "download":
+    filename = args[args.index("--pattern") + 1]
+    (Path("existing") / filename).write_text(existing[filename])
+elif args[1] == "upload":
+    with Path("events").open("a") as handle:
+        handle.write(Path(args[3]).name + "\\n")
 """)
     executable.chmod(0o755)
     result = subprocess.run(
@@ -146,9 +173,52 @@ esac
             **os.environ,
             "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
             "TAG": "v1.2.3",
-            "EXISTING": existing or "",
+            "EXISTING": json.dumps(existing),
         },
         capture_output=True,
     )
-    assert (result.returncode == 0) == (existing != "different")
-    assert (tmp_path / "events").exists() == (existing is None)
+    mismatch = "different" in existing.values()
+    assert (result.returncode == 0) == (not mismatch)
+    events = tmp_path / "events"
+    uploaded = set(events.read_text().splitlines()) if events.exists() else set()
+    assert uploaded == (set() if mismatch else filenames - existing.keys())
+
+
+@pytest.mark.parametrize(
+    "missing", ["fileroute-catalog.schema.json", "fileroute-auth-profiles.schema.json"]
+)
+def test_release_rejects_incomplete_schema_bundle_before_remote_changes(
+    tmp_path, missing
+):
+    import os
+    import subprocess
+    from ruamel.yaml import YAML
+
+    workflow = YAML(typ="safe").load(
+        (
+            Path(__file__).parents[1] / ".github/workflows/publish-to-pypi.yaml"
+        ).read_text()
+    )
+    command = workflow["jobs"]["release"]["steps"][-1]["run"]
+    directory = tmp_path / "dist/schemas"
+    directory.mkdir(parents=True)
+    for filename in {
+        "fileroute-catalog.schema.json",
+        "fileroute-auth-profiles.schema.json",
+    } - {missing}:
+        (directory / filename).write_text("schema")
+    executable = tmp_path / "gh"
+    executable.write_text("#!/bin/sh\necho remote-change >> events\n")
+    executable.chmod(0o755)
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", command],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
+            "TAG": "v1.2.3",
+        },
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert not (tmp_path / "events").exists()
