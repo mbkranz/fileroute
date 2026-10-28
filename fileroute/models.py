@@ -102,21 +102,76 @@ class Location(_Metadata):
     """
 
     model_config = ConfigDict(
+        title="Source or target location",
         json_schema_extra={
             "not": {"anyOf": [{"required": [key]} for key in ("descriptor", "$ref")]}
-        }
+        },
     )
 
-    path: str = Field(min_length=1)
-    service_type: ServiceTypeField | None = Field(default=None, alias="serviceType")
-    service_id: str | None = Field(default=None, alias="serviceId")
-    entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
-    remote_path: str | None = Field(default=None, alias="remotePath")
-    site: str | None = None
-    site_id: str | None = Field(default=None, alias="siteId")
-    drive: str | None = None
-    drive_id: str | None = Field(default=None, alias="driveId")
-    bucket: str | None = None
+    path: str = Field(
+        min_length=1,
+        description="Authored remote URL or provider-scoped path. A source may also be a local provenance path; pull requires a supported remote source.",
+        examples=["s3://example-reports/monthly/report.csv", "docs/report.qmd"],
+    )
+    service_type: ServiceTypeField | None = Field(
+        default=None,
+        alias="serviceType",
+        description="Remote provider. Supported URLs infer this during offline resolution; provider-scoped paths require an explicit serviceType.",
+        examples=["GoogleDrive", "SharePoint", "S3"],
+    )
+    auth_profile: str | None = Field(
+        default=None,
+        alias="authProfile",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+        strict=True,
+        description="Local authentication profile name, overriding the run's profile default. Credentials stay outside the descriptor. Static schemas check the name pattern; they do not discover private profile names or verify the identity.",
+        examples=["work-reader", "archive-reader"],
+    )
+    service_id: str | None = Field(
+        default=None,
+        alias="serviceId",
+        description="Provider item identifier, preferred over path lookup when present. Online resolution can populate it; S3 uses bucket:key.",
+        examples=["example-reports:monthly/report.csv"],
+    )
+    entity_type: EntityTypeValue | None = Field(
+        default=None,
+        alias="entityType",
+        description="Provider entity kind, commonly File, Directory, or Container. A resource target marked Directory/Container receives the local filename below that destination.",
+        examples=["File", "Directory", "Container"],
+    )
+    remote_path: str | None = Field(
+        default=None,
+        alias="remotePath",
+        description="Supplemental path within the remote namespace. Resolution may derive it without changing the authored path; parent traversal is not allowed.",
+        examples=["monthly/report.csv"],
+    )
+    site: str | None = Field(
+        default=None,
+        description="SharePoint site name for scoped lookup, used with drive or driveId.",
+        examples=["data"],
+    )
+    site_id: str | None = Field(
+        default=None,
+        alias="siteId",
+        description="Resolved Microsoft Graph site identifier. Avoids repeating site-name lookup.",
+    )
+    drive: str | None = Field(
+        default=None,
+        description="SharePoint document-library name or Google Drive name. Use My Drive for the user's Google Drive; duplicate names may require driveId.",
+        examples=["Shared Documents", "My Drive"],
+    )
+    drive_id: str | None = Field(
+        default=None,
+        alias="driveId",
+        description="Resolved SharePoint or Google shared-drive identifier, used to scope item lookup.",
+    )
+    bucket: str | None = Field(
+        default=None,
+        description="S3 bucket namespace, required for S3 paths that are not full URLs.",
+        examples=["example-reports"],
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -135,13 +190,55 @@ class _Artifact(_Metadata):
         }
     )
 
-    title: str | None = None
-    description: str | None = None
-    path: str | None = None
-    sources: list[Location] = Field(default_factory=list)
+    title: str | None = Field(
+        default=None,
+        description="Human-readable display title. Stable selectors use the resource/catalog map key.",
+        examples=["Monthly partner report"],
+    )
+    description: str | None = Field(
+        default=None,
+        description="Human-readable explanation of this artifact or catalog and its purpose.",
+        examples=[
+            "Report inputs and publication destinations for the monthly release."
+        ],
+    )
+    path: str | None = Field(
+        default=None,
+        description="Local artifact or directory path relative to the transfer root (current working directory by default). A catalog path anchors inherited target paths.",
+        examples=["artifacts"],
+    )
+    sources: list[Location] = Field(
+        default_factory=list,
+        description="Upstream inputs or provenance. Pull requires exactly one remote source per selected artifact; sources never select publication destinations.",
+        examples=[
+            [
+                {
+                    "path": "s3://example-reports/monthly/report.csv",
+                    "authProfile": "archive-reader",
+                }
+            ]
+        ],
+    )
     # None inherits catalog targets; [] explicitly disables publication.
-    targets: list[Location] | None = None
-    entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
+    targets: list[Location] | None = Field(
+        default=None,
+        description="Publication destinations. Omitted or null inherits the nearest catalog's targets; an empty list opts out. Explicit child targets replace inherited targets.",
+        examples=[
+            [],
+            [
+                {
+                    "path": "https://drive.google.com/drive/folders/EXAMPLE_FOLDER",
+                    "authProfile": "partner-writer",
+                }
+            ],
+        ],
+    )
+    entity_type: EntityTypeValue | None = Field(
+        default=None,
+        alias="entityType",
+        description="Optional artifact entity kind using OpenMetadata-style names; commonly File, Directory, or Container.",
+        examples=["File", "Directory", "Container"],
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -158,20 +255,35 @@ class _Artifact(_Metadata):
 class Resource(_Artifact):
     """A materialized artifact and its provenance/publication locations."""
 
-    path: str = Field(min_length=1)
-    format: str | None = None
+    model_config = ConfigDict(title="Catalog resource")
+
+    path: str = Field(
+        min_length=1,
+        description="Required local artifact file path relative to the transfer root. Pull materializes this file; push publishes this file to targets.",
+        examples=["artifacts/monthly-report.csv"],
+    )
+    format: str | None = Field(
+        default=None,
+        description="Optional file format metadata; this does not convert or transform the artifact.",
+        examples=["csv", "parquet", "pdf"],
+    )
     path_properties: dict[str, Any] = Field(
         default_factory=dict,
         alias="pathProperties",
         description="Named values extracted from the nearest catalog resourcePathTemplate during resolution.",
+        examples=[{"surveyid": "example", "year": 2026}],
     )
 
 
 class CatalogLink(BaseModel):
     """Link to a local catalog document, relative to its containing file."""
 
-    model_config = ConfigDict(extra="forbid")
-    descriptor: str = Field(min_length=1)
+    model_config = ConfigDict(title="Local catalog link", extra="forbid")
+    descriptor: str = Field(
+        min_length=1,
+        description="Local YAML/JSON catalog document path, relative to the containing descriptor. URLs and URI fragments are not supported; links expand only when requested.",
+        examples=["catalogs/archive.yaml"],
+    )
 
     @field_validator("descriptor")
     @classmethod
@@ -213,7 +325,9 @@ class Catalog(_Artifact):
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
-    model_config = ConfigDict(json_schema_extra=_catalog_schema)
+    model_config = ConfigDict(
+        title="Fileroute catalog", json_schema_extra=_catalog_schema
+    )
 
     resource_path_template: str | None = Field(
         default=None,
@@ -222,13 +336,21 @@ class Catalog(_Artifact):
         description="Parse pattern for resource pathProperties, relative to this catalog path unless it is an absolute path or URI. Transfers do not expand it.",
         examples=["{surveyid}/{env}/v{version}/schema.json"],
     )
-    profile: str = CATALOG_PROFILE
+    profile: str = Field(
+        default=CATALOG_PROFILE,
+        description="Catalog metadata profile identifier. This is unrelated to authentication profiles or a location's authProfile.",
+        examples=[CATALOG_PROFILE],
+    )
     resources: dict[str, Resource] = Field(
         default_factory=dict,
+        description="Resources keyed by stable registered names. Names form selectors such as resources.report; put display text in each resource's title.",
+        examples=[{"report": {"path": "artifacts/report.csv"}}],
         json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
     )
     catalogs: dict[str, Catalog | CatalogLink] = Field(
         default_factory=dict,
+        description="Nested catalogs keyed by stable registered names. Each value is an inline catalog or a local descriptor link; catalog targets can be inherited by descendants.",
+        examples=[{"archive": {"descriptor": "catalogs/archive.yaml"}}],
         json_schema_extra={"propertyNames": {"pattern": "^" + NAME_PATTERN + "$"}},
     )
     # Runtime-only origins: expanded pointer -> (source file, source pointer, chain).

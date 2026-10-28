@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
+resources:
+  partner-report:
+    path: artifacts/partner-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
+        authProfile: work-reader
+    targets:
+      - path: https://drive.google.com/drive/folders/GOOGLE_FOLDER_ID
+        authProfile: partner-writer
+  archive-report:
+    path: artifacts/archive-report.csv
+    sources:
+      - path: s3://example-reports/monthly/archive-report.csv
+        authProfile: archive-reader

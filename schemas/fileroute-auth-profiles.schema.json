@@ -1,0 +1,687 @@
+{
+  "$comment": "MIT licensed; see the fileroute LICENSE. Operational validation still requires fileroute.",
+  "$defs": {
+    "AuthProfile": {
+      "description": "Provider-specific auth choices, never merged with legacy ``.env`` settings.\n\nRelative credential references resolve beside the profiles YAML file.\n``client_secret_env`` names an environment variable; it never holds a secret.\nGoogle ADC and AWS retain their SDK-native credential discovery.",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "adc",
+                      null
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "mode": "adc",
+                    "provider": "GoogleDrive"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:aws_profile|client_id|client_secret_env|credentials_file|host_url|oauth_client_secrets|tenant_id|use_local_server)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "mode": {},
+                  "provider": {},
+                  "scopes": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": [
+                      "https://www.googleapis.com/auth/drive"
+                    ],
+                    "description": "OAuth scopes granted to this application. Google and Microsoft defaults are shown for their selected provider; changing scopes can require new consent.",
+                    "examples": [
+                      [
+                        "https://www.googleapis.com/auth/drive"
+                      ]
+                    ],
+                    "items": {
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scopes"
+                  }
+                },
+                "required": [],
+                "title": "Google Drive: Application Default Credentials"
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "service_account"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "credentials_file": "credentials/google-service-account.json",
+                    "mode": "service_account",
+                    "provider": "GoogleDrive"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:aws_profile|client_id|client_secret_env|host_url|oauth_client_secrets|tenant_id|use_local_server)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "credentials_file": {
+                    "description": "Google service-account JSON file reference. Relative paths resolve beside profiles.yaml; credential contents are never embedded here.",
+                    "examples": [
+                      "credentials/google-service-account.json"
+                    ],
+                    "format": "path",
+                    "title": "Credentials File",
+                    "type": "string"
+                  },
+                  "mode": {},
+                  "provider": {},
+                  "scopes": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": [
+                      "https://www.googleapis.com/auth/drive"
+                    ],
+                    "description": "OAuth scopes granted to this application. Google and Microsoft defaults are shown for their selected provider; changing scopes can require new consent.",
+                    "examples": [
+                      [
+                        "https://www.googleapis.com/auth/drive"
+                      ]
+                    ],
+                    "items": {
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scopes"
+                  }
+                },
+                "required": [
+                  "credentials_file"
+                ],
+                "title": "Google Drive: service account"
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "user_oauth"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "mode": "user_oauth",
+                    "oauth_client_secrets": "credentials/google-desktop.json",
+                    "provider": "GoogleDrive"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:aws_profile|client_id|client_secret_env|credentials_file|host_url|tenant_id)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "mode": {},
+                  "oauth_client_secrets": {
+                    "description": "Google Desktop-app OAuth client JSON file reference, required for user_oauth. Relative paths resolve beside profiles.yaml.",
+                    "examples": [
+                      "credentials/google-desktop.json"
+                    ],
+                    "format": "path",
+                    "title": "Oauth Client Secrets",
+                    "type": "string"
+                  },
+                  "provider": {},
+                  "scopes": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": [
+                      "https://www.googleapis.com/auth/drive"
+                    ],
+                    "description": "OAuth scopes granted to this application. Google and Microsoft defaults are shown for their selected provider; changing scopes can require new consent.",
+                    "examples": [
+                      [
+                        "https://www.googleapis.com/auth/drive"
+                      ]
+                    ],
+                    "items": {
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scopes"
+                  },
+                  "use_local_server": {
+                    "anyOf": [
+                      {
+                        "const": true
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": true,
+                    "description": "Google installed-app OAuth uses a local callback server. user_oauth accepts true or null (effective true); false is unsupported.",
+                    "examples": [
+                      true
+                    ],
+                    "title": "Use Local Server"
+                  }
+                },
+                "required": [
+                  "oauth_client_secrets"
+                ],
+                "title": "Google Drive: user OAuth"
+              }
+            }
+          ],
+          "examples": [
+            {
+              "mode": "adc",
+              "provider": "GoogleDrive"
+            },
+            {
+              "credentials_file": "credentials/google-service-account.json",
+              "mode": "service_account",
+              "provider": "GoogleDrive"
+            },
+            {
+              "mode": "user_oauth",
+              "oauth_client_secrets": "credentials/google-desktop.json",
+              "provider": "GoogleDrive"
+            }
+          ],
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "adc",
+                    "service_account",
+                    "user_oauth"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "adc",
+              "description": "Authentication method. Omitted or null uses adc for GoogleDrive, app_only for SharePoint, or default for S3.",
+              "examples": [
+                "adc",
+                "service_account",
+                "user_oauth"
+              ],
+              "title": "Mode"
+            },
+            "provider": {
+              "const": "GoogleDrive",
+              "default": "GoogleDrive",
+              "description": "Provider whose identity this profile selects. Use the canonical spelling shown by completion.",
+              "examples": [
+                "GoogleDrive"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "GoogleDrive authentication profile",
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "app_only",
+                      null
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "client_id": "00000000-0000-0000-0000-000000000000",
+                    "client_secret_env": "WORK_AZURE_CLIENT_SECRET",
+                    "host_url": "contoso.sharepoint.com",
+                    "mode": "app_only",
+                    "provider": "SharePoint",
+                    "tenant_id": "example.onmicrosoft.com"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:aws_profile|credentials_file|oauth_client_secrets|use_local_server)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "client_id": {
+                    "description": "Registered Microsoft application client ID; this is an identifier, not a secret.",
+                    "examples": [
+                      "00000000-0000-0000-0000-000000000000"
+                    ],
+                    "pattern": "\\S",
+                    "title": "Client Id",
+                    "type": "string"
+                  },
+                  "client_secret_env": {
+                    "description": "Name of the environment variable supplying a Microsoft app-only client secret. Store the variable name here, never its secret value.",
+                    "examples": [
+                      "WORK_AZURE_CLIENT_SECRET"
+                    ],
+                    "pattern": "^\\s*[A-Za-z_][A-Za-z0-9_]*\\s*$",
+                    "title": "Client Secret Env",
+                    "type": "string"
+                  },
+                  "host_url": {
+                    "description": "SharePoint hostname, optionally prefixed with https://; paths, ports, credentials, queries and fragments are not allowed.",
+                    "examples": [
+                      "contoso.sharepoint.com"
+                    ],
+                    "pattern": "\\S",
+                    "title": "Host Url",
+                    "type": "string"
+                  },
+                  "mode": {},
+                  "provider": {},
+                  "scopes": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": [
+                      "https://graph.microsoft.com/.default"
+                    ],
+                    "description": "OAuth scopes granted to this application. Google and Microsoft defaults are shown for their selected provider; changing scopes can require new consent.",
+                    "examples": [
+                      [
+                        "https://graph.microsoft.com/.default"
+                      ]
+                    ],
+                    "items": {
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scopes"
+                  },
+                  "tenant_id": {
+                    "description": "Microsoft Entra tenant ID or tenant domain; required for SharePoint.",
+                    "examples": [
+                      "example.onmicrosoft.com"
+                    ],
+                    "pattern": "^\\s*[A-Za-z0-9.-]+\\s*$",
+                    "title": "Tenant Id",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "client_id",
+                  "client_secret_env",
+                  "host_url",
+                  "tenant_id"
+                ],
+                "title": "SharePoint: application identity"
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "delegated"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "client_id": "00000000-0000-0000-0000-000000000000",
+                    "host_url": "contoso.sharepoint.com",
+                    "mode": "delegated",
+                    "provider": "SharePoint",
+                    "tenant_id": "example.onmicrosoft.com"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:aws_profile|client_secret_env|credentials_file|oauth_client_secrets|use_local_server)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "client_id": {
+                    "description": "Registered Microsoft application client ID; this is an identifier, not a secret.",
+                    "examples": [
+                      "00000000-0000-0000-0000-000000000000"
+                    ],
+                    "pattern": "\\S",
+                    "title": "Client Id",
+                    "type": "string"
+                  },
+                  "host_url": {
+                    "description": "SharePoint hostname, optionally prefixed with https://; paths, ports, credentials, queries and fragments are not allowed.",
+                    "examples": [
+                      "contoso.sharepoint.com"
+                    ],
+                    "pattern": "\\S",
+                    "title": "Host Url",
+                    "type": "string"
+                  },
+                  "mode": {},
+                  "provider": {},
+                  "scopes": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": [
+                      "https://graph.microsoft.com/.default"
+                    ],
+                    "description": "OAuth scopes granted to this application. Google and Microsoft defaults are shown for their selected provider; changing scopes can require new consent.",
+                    "examples": [
+                      [
+                        "https://graph.microsoft.com/.default"
+                      ]
+                    ],
+                    "items": {
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "title": "Scopes"
+                  },
+                  "tenant_id": {
+                    "description": "Microsoft Entra tenant ID or tenant domain; required for SharePoint.",
+                    "examples": [
+                      "example.onmicrosoft.com"
+                    ],
+                    "pattern": "^\\s*[A-Za-z0-9.-]+\\s*$",
+                    "title": "Tenant Id",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "client_id",
+                  "host_url",
+                  "tenant_id"
+                ],
+                "title": "SharePoint: delegated user identity"
+              }
+            }
+          ],
+          "examples": [
+            {
+              "client_id": "00000000-0000-0000-0000-000000000000",
+              "client_secret_env": "WORK_AZURE_CLIENT_SECRET",
+              "host_url": "contoso.sharepoint.com",
+              "mode": "app_only",
+              "provider": "SharePoint",
+              "tenant_id": "example.onmicrosoft.com"
+            },
+            {
+              "client_id": "00000000-0000-0000-0000-000000000000",
+              "host_url": "contoso.sharepoint.com",
+              "mode": "delegated",
+              "provider": "SharePoint",
+              "tenant_id": "example.onmicrosoft.com"
+            }
+          ],
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "app_only",
+                    "delegated"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "app_only",
+              "description": "Authentication method. Omitted or null uses adc for GoogleDrive, app_only for SharePoint, or default for S3.",
+              "examples": [
+                "app_only",
+                "delegated"
+              ],
+              "title": "Mode"
+            },
+            "provider": {
+              "const": "SharePoint",
+              "default": "SharePoint",
+              "description": "Provider whose identity this profile selects. Use the canonical spelling shown by completion.",
+              "examples": [
+                "SharePoint"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "SharePoint authentication profile",
+          "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "default",
+                      null
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "mode": "default",
+                    "provider": "S3"
+                  }
+                ],
+                "patternProperties": {
+                  "^(?:client_id|client_secret_env|credentials_file|host_url|oauth_client_secrets|scopes|tenant_id|use_local_server)$": {
+                    "type": "null"
+                  }
+                },
+                "properties": {
+                  "aws_profile": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Existing AWS profile name for Boto3. Omit to use its default credential chain; AWS keys and SSO sessions stay with native AWS tooling.",
+                    "examples": [
+                      "team-dev"
+                    ],
+                    "pattern": "\\S",
+                    "title": "Aws Profile"
+                  },
+                  "mode": {},
+                  "provider": {}
+                },
+                "required": [],
+                "title": "S3: native AWS credentials"
+              }
+            }
+          ],
+          "examples": [
+            {
+              "mode": "default",
+              "provider": "S3"
+            }
+          ],
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "default"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "default",
+              "description": "Authentication method. Omitted or null uses adc for GoogleDrive, app_only for SharePoint, or default for S3.",
+              "examples": [
+                "default"
+              ],
+              "title": "Mode"
+            },
+            "provider": {
+              "const": "S3",
+              "default": "S3",
+              "description": "Provider whose identity this profile selects. Use the canonical spelling shown by completion.",
+              "examples": [
+                "S3"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "title": "S3 authentication profile",
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/ServiceType",
+          "description": "Provider whose identity this profile selects. Use the canonical spelling shown by completion.",
+          "examples": [
+            "GoogleDrive",
+            "SharePoint",
+            "S3"
+          ]
+        }
+      },
+      "title": "Authentication profile",
+      "type": "object"
+    },
+    "ServiceType": {
+      "enum": [
+        "GoogleDrive",
+        "SharePoint",
+        "S3"
+      ],
+      "title": "ServiceType",
+      "type": "string"
+    }
+  },
+  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.5/fileroute-auth-profiles.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Validated contents of a profiles YAML file; parsing performs no auth I/O.",
+  "properties": {
+    "profiles": {
+      "description": "Map local identity names to provider authentication settings. Catalog authProfile references use these case-sensitive names. Never store raw secrets or session tokens here.",
+      "examples": [
+        {
+          "archive-reader": {
+            "aws_profile": "team-dev",
+            "provider": "S3"
+          }
+        }
+      ],
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$": {
+          "$ref": "#/$defs/AuthProfile"
+        }
+      },
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+      },
+      "title": "Profiles",
+      "type": "object"
+    }
+  },
+  "title": "Fileroute authentication profiles",
+  "type": "object"
+}

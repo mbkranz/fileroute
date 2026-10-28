@@ -85,9 +85,21 @@ publishes to all effective targets.
 `resolve` parses URLs and scoped paths offline; `resolve --online --write`
 verifies remote locations and saves their IDs and entity types. `diagram` and
 dry runs also work without provider access; `--online` and actual transfers
-require credentials. Configure credentials using
-[.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
-provider setup.
+require credentials. Configure a reusable authentication profile, then select it
+for a transfer or set `authProfile` on individual source/target locations:
+
+```bash
+uv run fileroute auth configure work --provider sharepoint
+uv run fileroute auth login sharepoint --profile work
+uv run fileroute pull config/fileroute.yaml --profile work
+```
+
+Configuration guides you through the selected provider's settings; cloud app
+registration and access grants are still required. Profiles store settings and
+credential references, with session tokens cached privately outside the project.
+Existing environment and `.env` workflows remain supported. See
+[Authentication](docs/authentication.md) for setup, selection precedence, and
+the [profile template](examples/auth/profiles.yaml).
 
 To publish a new file to Google Drive, target an existing folder; Fileroute
 creates or replaces the file below it. An exact file URL instead replaces that
@@ -111,6 +123,7 @@ for nested folders, shared drives, and ambiguous names.
 - [More use cases, saved YAML, and generated diagrams](docs/use-cases.md)
 - [Transfer behavior and provider support](docs/transfers.md)
 - [Diagram formats and Python graph API](docs/diagram.md)
+- [JSON Schemas and editor completion](docs/schemas.md)
 - [CLI reference](docs/cli.md) and [Python API](docs/api.md)
 - [Development, migration, and package releases](docs/contributing.md)
 
@@ -185,24 +198,40 @@ explicit resource paths. Extracted properties are metadata, not authorization
 or approval decisions. Select publication scope explicitly, for example
 `fileroute push catalog.yaml --select documentation`.
 
-`poe schema-export` generates `dist/schemas/fileroute-catalog.schema.json` from
-the models. Stable releases attach that exact version's schema as a GitHub asset.
-Associate YAML with a released schema using this editor comment (replace VERSION):
+Catalogs and authentication profile configuration both have model-derived JSON
+Schemas. `poe schema-update` regenerates the checked-in files in `schemas/`;
+`poe schema-check` detects stale output. `poe schema-export` writes both schemas
+under `dist/schemas/`, and stable releases publish both as GitHub Release assets:
+
+- `fileroute-catalog.schema.json` covers catalogs, resources, locations, and links.
+- `fileroute-auth-profiles.schema.json` covers named profiles and all supported
+  provider/mode combinations, with required settings and field help.
+
+The repository includes VS Code associations and schema hints in YAML templates
+for completion and validation. `auth configure` also adds a schema hint to
+generated YAML profiles: version-pinned for stable packages, local for source
+checkouts. Associate another YAML file with a released schema
+using this editor comment (replace VERSION):
 
 ```yaml
 # yaml-language-server: $schema=https://github.com/mbkranz/fileroute/releases/download/vVERSION/fileroute-catalog.schema.json
 profile: fileroute-catalog
 ```
 
-Keep `profile` as document data; `$schema` is only in the editor comment.
+For a profile file use `fileroute-auth-profiles.schema.json` instead. Keep
+`profile` as catalog document data; `$schema` is only in the editor comment.
+For JSON, use editor settings instead of adding `$schema` to the configuration.
+See [JSON Schemas and editor assistance](docs/schemas.md) for JSON/YAML starters,
+versioned/latest URLs, and field suggestions.
 Schema validation covers structural constraints. Runtime checks still validate
 case-insensitive name collisions, descriptor paths and cycles, filesystem state,
 and operational transfer requirements. Service aliases normalized at runtime may
 need canonical spelling for editor validation.
 
-Release preparation saves schemas under `dist/schemas/` alongside distributions;
-PyPI receives only distributions. Retries reuse the saved release artifact and
-refuse to replace an existing GitHub schema asset with different bytes.
+Release preparation regenerates versioned source schemas and saves the complete
+bundle under `dist/schemas/` alongside distributions. PyPI receives only
+distributions. Retries reuse the saved release artifact and refuse to replace an
+existing GitHub schema asset with different bytes.
 
 ## License
 

@@ -32,7 +32,11 @@ uvx fileroute diagram config/fileroute.yaml
 ```
 
 These commands do not authenticate. Run `pull` without `--dry-run` when
-credentials are configured and you want to download the file. See
+credentials are configured and you want to download the file. Configure a named
+identity with `fileroute auth configure work --provider s3 --aws-profile team-dev`,
+then select it with `fileroute pull config/fileroute.yaml --profile work`.
+Fileroute reuses the AWS profile; sign in through `aws sso login --profile team-dev`
+first when it uses IAM Identity Center. See
 [Descriptors](descriptors.md) for paths and references, [Use cases](use-cases.md)
 for multi-destination examples, and [Transfers](transfers.md) for the exact
 execution rules. The [README](https://github.com/mbkranz/fileroute#readme)
@@ -43,4 +47,5 @@ also gives a quick start for GitHub visitors.
 - [Descriptor diagrams](diagram.md): SVG, Mermaid, HTML, Markdown, and graph API.
 - [Authentication](authentication.md): SharePoint, Google Drive, and S3 setup.
 - [CLI reference](cli.md) and [Python API](api.md): generated from the code.
+- [JSON Schemas and editors](schemas.md): field suggestions, validation, and templates.
 - [Contributing and releases](contributing.md): development, migration, CI.

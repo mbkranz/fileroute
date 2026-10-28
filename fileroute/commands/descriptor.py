@@ -100,6 +100,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         dry_run: bool = typer.Option(
             False, "--dry-run", help="List files without authenticating or writing."
         ),
+        profile: Optional[str] = typer.Option(
+            None,
+            "--profile",
+            help="Authentication profile default; each target's authProfile takes precedence.",
+        ),
     ) -> None:
         """Publish artifact paths to targets; create or replace files."""
         from fileroute.transfer import plan_push, push
@@ -112,7 +117,10 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                     f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}"
                 )
             if not dry_run:
-                push(files)
+                if profile is None:
+                    push(files)
+                else:
+                    push(files, profile=profile)
         except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -128,6 +136,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         dry_run: bool = typer.Option(
             False, "--dry-run", help="Plan without authenticating or writing."
         ),
+        profile: Optional[str] = typer.Option(
+            None,
+            "--profile",
+            help="Authentication profile default; each source's authProfile takes precedence.",
+        ),
     ) -> None:
         """Materialize a single remote source into each artifact's path."""
         from fileroute.transfer import plan_pull, pull
@@ -139,7 +152,10 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                     f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"
                 )
             if not dry_run:
-                pull(entries)
+                if profile is None:
+                    pull(entries)
+                else:
+                    pull(entries, profile=profile)
         except (
             OSError,
             ValueError,
@@ -166,16 +182,23 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--online",
             help="Verify and enrich remote locations using provider credentials.",
         ),
+        profile: Optional[str] = typer.Option(
+            None,
+            "--profile",
+            help="Authentication profile default for --online; location authProfile takes precedence.",
+        ),
     ) -> None:
         """Resolve locators offline by default; --online verifies IDs and types."""
         try:
             path = prepare_descriptor_path(descriptor)
             if select is not None:
-                result = resolve_selection(path, select, online=online, write=write)
+                result = resolve_selection(
+                    path, select, online=online, write=write, profile=profile
+                )
                 echo_json(result.as_dict())
                 return
             # Editing one document never rewrites or expands referenced files.
-            catalog = resolve(load(path), online=online)
+            catalog = resolve(load(path), online=online, profile=profile)
             if write:
                 save(catalog, path)
                 typer.echo(f"Resolved descriptor: {path}")
@@ -308,6 +331,8 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             property_path = {
                 "service-type": "service_type",
                 "serviceType": "service_type",
+                "auth-profile": "auth_profile",
+                "authProfile": "auth_profile",
                 "entity-type": "entity_type",
                 "entityType": "entity_type",
                 "service-id": "service_id",
@@ -338,6 +363,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 field_target = sources[0]
             if property_path in {
                 "service_type",
+                "auth_profile",
                 "service_id",
                 "remote_path",
                 "site",

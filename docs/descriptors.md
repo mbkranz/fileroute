@@ -41,6 +41,7 @@ name. Root descriptors may have a `title` for display.
 | `sources`, `targets` | Ordered location lists; missing/null targets inherit, `[]` opts out |
 | Location `path` | Local provenance, remote path, or clickable URL |
 | `serviceType` | Location provider: `GoogleDrive`, `SharePoint`, or `S3` |
+| `authProfile` | Optional named authentication profile for this location; overrides the invocation's `--profile` |
 | `serviceId`, `entityType` | Provider-native item ID and file/directory/container type |
 | `site`, `siteId`, `drive`, `driveId`, `bucket` | Provider namespace metadata |
 | `remotePath` | Path within the provider namespace, filled by offline resolution |
@@ -136,6 +137,29 @@ For Google Drive use `drive` or `driveId`; for S3 use `bucket`. Offline resoluti
 fills `remotePath` and rejects conflicting metadata. Local provenance and ordinary
 web citations may be provider-less sources. Unrecognized remote targets require
 explicit provider information; resolution never searches all sites/drives to guess.
+
+Locations may select different identities, including two accounts of the same
+provider, by setting `authProfile`. Inherited targets retain their profile.
+Profile names are case-sensitive, contain 1–64 ASCII letters, digits, `.`, `_` or `-`,
+and start with a letter or digit. The catalog's top-level `profile` field remains
+the metadata profile label; it does not select credentials.
+
+```yaml
+resources:
+  report:
+    path: artifacts/report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/report.csv
+        authProfile: work-reader
+    targets:
+      - path: https://drive.google.com/drive/folders/FOLDER_ID
+        authProfile: partner-writer
+```
+
+This descriptor can be inspected and planned without either profile being
+configured. Actual transfers and online resolution require the selected profile
+to exist locally and match the location's provider. See
+[Authentication](authentication.md) for configuration and precedence.
 
 ```bash
 fileroute resolve config/fileroute.yaml
@@ -239,3 +263,8 @@ models. Associate its versioned GitHub asset URL using a YAML language-server
 comment, retaining `profile: fileroute-catalog` as document data. Editor validation
 covers structural constraints; runtime checks still cover name collisions,
 local descriptor validity, filesystem state, and operational requirements.
+
+The repository templates include local schema hints, and VS Code settings
+associate known catalog filenames with the checked-in schema. See
+[JSON Schemas and editor assistance](schemas.md) for field completion, JSON
+associations, version pinning, and the authentication-profile schema.
