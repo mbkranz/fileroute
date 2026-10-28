@@ -20,7 +20,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
 from fileroute.models import Catalog, CatalogLink, Location, Resource
-from fileroute.resolution import parse_location, resolve_online
+from fileroute.resolution import parse_location, resolve_online, resolve_path_properties
 
 
 def _yaml() -> YAML:
@@ -173,7 +173,7 @@ def save(catalog: Catalog, path: Path | str) -> None:
     catalog = catalog.model_copy(deep=True)
     # Appending to a default list does not update Pydantic's fields_set.
     for row in walk(catalog, include_self=True):
-        for field in ("sources", "targets", "resources", "catalogs"):
+        for field in ("sources", "targets", "resources", "catalogs", "path_properties"):
             if getattr(row.model, field, None):
                 row.model.model_fields_set.add(field)
     data = catalog.model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -423,6 +423,7 @@ def resolve(
     if direction not in {None, "pull", "push"}:
         raise ValueError("direction must be pull or push")
     result = catalog.model_copy(deep=True)
+    resolve_path_properties(result)
     clients = {}
 
     def enrich(location, *, required: bool) -> None:
@@ -540,17 +541,35 @@ def resolve_selection(
     """
     from dataclasses import replace
 
-    selection = select(load(path, resolve_references=True), selector)
+    expanded = load(path, resolve_references=True)
+    selection = select(expanded, selector)
     source = selection.entry.origin_descriptor
     assert source is not None
 
     def enrich(model):
+        # Selection must retain the nearest declaring ancestor's template/base,
+        # while provider resolution remains bounded to the selected scope.
+        inherited = None
+        for row in walk(expanded, include_self=True):
+            if (
+                isinstance(row.model, Catalog)
+                and row.model.resource_path_template is not None
+                and row.json_pointer != selection.entry.json_pointer
+                and selection.entry.json_pointer.startswith(row.json_pointer + "/")
+            ):
+                inherited = row.model
+        wrapper = Catalog(
+            path=inherited.path if inherited is not None else None,
+            resourcePathTemplate=(
+                inherited.resource_path_template if inherited is not None else None
+            ),
+        )
         if isinstance(model, Catalog):
-            return resolve(model, online=online)
+            wrapper.catalogs["selected"] = model
+            return resolve(wrapper, online=online).catalogs["selected"]
         if isinstance(model, Resource):
-            return resolve(
-                Catalog(resources={"selected": model}), online=online
-            ).resources["selected"]
+            wrapper.resources["selected"] = model
+            return resolve(wrapper, online=online).resources["selected"]
         if isinstance(model, Location):
             field = "targets" if "/targets/" in selection.origin_pointer else "sources"
             return getattr(resolve(Catalog(**{field: [model]}), online=online), field)[
@@ -584,6 +603,11 @@ def resolve_selection(
                 for field in ("sources", "targets"):
                     if field in row.model.model_fields_set:
                         setattr(row.model, field, getattr(enriched, field))
+                if (
+                    isinstance(row.model, Resource)
+                    and "path_properties" in enriched.model_fields_set
+                ):
+                    row.model.path_properties = enriched.path_properties
         if not selection.origin_pointer:
             assert isinstance(updated, Catalog)
             document = updated

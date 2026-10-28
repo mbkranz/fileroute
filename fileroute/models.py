@@ -160,6 +160,11 @@ class Resource(_Artifact):
 
     path: str = Field(min_length=1)
     format: str | None = None
+    path_properties: dict[str, Any] = Field(
+        default_factory=dict,
+        alias="pathProperties",
+        description="Named values extracted from the nearest catalog resourcePathTemplate during resolution.",
+    )
 
 
 class CatalogLink(BaseModel):
@@ -190,6 +195,17 @@ def validate_name(name: str) -> str:
     return name
 
 
+def _catalog_schema(schema: dict[str, Any]) -> None:
+    """Expose the input alias without replacing generated property schemas."""
+    schema["not"] = {
+        "anyOf": [{"required": [key]} for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema")]
+    }
+    schema["properties"]["pathTemplate"] = {
+        **schema["properties"]["resourcePathTemplate"],
+        "description": "Input alias for resourcePathTemplate; saved using the canonical spelling.",
+    }
+
+
 class Catalog(_Artifact):
     """Keyed resources and catalogs; paths retain transfer-root semantics.
 
@@ -197,22 +213,13 @@ class Catalog(_Artifact):
     so an extensible inline Catalog cannot absorb a malformed descriptor link.
     """
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "not": {
-                "anyOf": [
-                    {"required": [key]}
-                    for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema", "pathTemplate")
-                ]
-            }
-        }
-    )
+    model_config = ConfigDict(json_schema_extra=_catalog_schema)
 
     resource_path_template: str | None = Field(
         default=None,
         alias="resourcePathTemplate",
         pattern=r"\S",
-        description="Artifact naming pattern relative to this catalog path. Metadata only; transfers do not expand it.",
+        description="Parse pattern for resource pathProperties, relative to this catalog path unless it is an absolute path or URI. Transfers do not expand it.",
         examples=["{surveyid}/{env}/v{version}/schema.json"],
     )
     profile: str = CATALOG_PROFILE
@@ -238,7 +245,15 @@ class Catalog(_Artifact):
                 "Use 'profile' instead of '$schema' in catalog descriptors"
             )
         if isinstance(value, dict) and "pathTemplate" in value:
-            raise ValueError("Use 'resourcePathTemplate' instead of 'pathTemplate'")
+            value = dict(value)
+            template = value.pop("pathTemplate")
+            for spelling in ("resourcePathTemplate", "resource_path_template"):
+                if spelling in value and value[spelling] != template:
+                    raise ValueError(
+                        f"pathTemplate and {spelling} must agree when both are provided"
+                    )
+            value.pop("resource_path_template", None)
+            value["resourcePathTemplate"] = template
         return value
 
     @field_validator("resources", "catalogs", mode="before")

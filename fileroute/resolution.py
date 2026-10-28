@@ -7,10 +7,114 @@ namespace fields are supplemental, so an offline pass remains reproducible.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from string import Formatter
+from typing import Any
+import re
 
-from fileroute.models import Location, ServiceType
+from parse import Parser, compile as compile_template
+
+from fileroute.models import Catalog, Location, ServiceType
 from fileroute.clients.base import BaseClient
 from fileroute.item import ServiceItem
+
+
+def _compile_template(template: str) -> Parser:
+    """Validate format syntax before parse's permissive literal handling."""
+    try:
+        for _, _, _, conversion in Formatter().parse(template):
+            if conversion is not None:
+                raise ValueError("field conversions such as !r are unsupported")
+        parser = compile_template(template, case_sensitive=True)
+        # parse compiles the final regular expression lazily.
+        parser.parse("")
+        return parser
+    except (ValueError, re.error, NotImplementedError) as exc:
+        raise ValueError(f"Invalid resourcePathTemplate {template!r}: {exc}") from exc
+
+
+def _normalized_path(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _template_path(path: str, template: str, base: str | None) -> str | None:
+    """Keep URI/absolute patterns whole; scope relative ones by path components."""
+    path = _normalized_path(path)
+    if any(part == ".." for part in path.split("/")):
+        return None
+    if (
+        "://" in template
+        or template.startswith("/")
+        or re.match(r"^[A-Za-z]:/", template)
+    ):
+        return path
+    root = _normalized_path(base or "").rstrip("/")
+    if not root or root == ".":
+        return path
+    if path == root:
+        return ""
+    prefix = root + "/"
+    return path[len(prefix) :] if path.startswith(prefix) else None
+
+
+def resolve_path_properties(catalog: Catalog) -> None:
+    """Derive resource metadata in place without I/O or changing authored paths.
+
+    The nearest declared template applies to descendants, relative to the path
+    of the catalog that declares it. Absolute templates match the whole path.
+    Named parse captures retain their standard types. A literal basename is a
+    naming example: if the full pattern misses, its directory pattern can still
+    supply captures. Basenames containing any capture require a full match.
+    Matching replaces pathProperties, a miss clears it, and absent templates
+    preserve authored properties. Templates never generate transfer paths.
+    """
+
+    def descend(
+        current: Catalog,
+        inherited: tuple[str, str | None, Parser, Parser | None] | None = None,
+    ) -> None:
+        context = inherited
+        if current.resource_path_template is not None:
+            template = _normalized_path(current.resource_path_template)
+            parser = _compile_template(template)
+            directory, separator, basename = template.rpartition("/")
+            directory_parser = None
+            if (
+                separator
+                and basename
+                and not any(
+                    name is not None for _, name, _, _ in Formatter().parse(basename)
+                )
+            ):
+                directory_parser = _compile_template(directory)
+            context = (template, current.path, parser, directory_parser)
+        if context is not None:
+            template, base, parser, directory_parser = context
+            for resource in current.resources.values():
+                candidate = _template_path(resource.path, template, base)
+                captures: dict[str, Any] = {}
+                if candidate is not None:
+                    try:
+                        match = parser.parse(candidate)
+                        if match is None and directory_parser is not None:
+                            directory, separator, basename = candidate.rpartition("/")
+                            if separator and basename:
+                                match = directory_parser.parse(directory)
+                        if match is not None:
+                            captures = match.named
+                    except (ValueError, re.error) as exc:
+                        raise ValueError(
+                            f"Cannot parse resource path {resource.path!r} with "
+                            f"resourcePathTemplate {template!r}: {exc}"
+                        ) from exc
+                resource.path_properties = captures
+        for child in current.catalogs.values():
+            if isinstance(child, Catalog):
+                descend(child, context)
+
+    descend(catalog)
 
 
 @dataclass(frozen=True)
@@ -123,6 +227,7 @@ def resolve_online(location: Location, client: BaseClient) -> Location:
 
 
 __all__ = [
+    "resolve_path_properties",
     "ResolvedLocation",
     "parse_location",
     "resolve_online",

@@ -206,9 +206,33 @@ A root `catalog.yaml` (also `.yml` or `.json`) is discovered after an explicitly
 activated descriptor and before `resources/descriptor.*`. Explicit arguments win.
 No parent-directory search is performed, and stale activations remain errors.
 
-`resourcePathTemplate` is optional Catalog metadata describing a naming pattern relative
-to `path`, for example `{surveyid}/{env}/v{version}/schema.json`. Applications
-interpret the pattern; transfers do not expand it or replace concrete paths.
+`resourcePathTemplate` (input alias `pathTemplate`) describes a naming pattern.
+During resolution, named fields are extracted with the `parse` library into
+each Resource's `pathProperties` dictionary (`path_properties` in Python).
+Relative templates match relative to the declaring catalog's `path`; absolute
+paths and URI templates match the whole resource path. The nearest template
+applies to descendant resources, with child templates replacing inherited ones.
+
+```yaml
+pathTemplate: "drive://test/{var1}/{var2}/test.csv"
+resources:
+  file1:
+    path: "drive://test/xx/yy/file1.csv"
+```
+
+Resolving this catalog yields `pathProperties: {var1: xx, var2: yy}` for `file1`.
+A literal filename is informational when extracting directory fields; a filename
+with capture fields requires a complete match. `{filename}` captures a varying
+filename. Matching is case-sensitive and supports typed named captures such as
+`{revision:d}`. Anonymous captures do not become properties.
+
+Loading does not calculate properties. `resolve` returns a copy with calculated
+properties, and `fileroute resolve --write` persists them in the physical origin
+descriptor. With a template, resolution replaces properties and a nonmatch
+clears them to `{}`; without one, authored properties survive. Saved templates
+use `resourcePathTemplate`; specifying unequal values for both input aliases is
+an error. Transfers neither expand the template nor replace concrete paths,
+and extracted metadata does not establish authorization or approval.
 
 Stable releases attach `fileroute-catalog.schema.json`, generated from these
 models. Associate its versioned GitHub asset URL using a YAML language-server

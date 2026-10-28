@@ -169,6 +169,7 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `path: str`
   - `format: str | None`
+  - `path_properties: dict[str, Any]`
 
 #### `Location`
 - Upstream input or downstream destination, with optional provider metadata.
