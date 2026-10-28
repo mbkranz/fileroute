@@ -145,6 +145,61 @@ pulled; SharePoint and Google Drive targets can be pushed. The last descriptor
 has an S3 target, so even `push --dry-run` rejects its entire upload plan.
 To publish its supported targets, use a separate descriptor without S3.
 
+## Separate source and target identities
+
+Read SharePoint as `work-reader`, publish to Google Drive as `partner-writer`,
+and retrieve another report through the AWS-backed `archive-reader` profile.
+Configure these names locally using [Authentication](authentication.md).
+The synthetic [profile template](https://github.com/mbkranz/fileroute/blob/main/examples/auth/profiles.yaml)
+shows their settings. Each location selects its identity explicitly.
+
+<!-- example:profile-identities:start -->
+```yaml
+resources:
+  partner-report:
+    path: artifacts/partner-report.csv
+    sources:
+      - path: https://contoso.sharepoint.com/sites/data/Shared%20Documents/partner-report.csv
+        authProfile: work-reader
+    targets:
+      - path: https://drive.google.com/drive/folders/GOOGLE_FOLDER_ID
+        authProfile: partner-writer
+  archive-report:
+    path: artifacts/archive-report.csv
+    sources:
+      - path: s3://example-reports/monthly/archive-report.csv
+        authProfile: archive-reader
+```
+<!-- example:profile-identities:end -->
+
+<!-- diagram:profile-identities:start -->
+```mermaid
+flowchart LR
+    n0["artifacts/partner-report.csv"]
+    n1["SharePoint: data/partner-report.csv"]
+    n2["Google Drive: GOOGLE_FOLDER_ID"]
+    n3["artifacts/archive-report.csv"]
+    n4["S3: example-reports/monthly/archive-report.csv"]
+    n1 --> n0
+    n0 --> n2
+    n4 --> n3
+```
+<!-- diagram:profile-identities:end -->
+
+```bash
+uvx fileroute pull examples/use-cases/profile-identities.yaml --dry-run
+uvx fileroute resolve examples/use-cases/profile-identities.yaml
+uvx fileroute auth login sharepoint --profile work-reader
+uvx fileroute auth login gdrive --profile partner-writer
+aws sso login --profile team-dev
+uvx fileroute pull examples/use-cases/profile-identities.yaml
+uvx fileroute push examples/use-cases/profile-identities.yaml --select partner-report
+```
+
+The first two commands need no credentials. Replace the synthetic URLs and
+configure the profiles before running the online commands. The diagram shows
+locations and transfer intent; authentication profiles do not alter file identity.
+
 To regenerate and check these blocks after editing a saved descriptor:
 
 ```bash

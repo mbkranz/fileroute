@@ -85,9 +85,21 @@ publishes to all effective targets.
 `resolve` parses URLs and scoped paths offline; `resolve --online --write`
 verifies remote locations and saves their IDs and entity types. `diagram` and
 dry runs also work without provider access; `--online` and actual transfers
-require credentials. Configure credentials using
-[.env-sample](.env-sample); see [Authentication](docs/authentication.md) for
-provider setup.
+require credentials. Configure a reusable authentication profile, then select it
+for a transfer or set `authProfile` on individual source/target locations:
+
+```bash
+uv run fileroute auth configure work --provider sharepoint
+uv run fileroute auth login sharepoint --profile work
+uv run fileroute pull config/fileroute.yaml --profile work
+```
+
+Configuration guides you through the selected provider's settings; cloud app
+registration and access grants are still required. Profiles store settings and
+credential references, with session tokens cached privately outside the project.
+Existing environment and `.env` workflows remain supported. See
+[Authentication](docs/authentication.md) for setup, selection precedence, and
+the [profile template](examples/auth/profiles.yaml).
 
 To publish a new file to Google Drive, target an existing folder; Fileroute
 creates or replaces the file below it. An exact file URL instead replaces that

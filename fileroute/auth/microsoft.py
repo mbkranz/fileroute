@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Sequence
+from contextlib import nullcontext
+import json
+from pathlib import Path
+from typing import Any, Sequence
 
 import msal
 
 from fileroute.exceptions import GraphAuthError
+from fileroute.auth.token_store import atomic_private_write, private_file_lock
 
 DEFAULT_MICROSOFT_GRAPH_SCOPES = ("https://graph.microsoft.com/.default",)
 
@@ -28,6 +32,18 @@ def _extract_access_token(result: dict[str, object]) -> str:
     if isinstance(token, str) and token:
         return token
     raise GraphAuthError(f"Token error: {result.get('error_description')}")
+
+
+def _load_cache(path: Path) -> msal.SerializableTokenCache:
+    cache = msal.SerializableTokenCache()
+    if path.exists():
+        try:
+            cache.deserialize(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            raise GraphAuthError(
+                "Cannot read Microsoft token cache; remove it and log in again."
+            ) from None
+    return cache
 
 
 class MicrosoftAuth:
@@ -64,6 +80,8 @@ class MicrosoftAuth:
         client_id: str,
         client_secret: str,
         scopes: Sequence[str] | str | None = None,
+        *,
+        cache_path: Path | None = None,
     ) -> "MicrosoftAuth":
         """Build using client-credential (app-only) flow via MSAL."""
         if not client_secret:
@@ -72,12 +90,23 @@ class MicrosoftAuth:
             )
         normalized_scopes = normalize_microsoft_scopes(scopes)
         authority = f"https://login.microsoftonline.com/{tenant_id}"
-        app = msal.ConfidentialClientApplication(
-            client_id=client_id,
-            client_credential=client_secret,
-            authority=authority,
+        lock = (
+            private_file_lock(cache_path) if cache_path is not None else nullcontext()
         )
-        result = app.acquire_token_for_client(scopes=normalized_scopes)
+        with lock:
+            cache = _load_cache(cache_path) if cache_path is not None else None
+            kwargs: dict[str, Any] = {
+                "client_id": client_id,
+                "client_credential": client_secret,
+                "authority": authority,
+            }
+            if cache is not None:
+                kwargs["token_cache"] = cache
+            app = msal.ConfidentialClientApplication(**kwargs)
+            # MSAL 1.23+ checks this cache before contacting the identity provider.
+            result = app.acquire_token_for_client(scopes=normalized_scopes)
+            if cache_path is not None and cache is not None and cache.has_state_changed:
+                atomic_private_write(cache_path, cache.serialize())
         return cls(_extract_access_token(result))
 
     @classmethod
@@ -86,18 +115,63 @@ class MicrosoftAuth:
         tenant_id: str,
         client_id: str,
         scopes: Sequence[str] | str | None = None,
+        *,
+        cache_path: Path | None = None,
+        interactive: bool = True,
     ) -> "MicrosoftAuth":
-        """Build using interactive delegated (user) flow via MSAL."""
+        """Acquire silently from a persistent MSAL cache before optional consent.
+
+        The default preserves legacy interactive callers. Named profiles pass
+        ``interactive=False`` for transfers. Cache reads and refresh writes are
+        locked, but the browser login runs without holding a filesystem lock.
+        See Microsoft's MSAL Python token-cache serialization guidance.
+        """
         normalized_scopes = normalize_microsoft_scopes(scopes)
         authority = f"https://login.microsoftonline.com/{tenant_id}"
-        app = msal.PublicClientApplication(client_id, authority=authority)
-        accounts = app.get_accounts()
-        if accounts:
-            result = app.acquire_token_silent(normalized_scopes, account=accounts[0])
-            if result and "access_token" in result:
-                return cls(_extract_access_token(result))
+        lock = (
+            private_file_lock(cache_path) if cache_path is not None else nullcontext()
+        )
+        with lock:
+            cache = _load_cache(cache_path) if cache_path is not None else None
+            kwargs: dict[str, Any] = {"authority": authority}
+            if cache is not None:
+                kwargs["token_cache"] = cache
+            app = msal.PublicClientApplication(client_id, **kwargs)
+            accounts = app.get_accounts()
+            if len(accounts) > 1:
+                raise GraphAuthError(
+                    "Microsoft profile cache contains multiple accounts; clear it and log in again."
+                )
+            if accounts:
+                result = app.acquire_token_silent(
+                    normalized_scopes, account=accounts[0]
+                )
+                if (
+                    cache_path is not None
+                    and cache is not None
+                    and cache.has_state_changed
+                ):
+                    atomic_private_write(cache_path, cache.serialize())
+                if result and "access_token" in result:
+                    return cls(_extract_access_token(result))
+        if not interactive:
+            raise GraphAuthError(
+                "No usable cached Microsoft login. Run 'fileroute auth login sharepoint --profile NAME'."
+            )
         result = app.acquire_token_interactive(scopes=normalized_scopes)
-        return cls(_extract_access_token(result))
+        token = _extract_access_token(result)
+        if cache_path is not None and cache is not None:
+            with private_file_lock(cache_path):
+                # Another process may refresh while the browser is open. Merge
+                # those entries before adding this consent result.
+                latest = json.loads(_load_cache(cache_path).serialize())
+                for category, entries in json.loads(cache.serialize()).items():
+                    if isinstance(entries, dict):
+                        latest.setdefault(category, {}).update(entries)
+                    else:
+                        latest[category] = entries
+                atomic_private_write(cache_path, json.dumps(latest))
+        return cls(token)
 
     @classmethod
     def from_settings(cls, config: object | None = None) -> "MicrosoftAuth":
@@ -108,7 +182,9 @@ class MicrosoftAuth:
         """
         from fileroute.auth.settings import MicrosoftAuthConfig
 
-        resolved: MicrosoftAuthConfig = config if config is not None else MicrosoftAuthConfig()  # type: ignore[assignment]
+        resolved: MicrosoftAuthConfig = (
+            config if config is not None else MicrosoftAuthConfig()
+        )  # type: ignore[assignment]
         return resolved.to_auth()
 
     # ------------------------------------------------------------------
@@ -121,6 +197,4 @@ class MicrosoftAuth:
         return self._access_token
 
 
-__all__ = [
-    "MicrosoftAuth"
-]
+__all__ = ["MicrosoftAuth"]

@@ -15,6 +15,31 @@ For the SharePoint and S3 options, start with [Authentication](authentication.md
 - Use `service_account` when you need fully automated, non-interactive jobs.
 - Use `adc` when your runtime environment already provides Google credentials.
 
+## Reusable authentication profiles
+
+After completing the provider setup below, save a profile so login and transfers
+use the same mode, credential file, scopes, and private token cache:
+
+```bash
+uv run fileroute auth configure personal-drive --provider gdrive \
+  --mode user_oauth --oauth-client-secrets /secure/google-desktop.json \
+  --scope https://www.googleapis.com/auth/drive
+uv run fileroute auth login gdrive --profile personal-drive
+uv run fileroute auth check --profile personal-drive \
+  --url https://drive.google.com/drive/folders/FOLDER_ID
+uv run fileroute pull config/fileroute.yaml --profile personal-drive
+```
+
+Replace `FOLDER_ID` and the credential path. You can also set
+`authProfile: personal-drive` on a source or target. Relative credential paths
+in hand-authored profile configuration resolve beside that configuration file;
+tokens are cached per profile outside the project. Transfers reuse or refresh
+saved credentials without starting browser consent. Run explicit login when
+consent or a new scope grant is needed. Configuration does not replace the
+Google Cloud project, consent screen, OAuth client, or resource sharing steps.
+See [Authentication](authentication.md) for storage, precedence, ADC/service
+account profiles, and CI. The environment-based setup below remains supported.
+
 ## Manual setup (user OAuth)
 
 This is the most common setup for local development.
@@ -45,14 +70,10 @@ uv run fileroute auth login gdrive \
   --oauth-token-path .google/oauth-token.json
 ```
 
-For headless/SSH terminals:
-
-```bash
-uv run fileroute auth login gdrive \
-  --no-local-server \
-  --oauth-client-secrets .google/oauth-credentials.json \
-  --oauth-token-path .google/oauth-token.json
-```
+Installed-app OAuth uses a browser and a local callback server. For unattended
+jobs, use ADC or service-account authentication. The retained
+`--no-local-server` option does not enable the retired Google console flow;
+the settings-based installed-app flow continues to use a local callback.
 
 For standalone use, substitute `uvx fileroute` for `uv run fileroute`.
 See the [README](https://github.com/mbkranz/fileroute#readme) for the
@@ -86,7 +107,8 @@ Point a resource at an existing folder to create or replace a file within it:
 
 ```yaml
 resources:
-  - path: artifacts/report.csv
+  report:
+    path: artifacts/report.csv
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
 ```

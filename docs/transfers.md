@@ -32,6 +32,26 @@ unrelated resource or catalog to leave an unsupported target outside the plan.
 Offline `resolve`, `diagram`, and dry runs do not authenticate or inspect remote
 permissions. `resolve --online` reads provider metadata to verify locations.
 
+## Authentication profiles
+
+Use `--profile NAME` with `pull`, `push`, or `resolve --online` to select a
+default identity for that invocation. A source or target's `authProfile` wins
+over that default. Without either, the provider's existing environment/SDK
+configuration applies. A named profile must match the location's provider;
+there is no fallback to a different identity when it fails.
+
+```bash
+uv run fileroute pull config/fileroute.yaml --profile work-reader
+uv run fileroute resolve config/fileroute.yaml --online --profile work-reader
+```
+
+For mixed providers or different accounts, set `authProfile` on each relevant
+location. Clients are isolated by provider and profile, including inherited
+targets. Named-profile transfers use saved credentials without opening a
+browser; run the provider's `auth login` command when sign-in is required.
+Offline resolution, diagrams, and dry runs do not read profile configuration
+or validate remote access. See [Authentication](authentication.md).
+
 ## Push
 
 - Catalog targets identify existing remote folders. Children inherit them
@@ -71,11 +91,13 @@ Remote files absent from the plan are never deleted.
 
 ```yaml
 catalogs:
-  - path: docs/_output
+  docs:
+    path: docs/_output
     targets:
       - path: https://drive.google.com/drive/folders/FOLDER_ID
     resources:
-      - path: docs/_output/reports/summary.pdf
+      summary:
+        path: docs/_output/reports/summary.pdf
 ```
 
 For a path-based target, specify the namespace explicitly, for example

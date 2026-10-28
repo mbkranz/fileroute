@@ -19,7 +19,8 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
-from fileroute.models import Catalog, CatalogLink, Location, Resource
+from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
+from fileroute.clients.base import BaseClient
 from fileroute.resolution import parse_location, resolve_online, resolve_path_properties
 
 
@@ -413,29 +414,37 @@ def resolve(
     *,
     direction: Literal["pull", "push"] | None = None,
     online: bool = False,
+    profile: str | None = None,
 ) -> Catalog:
     """Return resolved metadata without mutating the input or authored paths.
 
     Offline parsing constructs no client. Online lookup verifies locations and
     enriches IDs and types, but never transfers content. References are not
     expanded or modified; resolve their documents individually for write-back.
+    Online authentication uses a location's ``authProfile`` before the run's
+    ``profile`` default. Offline resolution never loads profile configuration.
     """
     if direction not in {None, "pull", "push"}:
         raise ValueError("direction must be pull or push")
     result = catalog.model_copy(deep=True)
     resolve_path_properties(result)
-    clients = {}
+    clients: dict[tuple[ServiceType, str | None], BaseClient] = {}
 
-    def enrich(location, *, required: bool) -> None:
+    def enrich(location: Location, *, required: bool) -> None:
         parse_location(location, required=required)
         if online and location.service_type is not None:
-            if location.service_type not in clients:
-                from fileroute.clients import get_provider
+            selected = location.auth_profile or profile
+            key = (location.service_type, selected)
+            if key not in clients:
+                if selected is None:
+                    from fileroute.clients import get_provider
 
-                clients[location.service_type] = get_provider(
-                    location.service_type
-                ).build_default()
-            resolve_online(location, clients[location.service_type])
+                    clients[key] = get_provider(location.service_type).build_default()
+                else:
+                    from fileroute.auth.profiles import build_profile_client
+
+                    clients[key] = build_profile_client(selected, location.service_type)
+            resolve_online(location, clients[key])
 
     for row in walk(result, include_self=True):
         if isinstance(row.model, CatalogLink):
@@ -532,7 +541,12 @@ def select(catalog: Catalog, selector: str) -> Selection:
 
 
 def resolve_selection(
-    path: Path | str, selector: str, *, online: bool = False, write: bool = False
+    path: Path | str,
+    selector: str,
+    *,
+    online: bool = False,
+    write: bool = False,
+    profile: str | None = None,
 ) -> Selection:
     """Resolve one selected scope; optional writes affect its origin file only.
 
@@ -563,30 +577,37 @@ def resolve_selection(
             resourcePathTemplate=(
                 inherited.resource_path_template if inherited is not None else None
             ),
+            targets=(
+                list(selection.effective_targets)
+                if isinstance(model, (Catalog, Resource)) and model.targets is None
+                else None
+            ),
         )
         if isinstance(model, Catalog):
             wrapper.catalogs["selected"] = model
-            return resolve(wrapper, online=online).catalogs["selected"]
-        if isinstance(model, Resource):
+            resolved_wrapper = resolve(wrapper, online=online, profile=profile)
+            resolved = resolved_wrapper.catalogs["selected"]
+        elif isinstance(model, Resource):
             wrapper.resources["selected"] = model
-            return resolve(wrapper, online=online).resources["selected"]
-        if isinstance(model, Location):
+            resolved_wrapper = resolve(wrapper, online=online, profile=profile)
+            resolved = resolved_wrapper.resources["selected"]
+        elif isinstance(model, Location):
             field = "targets" if "/targets/" in selection.origin_pointer else "sources"
-            return getattr(resolve(Catalog(**{field: [model]}), online=online), field)[
-                0
-            ]
-        return model
-
-    resolved = enrich(selection.model)
-    if isinstance(resolved, (Catalog, Resource)) and resolved.targets is not None:
-        effective = resolved.targets
-    else:
+            resolved = getattr(
+                resolve(Catalog(**{field: [model]}), online=online, profile=profile),
+                field,
+            )[0]
+            return resolved, []
+        else:
+            return model, []
         effective = (
-            resolve(
-                Catalog(targets=list(selection.effective_targets)), online=online
-            ).targets
-            or []
+            resolved.targets
+            if resolved.targets is not None
+            else resolved_wrapper.targets or []
         )
+        return resolved, effective
+
+    resolved, effective = enrich(selection.model)
     if write:
         document = load(source)
         raw_selector = selection.origin_pointer or "$"

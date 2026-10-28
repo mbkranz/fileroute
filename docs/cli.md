@@ -46,6 +46,7 @@ $ fileroute push [OPTIONS] [DESCRIPTOR]
 
 * `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: List files without authenticating or writing.
+* `--profile TEXT`: Authentication profile default; each target's authProfile takes precedence.
 * `--help`: Show this message and exit.
 
 ## `fileroute pull`
@@ -66,6 +67,7 @@ $ fileroute pull [OPTIONS] [DESCRIPTOR]
 
 * `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: Plan without authenticating or writing.
+* `--profile TEXT`: Authentication profile default; each source's authProfile takes precedence.
 * `--help`: Show this message and exit.
 
 ## `fileroute resolve`
@@ -87,6 +89,7 @@ $ fileroute resolve [OPTIONS] [DESCRIPTOR]
 * `--select TEXT`: Registered name or exact address. Use fileroute list for names and selectors.
 * `--write`: Save resolved metadata back to this descriptor.
 * `--online`: Verify and enrich remote locations using provider credentials.
+* `--profile TEXT`: Authentication profile default for --online; location authProfile takes precedence.
 * `--help`: Show this message and exit.
 
 ## `fileroute migrate`
@@ -270,7 +273,115 @@ $ fileroute auth [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
+* `configure`: Save a named profile without logging in or...
+* `list`: List configured names, providers, and...
+* `show`: Show settings and secret references; never...
+* `remove`: Remove a profile and its Fileroute token...
+* `check`: Check credentials and optional read access...
 * `login`: Interactive login commands.
+
+### `fileroute auth configure`
+
+Save a named profile without logging in or storing raw secrets.
+
+Missing required settings are prompted for in a terminal. Complete flags
+work unattended. Existing profiles require --replace.
+
+**Usage**:
+
+```console
+$ fileroute auth configure [OPTIONS] NAME
+```
+
+**Arguments**:
+
+* `NAME`: Name for this reusable authentication profile.  [required]
+
+**Options**:
+
+* `--provider TEXT`: Provider: sharepoint, gdrive, or s3.
+* `--mode TEXT`: Authentication mode for the selected provider.
+* `--tenant-id TEXT`
+* `--client-id TEXT`
+* `--host-url TEXT`
+* `--client-secret-env TEXT`: Environment variable name containing the secret; never the secret value.
+* `--credentials-file PATH`: Google service-account JSON file.
+* `--oauth-client-secrets PATH`: Google installed-app OAuth client JSON file.
+* `--aws-profile TEXT`: Existing AWS profile name; credentials stay with AWS.
+* `--scope TEXT`: OAuth scope. Repeat for multiple scopes.
+* `--replace`: Replace an existing profile's settings.
+* `--config PATH`: Use an explicit profile configuration file.
+* `--help`: Show this message and exit.
+
+### `fileroute auth list`
+
+List configured names, providers, and authentication modes.
+
+**Usage**:
+
+```console
+$ fileroute auth list [OPTIONS]
+```
+
+**Options**:
+
+* `--config PATH`: Profile configuration file.
+* `--help`: Show this message and exit.
+
+### `fileroute auth show`
+
+Show settings and secret references; never read credential contents.
+
+**Usage**:
+
+```console
+$ fileroute auth show [OPTIONS] NAME
+```
+
+**Arguments**:
+
+* `NAME`: [required]
+
+**Options**:
+
+* `--config PATH`: Profile configuration file.
+* `--help`: Show this message and exit.
+
+### `fileroute auth remove`
+
+Remove a profile and its Fileroute token cache; leave provider files intact.
+
+**Usage**:
+
+```console
+$ fileroute auth remove [OPTIONS] NAME
+```
+
+**Arguments**:
+
+* `NAME`: [required]
+
+**Options**:
+
+* `--config PATH`: Profile configuration file.
+* `--help`: Show this message and exit.
+
+### `fileroute auth check`
+
+Check credentials and optional read access without opening a browser or writing remotely.
+
+**Usage**:
+
+```console
+$ fileroute auth check [OPTIONS]
+```
+
+**Options**:
+
+* `--profile TEXT`: Saved profile to check.  [required]
+* `--url TEXT`: Optionally read metadata at a provider URL.
+* `--config PATH`: Profile configuration file.
+* `--help`: Show this message and exit.
 
 ### `fileroute auth login`
 
@@ -291,6 +402,7 @@ $ fileroute auth login [OPTIONS] COMMAND [ARGS]...
 * `gdrive`: Run the Google installed-app OAuth flow...
 * `microsoft`: Validate Microsoft authentication used by...
 * `sharepoint`: Validate SharePoint authentication using...
+* `s3`: Use AWS's native credential setup;...
 
 #### `fileroute auth login gdrive`
 
@@ -307,8 +419,10 @@ $ fileroute auth login gdrive [OPTIONS]
 * `--oauth-client-secrets PATH`: Path to Google OAuth client secrets JSON.
 * `--oauth-token-path PATH`: Path to persist the authorized-user token JSON.
 * `--scope TEXT`: OAuth scope. Repeat for multiple scopes.
-* `--no-local-server`: Use the console flow instead of a local callback server.
+* `--no-local-server`: Legacy console-flow request; unsupported by current Google installed-app OAuth.
 * `--env-file PATH`: Path to .env file for credentials. Defaults to .env in the current directory.
+* `--profile TEXT`: Use a saved Google Drive profile.
+* `--config PATH`: Profile configuration file.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -337,6 +451,8 @@ $ fileroute auth login microsoft [OPTIONS]
 * `--host-url TEXT`: SharePoint host for validating Graph-backed access, for example norc.sharepoint.com.
 * `--scope TEXT`: Microsoft Graph scope. Repeat for multiple scopes.
 * `--env-file PATH`: Path to .env file for credentials. Defaults to .env in the current directory.
+* `--profile TEXT`: Use a saved SharePoint profile.
+* `--config PATH`: Profile configuration file.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -369,6 +485,8 @@ $ fileroute auth login sharepoint [OPTIONS]
 * `--host-url TEXT`: SharePoint host, for example norc.sharepoint.com.
 * `--scope TEXT`: Microsoft Graph scope. Repeat for multiple scopes.
 * `--env-file PATH`: Path to .env file for credentials. Defaults to .env in the current directory.
+* `--profile TEXT`: Use a saved SharePoint profile.
+* `--config PATH`: Profile configuration file.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -384,6 +502,22 @@ fileroute auth login sharepoint --auth-mode delegated
 ```bash
 fileroute auth login sharepoint --host-url norc.sharepoint.com
 ```
+
+#### `fileroute auth login s3`
+
+Use AWS's native credential setup; Fileroute does not collect AWS secrets.
+
+**Usage**:
+
+```console
+$ fileroute auth login s3 [OPTIONS]
+```
+
+**Options**:
+
+* `--profile TEXT`: Saved S3 profile to validate.  [required]
+* `--config PATH`: Profile configuration file.
+* `--help`: Show this message and exit.
 
 ## `fileroute clone`
 

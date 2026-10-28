@@ -109,6 +109,15 @@ class Location(_Metadata):
 
     path: str = Field(min_length=1)
     service_type: ServiceTypeField | None = Field(default=None, alias="serviceType")
+    auth_profile: str | None = Field(
+        default=None,
+        alias="authProfile",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+        strict=True,
+        description="Local authentication profile name; credentials stay outside the descriptor.",
+    )
     service_id: str | None = Field(default=None, alias="serviceId")
     entity_type: EntityTypeValue | None = Field(default=None, alias="entityType")
     remote_path: str | None = Field(default=None, alias="remotePath")
