@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from fileroute.cli import app
@@ -12,6 +13,16 @@ from fileroute.models import Location, ServiceType
 
 
 runner = CliRunner()
+
+
+@pytest.fixture(params=(False, True), ids=("plain", "color"))
+def color_output(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> bool:
+    """Exercise error text with and without CI's forced Rich terminal colors."""
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", request.param)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    return request.param
 
 
 def configure_s3(config: Path, name: str = "archive") -> None:
@@ -121,7 +132,7 @@ def test_guided_configuration_prompts_and_saves_without_login(
 
 
 def test_missing_flags_fail_without_prompt_in_unattended_setup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, color_output: bool
 ) -> None:
     monkeypatch.setattr("fileroute.commands.auth._interactive_terminal", lambda: False)
     config = tmp_path / "profiles.json"
@@ -136,9 +147,10 @@ def test_missing_flags_fail_without_prompt_in_unattended_setup(
             "--config",
             str(config),
         ],
+        color=color_output,
     )
     assert result.exit_code != 0
-    assert "--tenant-id" in result.output
+    assert "--tenant-id" in unstyle(result.output)
     assert not config.exists()
 
 
@@ -153,7 +165,11 @@ def test_missing_flags_fail_without_prompt_in_unattended_setup(
     ],
 )
 def test_profile_login_rejects_one_off_overrides_before_authentication(
-    provider: str, extra: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    provider: str,
+    extra: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    color_output: bool,
 ) -> None:
     from fileroute.auth import profiles
 
@@ -176,9 +192,10 @@ def test_profile_login_rejects_one_off_overrides_before_authentication(
             str(tmp_path / "absent.json"),
             *extra,
         ],
+        color=color_output,
     )
     assert result.exit_code != 0
-    assert "Use --profile by itself" in result.output
+    assert "Use --profile by itself" in unstyle(result.output)
 
 
 def test_profile_login_enables_interactive_auth_only_explicitly(
