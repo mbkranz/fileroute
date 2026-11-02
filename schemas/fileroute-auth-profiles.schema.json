@@ -655,7 +655,7 @@
       "type": "string"
     }
   },
-  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.5/fileroute-auth-profiles.schema.json",
+  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.6/fileroute-auth-profiles.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Validated contents of a profiles YAML file; parsing performs no auth I/O.",

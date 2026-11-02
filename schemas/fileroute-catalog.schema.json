@@ -693,7 +693,7 @@
       "type": "string"
     }
   },
-  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.5/fileroute-catalog.schema.json",
+  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.6/fileroute-catalog.schema.json",
   "$ref": "#/$defs/Catalog",
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }
