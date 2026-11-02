@@ -10,10 +10,10 @@ Auto-generated from source signatures and docstrings.
   - Plan remote sources to local paths, offline.
 - `def plan_push(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
-- `def pull(entries: tuple[PullEntry, ...]) -> None`
-  - Resolve remote items, check their paths, then download planned files.
-- `def push(files: tuple[PushEntry, ...]) -> None`
-  - Transfer a prepared plan; remote files outside it are never deleted.
+- `def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None) -> None`
+  - Download planned files after resolving paths and selected credentials.
+- `def push(files: tuple[PushEntry, ...], *, profile: str | None = None) -> None`
+  - Publish a plan using location profiles ahead of the run's default.
 
 ### Classes
 
@@ -49,11 +49,11 @@ Auto-generated from source signatures and docstrings.
   - Walk keyed metadata without I/O, retaining origins from load().
 - `def find(catalog: Catalog, name: str, *, kind: type[Catalog] | type[Resource] | type[Location] | None = None) -> Catalog | Resource | CatalogLink | Location`
   - Find one registered name, JSON Pointer, or exact JSONPath (optional $).
-- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False) -> Catalog`
+- `def resolve(catalog: Catalog, *, direction: Literal['pull', 'push'] | None = None, online: bool = False, profile: str | None = None) -> Catalog`
   - Return resolved metadata without mutating the input or authored paths.
 - `def select(catalog: Catalog, selector: str) -> Selection`
   - Select a node with origin and inherited target context; never perform I/O.
-- `def resolve_selection(path: Path | str, selector: str, *, online: bool = False, write: bool = False) -> Selection`
+- `def resolve_selection(path: Path | str, selector: str, *, online: bool = False, write: bool = False, profile: str | None = None) -> Selection`
   - Resolve one selected scope; optional writes affect its origin file only.
 - `def local_path(path: str, root: Path, *, reject_symlinks: bool = False) -> Path`
   - Resolve a local artifact inside root; never accept URLs or escapes.
@@ -176,6 +176,7 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `path: str`
   - `service_type: ServiceTypeField | None`
+  - `auth_profile: str | None`
   - `service_id: str | None`
   - `entity_type: EntityTypeValue | None`
   - `remote_path: str | None`
@@ -352,8 +353,8 @@ Auto-generated from source signatures and docstrings.
     - Build from Application Default Credentials (``gcloud auth application-default login``).
   - `def from_service_account(cls, credentials_path: str | Path, scopes: Sequence[str] | str | None = None) -> 'GoogleAuth'`
     - Build from a service account JSON key file.
-  - `def from_user_oauth(cls, scopes: Sequence[str] | str, client_secrets_path: str | Path = None, token_path: str | Path = None, token_store: Any = None) -> 'GoogleAuth'`
-    - Build via the OAuth installed-app flow, with token persistence.
+  - `def from_user_oauth(cls, scopes: Sequence[str] | str, client_secrets_path: str | Path | None = None, token_path: str | Path | None = None, token_store: Any = None, *, interactive: bool = True, use_local_server: bool = True) -> 'GoogleAuth'`
+    - Load/refresh scoped user credentials, prompting only when permitted.
   - `def from_settings(cls, config: object | None = None) -> 'GoogleAuth'`
     - Build from environment variables or a :class:`~fileroute.auth.settings.GoogleAuthConfig`.
   - `def credentials(self) -> Credentials`
@@ -369,10 +370,10 @@ Auto-generated from source signatures and docstrings.
 #### `MicrosoftAuth`
 - Microsoft access-token holder with named constructors for each auth mode.
 - Methods:
-  - `def from_app_only(cls, tenant_id: str, client_id: str, client_secret: str, scopes: Sequence[str] | str | None = None) -> 'MicrosoftAuth'`
+  - `def from_app_only(cls, tenant_id: str, client_id: str, client_secret: str, scopes: Sequence[str] | str | None = None, *, cache_path: Path | None = None) -> 'MicrosoftAuth'`
     - Build using client-credential (app-only) flow via MSAL.
-  - `def from_delegated(cls, tenant_id: str, client_id: str, scopes: Sequence[str] | str | None = None) -> 'MicrosoftAuth'`
-    - Build using interactive delegated (user) flow via MSAL.
+  - `def from_delegated(cls, tenant_id: str, client_id: str, scopes: Sequence[str] | str | None = None, *, cache_path: Path | None = None, interactive: bool = True) -> 'MicrosoftAuth'`
+    - Acquire silently from a persistent MSAL cache before optional consent.
   - `def from_settings(cls, config: object | None = None) -> 'MicrosoftAuth'`
     - Build from environment variables or a :class:`~fileroute.auth.settings.MicrosoftAuthConfig`.
   - `def access_token(self) -> str`
@@ -381,11 +382,20 @@ Auto-generated from source signatures and docstrings.
 
 ## `fileroute.auth.token_store`
 
+### Functions
+
+- `def atomic_private_write(path: Path, content: str) -> None`
+  - Atomically replace a UTF-8 file with owner-only permissions.
+- `def private_file_lock(path: Path, *, timeout: float = 10.0) -> Iterator[None]`
+  - Serialize local updates with an exclusive lock file and bounded waiting.
+
 ### Classes
 
 #### `JsonTokenStore`
-- Persist Google authorized-user credentials as JSON.
+- Persist Google authorized-user credentials privately as JSON.
 - Methods:
+  - `def locked(self) -> AbstractContextManager[None]`
+    - Lock the complete load/refresh/save operation.
   - `def load(self) -> UserCredentials | None`
   - `def save(self, creds: UserCredentials) -> None`
 
@@ -427,6 +437,69 @@ Auto-generated from source signatures and docstrings.
     - Return a :class:`~fileroute.auth.microsoft.MicrosoftAuth` for this configuration.
 
 #### `MicrosoftAuthMode`
+
+
+## `fileroute.auth.profiles`
+
+### Constants
+
+- `PROFILE_NAME_PATTERN = '^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'`
+
+### Functions
+
+- `def load_profiles(*, config_path: Path | None = None) -> ProfileConfig`
+  - Read named profiles; a missing config is an empty validated configuration.
+- `def save_profile(name: str, profile: AuthProfile, *, config_path: Path | None = None, replace: bool = False) -> ProfileReceipt`
+  - Save a profile privately, refusing accidental replacement and concurrent lost updates.
+- `def get_profile(name: str, *, config_path: Path | None = None) -> AuthProfile`
+  - Find one profile without resolving credentials or creating a client.
+- `def remove_profile(name: str, *, config_path: Path | None = None) -> ProfileReceipt`
+  - Remove the profile and its private token cache; external credentials are untouched.
+- `def build_profile_client(name: str, service_type: ServiceType, *, config_path: Path | None = None, interactive: bool = False) -> BaseClient`
+  - Build a matching provider client; named profiles never load legacy settings.
+- `def authenticate_profile(name: str, *, config_path: Path | None = None, interactive: bool = False) -> ProfileReceipt`
+  - Acquire or refresh credentials, with user consent only when explicitly allowed.
+
+### Classes
+
+#### `AuthProfile`
+- Provider-specific auth choices, never merged with legacy ``.env`` settings.
+- Fields:
+  - `provider: Annotated[ServiceType, BeforeValidator(_provider_alias)]`
+  - `mode: ProfileMode | None`
+  - `tenant_id: str | None`
+  - `client_id: str | None`
+  - `host_url: str | None`
+  - `scopes: list[str] | None`
+  - `credentials_file: Path | None`
+  - `oauth_client_secrets: Path | None`
+  - `client_secret_env: str | None`
+  - `aws_profile: str | None`
+  - `use_local_server: bool | None`
+- Methods:
+  - `def nonempty_text(cls, value: str | None) -> str | None`
+  - `def nonempty_scopes(cls, value: list[str] | None) -> list[str] | None`
+  - `def environment_reference(cls, value: str | None) -> str | None`
+  - `def tenant_reference(cls, value: str | None) -> str | None`
+  - `def normalize_host(cls, value: str | None) -> str | None`
+  - `def provider_configuration(self) -> AuthProfile`
+
+#### `ProfileConfig`
+- Validated contents of a profiles YAML file; parsing performs no auth I/O.
+- Fields:
+  - `profiles: dict[ProfileName, AuthProfile]`
+
+#### `ProfileError`
+- Actionable profile failure whose message contains no credential payload.
+
+#### `ProfileReceipt`
+- Safe, serializable evidence of a completed profile operation.
+- Fields:
+  - `name: ProfileName`
+  - `provider: ServiceType`
+  - `mode: ProfileMode`
+  - `action: Literal['saved', 'removed', 'authenticated']`
+  - `config_path: Path`
 
 
 ## `fileroute.clients.sharepoint`

@@ -5,10 +5,7 @@ from pathlib import Path
 import pytest
 from google.oauth2.credentials import Credentials as UserCredentials
 
-from fileroute.auth.google import (
-    GoogleAuth,
-    normalize_google_scopes,
-)
+from fileroute.auth.google import GoogleAuth, normalize_google_scopes
 from fileroute.auth.token_store import JsonTokenStore
 from fileroute.exceptions import GoogleAuthError
 
@@ -42,10 +39,7 @@ class DummyStore:
 def test_normalize_google_scopes_supports_none_string_and_sequence() -> None:
     assert normalize_google_scopes(None) == ["https://www.googleapis.com/auth/drive"]
     assert normalize_google_scopes("scope-a") == ["scope-a"]
-    assert normalize_google_scopes(["scope-a", "scope-b"]) == [
-        "scope-a",
-        "scope-b",
-    ]
+    assert normalize_google_scopes(["scope-a", "scope-b"]) == ["scope-a", "scope-b"]
 
 
 def test_google_auth_init_stores_credentials() -> None:
@@ -80,16 +74,14 @@ def test_google_auth_from_service_account_raises_on_bad_path(
 def test_json_token_store_round_trip(tmp_path: Path) -> None:
     token_path = tmp_path / "token.json"
     store = JsonTokenStore(token_path)
-    creds = UserCredentials.from_authorized_user_info(
-        {
-            "client_id": "client-id",
-            "client_secret": "client-secret",
-            "refresh_token": "refresh-token",
-            "token": "access-token",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "scopes": ["https://www.googleapis.com/auth/drive.readonly"],
-        }
-    )
+    creds = UserCredentials.from_authorized_user_info({
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+        "refresh_token": "refresh-token",
+        "token": "access-token",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "scopes": ["https://www.googleapis.com/auth/drive.readonly"],
+    })
 
     store.save(creds)
     loaded = store.load()
@@ -104,9 +96,7 @@ def test_google_auth_from_user_oauth_returns_valid_stored_credentials() -> None:
     store = DummyStore(creds)
 
     auth = GoogleAuth.from_user_oauth(
-        client_secrets_path="oauth.json",
-        scopes=["scope-a"],
-        token_store=store,
+        client_secrets_path="oauth.json", scopes=["scope-a"], token_store=store
     )
 
     assert auth.credentials is creds
@@ -119,9 +109,7 @@ def test_google_auth_from_user_oauth_refreshes_expired_credentials() -> None:
     store = DummyStore(creds)
 
     auth = GoogleAuth.from_user_oauth(
-        client_secrets_path="oauth.json",
-        scopes=["scope-a"],
-        token_store=store,
+        client_secrets_path="oauth.json", scopes=["scope-a"], token_store=store
     )
 
     assert auth.credentials is creds
@@ -146,9 +134,7 @@ def test_google_auth_from_user_oauth_runs_flow_when_store_missing(
     )
 
     auth = GoogleAuth.from_user_oauth(
-        client_secrets_path="oauth.json",
-        scopes=["scope-a"],
-        token_store=store,
+        client_secrets_path="oauth.json", scopes=["scope-a"], token_store=store
     )
 
     assert auth.credentials is issued_creds
@@ -171,3 +157,88 @@ def test_google_auth_ensure_valid_skips_refresh_when_token_valid() -> None:
     auth.ensure_valid()
 
     assert creds.refresh_count == 0
+
+
+def test_user_oauth_noninteractive_never_opens_browser(monkeypatch):
+    monkeypatch.setattr(
+        "fileroute.auth.google.InstalledAppFlow.from_client_secrets_file",
+        lambda *_a, **_kw: pytest.fail("browser login started"),
+    )
+    with pytest.raises(GoogleAuthError, match="auth login"):
+        GoogleAuth.from_user_oauth(
+            scopes=["scope-a"],
+            client_secrets_path="oauth.json",
+            token_store=DummyStore(),
+            interactive=False,
+        )
+
+
+def test_user_oauth_rejects_cache_scope_mismatch_before_refresh(monkeypatch):
+    creds = DummyCreds(valid=True)
+    creds.granted_scopes = ["scope-read"]
+    monkeypatch.setattr(
+        "fileroute.auth.google.InstalledAppFlow.from_client_secrets_file",
+        lambda *_a, **_kw: pytest.fail("browser login started"),
+    )
+    with pytest.raises(GoogleAuthError, match="configured scopes"):
+        GoogleAuth.from_user_oauth(
+            scopes=["scope-write"], token_store=DummyStore(creds), interactive=False
+        )
+    assert creds.refresh_count == 0
+
+
+def test_runtime_oauth_refresh_persists_rotated_credentials():
+    creds = DummyCreds(valid=True)
+    store = DummyStore(creds)
+    auth = GoogleAuth.from_user_oauth(
+        scopes=["scope-a"], token_store=store, interactive=False
+    )
+    creds.valid = False
+    auth.ensure_valid()
+    assert creds.refresh_count == 1
+    assert store.saved == [creds]
+
+
+def test_runtime_refresh_reuses_other_process_refreshed_cache():
+    original = DummyCreds(valid=True)
+    store = DummyStore(original)
+    auth = GoogleAuth.from_user_oauth(
+        scopes=["scope-a"], token_store=store, interactive=False
+    )
+    original.valid = False
+    latest = DummyCreds(valid=True, token="other-process-token")
+    store.creds = latest
+    auth.ensure_valid()
+    assert auth.credentials is latest
+    assert original.refresh_count == latest.refresh_count == 0
+
+
+def test_private_atomic_token_write_preserves_previous_cache_on_failure(
+    tmp_path, monkeypatch
+):
+    import os
+
+    path = tmp_path / "private" / "token.json"
+    store = JsonTokenStore(path)
+    creds = UserCredentials.from_authorized_user_info({
+        "client_id": "client",
+        "client_secret": "secret",
+        "refresh_token": "refresh",
+        "token": "old",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "scopes": ["scope-a"],
+    })
+    store.save(creds)
+    original = path.read_text()
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+        assert path.parent.stat().st_mode & 0o777 == 0o700
+
+    def fail_replace(*_args):
+        raise OSError("replacement failed")
+
+    monkeypatch.setattr("fileroute.auth.token_store.os.replace", fail_replace)
+    with pytest.raises(OSError):
+        store.save(creds)
+    assert path.read_text() == original
+    assert list(path.parent.iterdir()) == [path]

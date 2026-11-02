@@ -15,6 +15,7 @@ NAMES = (
     "sharepoint-google-drive",
     "sharepoint-mixed-targets",
     "local-three-targets",
+    "profile-identities",
 )
 
 

@@ -1,0 +1,14 @@
+{
+  "profile": "fileroute-catalog",
+  "resources": {
+    "report": {
+      "path": "artifacts/report.csv",
+      "sources": [
+        {
+          "path": "s3://example-reports/report.csv",
+          "authProfile": "archive-reader"
+        }
+      ]
+    }
+  }
+}

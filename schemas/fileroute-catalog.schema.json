@@ -1,0 +1,699 @@
+{
+  "$comment": "MIT licensed; see the fileroute LICENSE. Operational validation still requires fileroute.",
+  "$defs": {
+    "Catalog": {
+      "additionalProperties": true,
+      "description": "Keyed resources and catalogs; paths retain transfer-root semantics.\n\nMap keys are registered names. Links are recognized before union validation\nso an extensible inline Catalog cannot absorb a malformed descriptor link.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "$ref"
+            ]
+          },
+          {
+            "required": [
+              "descriptor"
+            ]
+          },
+          {
+            "required": [
+              "_cache"
+            ]
+          },
+          {
+            "required": [
+              "cache"
+            ]
+          },
+          {
+            "required": [
+              "accessURL"
+            ]
+          },
+          {
+            "required": [
+              "accessUrl"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "serviceType"
+            ]
+          },
+          {
+            "required": [
+              "serviceId"
+            ]
+          },
+          {
+            "required": [
+              "syncTarget"
+            ]
+          },
+          {
+            "required": [
+              "$schema"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "catalogs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Catalog"
+              },
+              {
+                "$ref": "#/$defs/CatalogLink"
+              }
+            ]
+          },
+          "description": "Nested catalogs keyed by stable registered names. Each value is an inline catalog or a local descriptor link; catalog targets can be inherited by descendants.",
+          "examples": [
+            {
+              "archive": {
+                "descriptor": "catalogs/archive.yaml"
+              }
+            }
+          ],
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+          },
+          "title": "Catalogs",
+          "type": "object"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable explanation of this artifact or catalog and its purpose.",
+          "examples": [
+            "Report inputs and publication destinations for the monthly release."
+          ],
+          "title": "Description"
+        },
+        "entityType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional artifact entity kind using OpenMetadata-style names; commonly File, Directory, or Container.",
+          "examples": [
+            "File",
+            "Directory",
+            "Container"
+          ],
+          "title": "Entitytype"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local artifact or directory path relative to the transfer root (current working directory by default). A catalog path anchors inherited target paths.",
+          "examples": [
+            "artifacts"
+          ],
+          "title": "Path"
+        },
+        "pathTemplate": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input alias for resourcePathTemplate; saved using the canonical spelling.",
+          "examples": [
+            "{surveyid}/{env}/v{version}/schema.json"
+          ],
+          "title": "Resourcepathtemplate"
+        },
+        "profile": {
+          "default": "fileroute-catalog",
+          "description": "Catalog metadata profile identifier. This is unrelated to authentication profiles or a location's authProfile.",
+          "examples": [
+            "fileroute-catalog"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "resourcePathTemplate": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Parse pattern for resource pathProperties, relative to this catalog path unless it is an absolute path or URI. Transfers do not expand it.",
+          "examples": [
+            "{surveyid}/{env}/v{version}/schema.json"
+          ],
+          "title": "Resourcepathtemplate"
+        },
+        "resources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Resource"
+          },
+          "description": "Resources keyed by stable registered names. Names form selectors such as resources.report; put display text in each resource's title.",
+          "examples": [
+            {
+              "report": {
+                "path": "artifacts/report.csv"
+              }
+            }
+          ],
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+          },
+          "title": "Resources",
+          "type": "object"
+        },
+        "sources": {
+          "description": "Upstream inputs or provenance. Pull requires exactly one remote source per selected artifact; sources never select publication destinations.",
+          "examples": [
+            [
+              {
+                "authProfile": "archive-reader",
+                "path": "s3://example-reports/monthly/report.csv"
+              }
+            ]
+          ],
+          "items": {
+            "$ref": "#/$defs/Location"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Location"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Publication destinations. Omitted or null inherits the nearest catalog's targets; an empty list opts out. Explicit child targets replace inherited targets.",
+          "examples": [
+            [],
+            [
+              {
+                "authProfile": "partner-writer",
+                "path": "https://drive.google.com/drive/folders/EXAMPLE_FOLDER"
+              }
+            ]
+          ],
+          "title": "Targets"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable display title. Stable selectors use the resource/catalog map key.",
+          "examples": [
+            "Monthly partner report"
+          ],
+          "title": "Title"
+        }
+      },
+      "title": "Fileroute catalog",
+      "type": "object"
+    },
+    "CatalogLink": {
+      "additionalProperties": false,
+      "description": "Link to a local catalog document, relative to its containing file.",
+      "properties": {
+        "descriptor": {
+          "description": "Local YAML/JSON catalog document path, relative to the containing descriptor. URLs and URI fragments are not supported; links expand only when requested.",
+          "examples": [
+            "catalogs/archive.yaml"
+          ],
+          "minLength": 1,
+          "title": "Descriptor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "descriptor"
+      ],
+      "title": "Local catalog link",
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": true,
+      "description": "Upstream input or downstream destination, with optional provider metadata.\n\n``path`` may be a local provenance file or remote URL. ``serviceType`` uses\nOpenMetadata's drive service vocabulary; it is resolved only for transfers.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "descriptor"
+            ]
+          },
+          {
+            "required": [
+              "$ref"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "authProfile": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local authentication profile name, overriding the run's profile default. Credentials stay outside the descriptor. Static schemas check the name pattern; they do not discover private profile names or verify the identity.",
+          "examples": [
+            "work-reader",
+            "archive-reader"
+          ],
+          "title": "Authprofile"
+        },
+        "bucket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "S3 bucket namespace, required for S3 paths that are not full URLs.",
+          "examples": [
+            "example-reports"
+          ],
+          "title": "Bucket"
+        },
+        "drive": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SharePoint document-library name or Google Drive name. Use My Drive for the user's Google Drive; duplicate names may require driveId.",
+          "examples": [
+            "Shared Documents",
+            "My Drive"
+          ],
+          "title": "Drive"
+        },
+        "driveId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved SharePoint or Google shared-drive identifier, used to scope item lookup.",
+          "title": "Driveid"
+        },
+        "entityType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider entity kind, commonly File, Directory, or Container. A resource target marked Directory/Container receives the local filename below that destination.",
+          "examples": [
+            "File",
+            "Directory",
+            "Container"
+          ],
+          "title": "Entitytype"
+        },
+        "path": {
+          "description": "Authored remote URL or provider-scoped path. A source may also be a local provenance path; pull requires a supported remote source.",
+          "examples": [
+            "s3://example-reports/monthly/report.csv",
+            "docs/report.qmd"
+          ],
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "remotePath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Supplemental path within the remote namespace. Resolution may derive it without changing the authored path; parent traversal is not allowed.",
+          "examples": [
+            "monthly/report.csv"
+          ],
+          "title": "Remotepath"
+        },
+        "serviceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider item identifier, preferred over path lookup when present. Online resolution can populate it; S3 uses bucket:key.",
+          "examples": [
+            "example-reports:monthly/report.csv"
+          ],
+          "title": "Serviceid"
+        },
+        "serviceType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Remote provider. Supported URLs infer this during offline resolution; provider-scoped paths require an explicit serviceType.",
+          "examples": [
+            "GoogleDrive",
+            "SharePoint",
+            "S3"
+          ]
+        },
+        "site": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SharePoint site name for scoped lookup, used with drive or driveId.",
+          "examples": [
+            "data"
+          ],
+          "title": "Site"
+        },
+        "siteId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved Microsoft Graph site identifier. Avoids repeating site-name lookup.",
+          "title": "Siteid"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "Source or target location",
+      "type": "object"
+    },
+    "Resource": {
+      "additionalProperties": true,
+      "description": "A materialized artifact and its provenance/publication locations.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "$ref"
+            ]
+          },
+          {
+            "required": [
+              "descriptor"
+            ]
+          },
+          {
+            "required": [
+              "_cache"
+            ]
+          },
+          {
+            "required": [
+              "cache"
+            ]
+          },
+          {
+            "required": [
+              "accessURL"
+            ]
+          },
+          {
+            "required": [
+              "accessUrl"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "serviceType"
+            ]
+          },
+          {
+            "required": [
+              "serviceId"
+            ]
+          },
+          {
+            "required": [
+              "syncTarget"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable explanation of this artifact or catalog and its purpose.",
+          "examples": [
+            "Report inputs and publication destinations for the monthly release."
+          ],
+          "title": "Description"
+        },
+        "entityType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional artifact entity kind using OpenMetadata-style names; commonly File, Directory, or Container.",
+          "examples": [
+            "File",
+            "Directory",
+            "Container"
+          ],
+          "title": "Entitytype"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional file format metadata; this does not convert or transform the artifact.",
+          "examples": [
+            "csv",
+            "parquet",
+            "pdf"
+          ],
+          "title": "Format"
+        },
+        "path": {
+          "description": "Required local artifact file path relative to the transfer root. Pull materializes this file; push publishes this file to targets.",
+          "examples": [
+            "artifacts/monthly-report.csv"
+          ],
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "pathProperties": {
+          "additionalProperties": true,
+          "description": "Named values extracted from the nearest catalog resourcePathTemplate during resolution.",
+          "examples": [
+            {
+              "surveyid": "example",
+              "year": 2026
+            }
+          ],
+          "title": "Pathproperties",
+          "type": "object"
+        },
+        "sources": {
+          "description": "Upstream inputs or provenance. Pull requires exactly one remote source per selected artifact; sources never select publication destinations.",
+          "examples": [
+            [
+              {
+                "authProfile": "archive-reader",
+                "path": "s3://example-reports/monthly/report.csv"
+              }
+            ]
+          ],
+          "items": {
+            "$ref": "#/$defs/Location"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Location"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Publication destinations. Omitted or null inherits the nearest catalog's targets; an empty list opts out. Explicit child targets replace inherited targets.",
+          "examples": [
+            [],
+            [
+              {
+                "authProfile": "partner-writer",
+                "path": "https://drive.google.com/drive/folders/EXAMPLE_FOLDER"
+              }
+            ]
+          ],
+          "title": "Targets"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable display title. Stable selectors use the resource/catalog map key.",
+          "examples": [
+            "Monthly partner report"
+          ],
+          "title": "Title"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "Catalog resource",
+      "type": "object"
+    },
+    "ServiceType": {
+      "enum": [
+        "GoogleDrive",
+        "SharePoint",
+        "S3"
+      ],
+      "title": "ServiceType",
+      "type": "string"
+    }
+  },
+  "$id": "https://github.com/mbkranz/fileroute/releases/download/v0.2.5/fileroute-catalog.schema.json",
+  "$ref": "#/$defs/Catalog",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

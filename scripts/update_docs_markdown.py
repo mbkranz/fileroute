@@ -44,6 +44,10 @@ API_MODULES = [
         "path": ROOT / "fileroute" / "auth" / "settings.py",
     },
     {
+        "module": "fileroute.auth.profiles",
+        "path": ROOT / "fileroute" / "auth" / "profiles.py",
+    },
+    {
         "module": "fileroute.clients.sharepoint",
         "path": ROOT / "fileroute" / "clients" / "sharepoint.py",
     },

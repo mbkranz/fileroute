@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import json
 import subprocess
 import tempfile
 import unittest
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -53,6 +55,16 @@ class ReleaseTests(unittest.TestCase):
         Path("dist").mkdir(exist_ok=True)
         Path("dist/fixture.whl").write_bytes(b"wheel")
         Path("dist/fixture.tar.gz").write_bytes(b"sdist")
+        version = tomllib.loads(Path("pyproject.toml").read_text())["project"][
+            "version"
+        ]
+        for filename in release.SCHEMA_FILENAMES:
+            content = json.dumps({
+                "$id": f"https://example.invalid/v{version}/{filename}"
+            })
+            for directory in (Path("schemas"), Path("dist/schemas")):
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / filename).write_text(content)
 
     def push(self, result: dict[str, str], branch: str = "dev") -> None:
         release.git(
@@ -71,6 +83,16 @@ class ReleaseTests(unittest.TestCase):
     def test_lifecycle_and_retry_after_stable_promotion(self) -> None:
         first = release.prepare("dev", self.source)
         self.assertEqual(first["tag"], "v1.0.1.dev1")
+        changed = set(
+            release.git(
+                "diff-tree", "--no-commit-id", "--name-only", "-r", first["release_sha"]
+            ).splitlines()
+        )
+        self.assertEqual(
+            changed, {"pyproject.toml", "uv.lock", *release.SOURCE_SCHEMAS}
+        )
+        for filename in release.SCHEMA_FILENAMES:
+            self.assertIn("v1.0.1.dev1", (Path("schemas") / filename).read_text())
         self.push(first)
         second = release.prepare("dev", self.change())
         self.assertEqual(second["tag"], "v1.0.1.dev2")
@@ -113,6 +135,30 @@ class ReleaseTests(unittest.TestCase):
     def test_failed_build_creates_no_release_commit_or_tag(self) -> None:
         self.build.side_effect = RuntimeError("Build failed")
         with self.assertRaisesRegex(RuntimeError, "Build failed"):
+            release.prepare("dev", self.source)
+        self.assertEqual(release.git("rev-parse", "HEAD"), self.source)
+        self.assertEqual(release.git("tag", "--list"), "")
+
+    def test_incomplete_schema_bundle_creates_no_release_commit_or_tag(self) -> None:
+        def incomplete_build(source: str) -> None:
+            self.fake_build(source)
+            Path("dist/schemas/fileroute-auth-profiles.schema.json").unlink()
+
+        self.build.side_effect = incomplete_build
+        with self.assertRaisesRegex(RuntimeError, "schema bundle is incomplete"):
+            release.prepare("dev", self.source)
+        self.assertEqual(release.git("rev-parse", "HEAD"), self.source)
+        self.assertEqual(release.git("tag", "--list"), "")
+
+    def test_mismatched_schema_bundle_creates_no_release_commit_or_tag(self) -> None:
+        def mismatched_build(source: str) -> None:
+            self.fake_build(source)
+            Path("dist/schemas/fileroute-auth-profiles.schema.json").write_text(
+                "different bytes"
+            )
+
+        self.build.side_effect = mismatched_build
+        with self.assertRaisesRegex(RuntimeError, "schema differs"):
             release.prepare("dev", self.source)
         self.assertEqual(release.git("rev-parse", "HEAD"), self.source)
         self.assertEqual(release.git("tag", "--list"), "")

@@ -16,6 +16,12 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+SCHEMA_FILENAMES = (
+    "fileroute-catalog.schema.json",
+    "fileroute-auth-profiles.schema.json",
+)
+SOURCE_SCHEMAS = tuple(f"schemas/{filename}" for filename in SCHEMA_FILENAMES)
+
 
 def run(*args: str) -> str:
     return subprocess.check_output(args, text=True).strip()
@@ -28,6 +34,12 @@ def git(*args: str) -> str:
 def build(source: str) -> None:
     """Build once from the bumped version, without stale distributions."""
     shutil.rmtree("dist", ignore_errors=True)
+    # Keep tracked schema IDs synchronized with uv's release version. These
+    # generated files join pyproject/uv.lock in the release identity commit.
+    subprocess.run(
+        ["uv", "run", "--frozen", "python", "scripts/export_schema.py", "--source"],
+        check=True,
+    )
     subprocess.run(
         ["uvx", "--from", "poethepoet==0.48.0", "poe", "build"],
         check=True,
@@ -42,6 +54,19 @@ def build(source: str) -> None:
     )
 
     check_license()
+
+
+def check_schema_bundle() -> None:
+    """Require every saved release schema to match the bumped tracked source."""
+    for filename in SCHEMA_FILENAMES:
+        source = Path("schemas") / filename
+        artifact = Path("dist/schemas") / filename
+        if not source.is_file() or not artifact.is_file() or not source.stat().st_size:
+            raise RuntimeError(f"Release schema bundle is incomplete: {filename}")
+        if source.read_bytes() != artifact.read_bytes():
+            raise RuntimeError(
+                f"Release schema differs from its generated source: {filename}"
+            )
 
 
 def check_license() -> None:
@@ -85,7 +110,7 @@ def existing_release(branch: str, source: str) -> tuple[str, str] | None:
         )
         if (
             git("show", "-s", "--format=%P", sha) != source
-            or not changed <= {"pyproject.toml", "uv.lock"}
+            or not changed <= {"pyproject.toml", "uv.lock", *SOURCE_SCHEMAS}
             or tag not in git("tag", "--points-at", sha).splitlines()
         ):
             raise RuntimeError(
@@ -140,9 +165,10 @@ def prepare(branch: str, source: str) -> dict[str, str]:
     build(source)
     if not list(Path("dist").glob("*.whl")) or not list(Path("dist").glob("*.tar.gz")):
         raise RuntimeError("Build must produce both a wheel and a source distribution.")
+    check_schema_bundle()
     git("config", "user.name", "github-actions[bot]")
     git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-    git("add", "pyproject.toml", "uv.lock")
+    git("add", "pyproject.toml", "uv.lock", *SOURCE_SCHEMAS)
     git(
         "commit",
         "-m",

@@ -12,6 +12,7 @@ from urllib.parse import quote, unquote, urlparse
 
 from fileroute.models import Catalog, Resource, Location, ServiceType
 from fileroute.clients import get_provider
+from fileroute.clients.base import BaseClient
 from fileroute.descriptor import find, load, walk, resolve, local_path
 from fileroute.resolution import lookup_item, parse_location
 
@@ -116,17 +117,41 @@ def plan_pull(
     return tuple(entries)
 
 
-def pull(entries: tuple[PullEntry, ...]) -> None:
-    """Resolve remote items, check their paths, then download planned files."""
-    clients = {}
+def _transfer_clients(
+    entries: tuple[PullEntry, ...] | tuple[PushEntry, ...], *, profile: str | None
+) -> dict[tuple[ServiceType, str | None], BaseClient]:
+    """Validate every selected profile before transferring any file content."""
+    clients: dict[tuple[ServiceType, str | None], BaseClient] = {}
+    for entry in entries:
+        selected = (
+            entry.location.auth_profile if entry.location is not None else None
+        ) or profile
+        key = (entry.service_type, selected)
+        if key not in clients:
+            if selected is None:
+                clients[key] = get_provider(entry.service_type).build_default()
+            else:
+                from fileroute.auth.profiles import build_profile_client
+
+                clients[key] = build_profile_client(selected, entry.service_type)
+    return clients
+
+
+def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None) -> None:
+    """Download planned files after resolving paths and selected credentials.
+
+    A location's ``authProfile`` overrides the run's ``profile`` default. An
+    unnamed location/run retains the provider's legacy credential discovery.
+    Profile selection is deferred until execution; planning remains offline.
+    """
+    clients = _transfer_clients(entries, profile=profile)
     files = []
     destinations = set()
     for entry in entries:
-        if entry.service_type not in clients:
-            clients[entry.service_type] = get_provider(
-                entry.service_type
-            ).build_default()
-        client = clients[entry.service_type]
+        selected = (
+            entry.location.auth_profile if entry.location is not None else None
+        ) or profile
+        client = clients[(entry.service_type, selected)]
         item = (
             lookup_item(client, entry.location)
             if entry.location is not None and hasattr(client, "get_from_location")
@@ -348,18 +373,24 @@ def plan_push(
     return tuple(entries)
 
 
-def push(files: tuple[PushEntry, ...]) -> None:
-    """Transfer a prepared plan; remote files outside it are never deleted."""
+def push(files: tuple[PushEntry, ...], *, profile: str | None = None) -> None:
+    """Publish a plan using location profiles ahead of the run's default.
+
+    All selected profiles are checked before uploading any bytes. Unnamed
+    locations/runs retain legacy credentials. Files outside the plan are never
+    deleted, and planning never loads authentication configuration.
+    """
     if any(
         "your-tenant" in file.remote.casefold() or "your-site" in file.remote.casefold()
         for file in files
     ):
         raise ValueError("Replace the SharePoint placeholder target before uploading")
-    clients = {}
+    clients = _transfer_clients(files, profile=profile)
     for file in files:
-        if file.service_type not in clients:
-            clients[file.service_type] = get_provider(file.service_type).build_default()
-        client = clients[file.service_type]
+        selected = (
+            file.location.auth_profile if file.location is not None else None
+        ) or profile
+        client = clients[(file.service_type, selected)]
         if file.service_type is ServiceType.GOOGLE_DRIVE and file.direct_file:
             if file.location is None:
                 raise ValueError("Google Drive file upload requires a resolved target")

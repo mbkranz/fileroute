@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "archive-reader": {
+      "provider": "S3",
+      "mode": "default",
+      "aws_profile": "team-dev"
+    }
+  }
+}

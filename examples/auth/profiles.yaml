@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../schemas/fileroute-auth-profiles.schema.json
+# Synthetic template: copy selected entries into your private profiles.yaml.
+# Default: ~/.config/fileroute/profiles.yaml (XDG_CONFIG_HOME is respected).
+# FILEROUTE_CONFIG_DIR selects another directory. Never put secrets here.
+profiles:
+  work-reader:
+    provider: SharePoint
+    mode: delegated
+    tenant_id: example.onmicrosoft.com
+    client_id: YOUR_PUBLIC_CLIENT_ID
+    host_url: contoso.sharepoint.com
+    scopes:
+      - https://graph.microsoft.com/.default
+  work-automation:
+    provider: SharePoint
+    mode: app_only
+    tenant_id: example.onmicrosoft.com
+    client_id: YOUR_APPLICATION_CLIENT_ID
+    host_url: contoso.sharepoint.com
+    # Resolve this environment variable when authenticating; do not paste its value.
+    client_secret_env: WORK_AZURE_CLIENT_SECRET
+  partner-writer:
+    provider: GoogleDrive
+    mode: user_oauth
+    # Relative credential paths resolve beside this private configuration file.
+    oauth_client_secrets: credentials/google-desktop.json
+    scopes:
+      - https://www.googleapis.com/auth/drive
+  google-automation:
+    provider: GoogleDrive
+    mode: service_account
+    credentials_file: credentials/google-service-account.json
+    scopes:
+      - https://www.googleapis.com/auth/drive.readonly
+  google-runtime:
+    provider: GoogleDrive
+    mode: adc
+  archive-reader:
+    provider: S3
+    mode: default
+    # Existing AWS profile; Fileroute does not copy its keys or SSO session.
+    aws_profile: team-dev
