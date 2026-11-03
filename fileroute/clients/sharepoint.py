@@ -73,9 +73,16 @@ class SharepointClient(BaseClient):
         else:
             raise ValueError("SharepointClient requires either auth or access_token.")
 
+        self._auth = auth
         self.auth_header = {"Authorization": f"Bearer {self.access_token}"}
-        self.session = session or requests.Session()
+        self._owns_session = session is None
+        self.session = requests.Session() if session is None else session
         self.timeout = timeout
+
+    def close(self) -> None:
+        """Close an internally created session; leave injected sessions open."""
+        if self._owns_session:
+            self.session.close()
 
     @classmethod
     def build_default(cls) -> "SharepointClient":
@@ -105,9 +112,14 @@ class SharepointClient(BaseClient):
         config.to_auth()
 
     def _request(
-        self, method: str, url: str, *,
+        self,
+        method: str,
+        url: str,
+        *,
         error_cls: type[GraphApiError] = GraphApiDriveError,
-        authenticated: bool = True, retry: bool = False, **kwargs: Any,
+        authenticated: bool = True,
+        retry: bool = False,
+        **kwargs: Any,
     ) -> requests.Response:
         """Translate transport errors; replay only explicitly safe operations.
 
@@ -115,12 +127,16 @@ class SharepointClient(BaseClient):
         Folder-creation POSTs are never replayed on ambiguous failures.
         """
         headers = kwargs.pop("headers", {})
-        if authenticated:
-            headers = {**self.auth_header, **headers}
         for attempt in range(4):
+            request_headers = headers
+            if authenticated:
+                if self._auth is not None:
+                    self.access_token = self._auth.get_access_token()
+                    self.auth_header["Authorization"] = f"Bearer {self.access_token}"
+                request_headers = {**self.auth_header, **headers}
             try:
                 response = self.session.request(
-                    method, url, headers=headers, timeout=self.timeout, **kwargs
+                    method, url, headers=request_headers, timeout=self.timeout, **kwargs
                 )
             except requests.RequestException as exc:
                 error = error_cls(f"Request error when calling {url}: {exc}")
@@ -137,7 +153,8 @@ class SharepointClient(BaseClient):
             error = error_cls(
                 f"Microsoft Graph request failed: {url}: {response.status_code} "
                 f"{response.reason}: {response.text}",
-                status_code=response.status_code, response_text=response.text,
+                status_code=response.status_code,
+                response_text=response.text,
                 response_json=payload if isinstance(payload, dict) else None,
                 response_headers=dict(response.headers),
             )

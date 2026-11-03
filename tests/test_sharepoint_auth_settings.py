@@ -4,10 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from fileroute.auth.microsoft import MicrosoftAuth
-from fileroute.auth.settings import (
-    MicrosoftAuthConfig,
-    MicrosoftAuthMode,
-)
+from fileroute.auth.settings import MicrosoftAuthConfig, MicrosoftAuthMode
 
 
 def _clear_sharepoint_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -87,7 +84,9 @@ def test_sharepoint_auth_config_to_auth_returns_microsoft_auth(
     assert auth.access_token == "app-token"
 
 
-def test_sharepoint_auth_config_to_auth_delegated(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sharepoint_auth_config_to_auth_delegated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _clear_sharepoint_auth_env(monkeypatch)
 
     class DummyApp:
@@ -99,7 +98,7 @@ def test_sharepoint_auth_config_to_auth_delegated(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(
         "fileroute.auth.microsoft.msal.PublicClientApplication",
-        lambda client_id, authority: DummyApp(),
+        lambda client_id, authority, token_cache: DummyApp(),
     )
 
     config = MicrosoftAuthConfig(

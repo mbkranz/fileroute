@@ -673,7 +673,9 @@ def _build_client(
             secret = os.environ.get(profile.client_secret_env)
             if not secret:
                 raise ProfileError(
-                    f"Set environment variable {profile.client_secret_env} for this profile's client secret."
+                    f"Set environment variable {profile.client_secret_env} for this profile's client secret. "
+                    "Python callers using a .env file must explicitly load it with "
+                    "dotenv.load_dotenv(path, override=False) before building the client."
                 )
             auth = MicrosoftAuth.from_app_only(
                 profile.tenant_id,
@@ -764,7 +766,7 @@ def authenticate_profile(
     try:
         build_profile_client(
             name, profile.provider, config_path=path, interactive=interactive
-        )
+        ).close()
         if profile.provider == ServiceType.S3:
             session = (
                 boto3.Session(profile_name=profile.aws_profile)

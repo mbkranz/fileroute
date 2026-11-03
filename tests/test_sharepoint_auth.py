@@ -19,6 +19,7 @@ def test_normalize_microsoft_scopes_supports_none_string_and_sequence() -> None:
 def test_microsoft_auth_init_stores_token() -> None:
     auth = MicrosoftAuth("my-token")
     assert auth.access_token == "my-token"
+    assert auth.get_access_token() == "my-token"
 
 
 def test_microsoft_auth_from_delegated_uses_interactive_flow_when_no_cached_account(
@@ -36,7 +37,7 @@ def test_microsoft_auth_from_delegated_uses_interactive_flow_when_no_cached_acco
 
     monkeypatch.setattr(
         "fileroute.auth.microsoft.msal.PublicClientApplication",
-        lambda client_id, authority: DummyApp(),
+        lambda client_id, authority, token_cache: DummyApp(),
     )
 
     auth = MicrosoftAuth.from_delegated(
@@ -206,3 +207,93 @@ def test_app_only_profile_uses_persistent_msal_cache(tmp_path, monkeypatch):
     auth = MicrosoftAuth.from_app_only("tenant", "client", "secret", cache_path=path)
     assert auth.access_token == "new"
     assert "updated" in json.loads(path.read_text())["AccessToken"]
+
+
+def test_app_only_renewal_reuses_msal_app_and_reloads_private_cache(
+    tmp_path, monkeypatch
+):
+    import json
+    from fileroute.auth.token_store import atomic_private_write
+
+    path = tmp_path / "cache.json"
+    created, observed = [], []
+
+    class App:
+        def __init__(self, cache):
+            self.cache = cache
+
+        def acquire_token_for_client(self, scopes):
+            assert path.with_name(f".{path.name}.lock").exists()
+            observed.append(json.loads(self.cache.serialize()))
+            self.cache.deserialize('{"AccessToken": {"renewed": {"secret": "new"}}}')
+            self.cache.has_state_changed = True
+            return {"access_token": f"token-{len(observed)}"}
+
+    def build(**kwargs):
+        app = App(kwargs["token_cache"])
+        created.append(app)
+        return app
+
+    monkeypatch.setattr(
+        "fileroute.auth.microsoft.msal.ConfidentialClientApplication", build
+    )
+    auth = MicrosoftAuth.from_app_only("tenant", "client", "secret", cache_path=path)
+    atomic_private_write(
+        path, '{"AccessToken": {"other-process": {"secret": "latest"}}}'
+    )
+    assert auth.get_access_token() == "token-2"
+    assert auth.access_token == "token-2"
+    assert len(created) == 1
+    assert "other-process" in observed[1]["AccessToken"]
+    assert "renewed" in json.loads(path.read_text())["AccessToken"]
+    assert not path.with_name(f".{path.name}.lock").exists()
+
+
+def test_delegated_runtime_renewal_never_reopens_initial_login(monkeypatch):
+    class App:
+        logged_in = False
+        silent_calls = 0
+        browser_calls = 0
+
+        def get_accounts(self):
+            return [{"home_account_id": "user"}] if self.logged_in else []
+
+        def acquire_token_interactive(self, scopes):
+            self.browser_calls += 1
+            self.logged_in = True
+            return {"access_token": "initial"}
+
+        def acquire_token_silent(self, scopes, account):
+            self.silent_calls += 1
+            return {"access_token": "renewed"} if self.silent_calls == 1 else None
+
+    app = App()
+    monkeypatch.setattr(
+        "fileroute.auth.microsoft.msal.PublicClientApplication", lambda *_a, **_kw: app
+    )
+    auth = MicrosoftAuth.from_delegated("tenant", "client", interactive=True)
+    assert auth.get_access_token() == "renewed"
+    with pytest.raises(GraphAuthError, match="auth login sharepoint"):
+        auth.get_access_token()
+    assert app.browser_calls == 1
+    assert auth.access_token == "renewed"
+
+
+def test_app_only_runtime_failure_does_not_expose_provider_payload(monkeypatch):
+    results = iter([
+        {"access_token": "initial"},
+        {"error_description": "accidentally included secret"},
+    ])
+
+    class App:
+        def acquire_token_for_client(self, scopes):
+            return next(results)
+
+    monkeypatch.setattr(
+        "fileroute.auth.microsoft.msal.ConfidentialClientApplication",
+        lambda **_kw: App(),
+    )
+    auth = MicrosoftAuth.from_app_only("tenant", "client", "secret")
+    with pytest.raises(GraphAuthError, match="Check credentials") as error:
+        auth.get_access_token()
+    assert "accidentally included secret" not in str(error.value)

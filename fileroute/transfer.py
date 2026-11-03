@@ -6,7 +6,9 @@ remote permissions and directory contents are checked during execution.
 
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
+from typing import Iterator
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
@@ -117,24 +119,27 @@ def plan_pull(
     return tuple(entries)
 
 
+@contextmanager
 def _transfer_clients(
     entries: tuple[PullEntry, ...] | tuple[PushEntry, ...], *, profile: str | None
-) -> dict[tuple[ServiceType, str | None], BaseClient]:
-    """Validate every selected profile before transferring any file content."""
-    clients: dict[tuple[ServiceType, str | None], BaseClient] = {}
-    for entry in entries:
-        selected = (
-            entry.location.auth_profile if entry.location is not None else None
-        ) or profile
-        key = (entry.service_type, selected)
-        if key not in clients:
-            if selected is None:
-                clients[key] = get_provider(entry.service_type).build_default()
-            else:
-                from fileroute.auth.profiles import build_profile_client
+) -> Iterator[dict[tuple[ServiceType, str | None], BaseClient]]:
+    """Prepare each selected client before transfers and close it on scope exit."""
+    with ExitStack() as stack:
+        clients: dict[tuple[ServiceType, str | None], BaseClient] = {}
+        for entry in entries:
+            selected = (
+                entry.location.auth_profile if entry.location is not None else None
+            ) or profile
+            key = (entry.service_type, selected)
+            if key not in clients:
+                if selected is None:
+                    clients[key] = get_provider(entry.service_type).build_default()
+                else:
+                    from fileroute.auth.profiles import build_profile_client
 
-                clients[key] = build_profile_client(selected, entry.service_type)
-    return clients
+                    clients[key] = build_profile_client(selected, entry.service_type)
+                stack.callback(clients[key].close)
+        yield clients
 
 
 def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None) -> None:
@@ -144,44 +149,48 @@ def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None) -> None:
     unnamed location/run retains the provider's legacy credential discovery.
     Profile selection is deferred until execution; planning remains offline.
     """
-    clients = _transfer_clients(entries, profile=profile)
-    files = []
-    destinations = set()
-    for entry in entries:
-        selected = (
-            entry.location.auth_profile if entry.location is not None else None
-        ) or profile
-        client = clients[(entry.service_type, selected)]
-        item = (
-            lookup_item(client, entry.location)
-            if entry.location is not None and hasattr(client, "get_from_location")
-            else client.get_from_weburl(entry.remote)
-        )
-        if item.is_directory != entry.directory:
-            raise ValueError(
-                f"Source has the wrong file/directory type: {entry.remote}"
+    with _transfer_clients(entries, profile=profile) as clients:
+        files = []
+        destinations = set()
+        for entry in entries:
+            selected = (
+                entry.location.auth_profile if entry.location is not None else None
+            ) or profile
+            client = clients[(entry.service_type, selected)]
+            item = (
+                lookup_item(client, entry.location)
+                if entry.location is not None and hasattr(client, "get_from_location")
+                else client.get_from_weburl(entry.remote)
             )
-        if entry.directory:
-            for child in item.iter_files():
-                # Provider paths include the remote root; strip exactly that prefix.
-                relative = Path(child.path).relative_to(Path(item.path))
-                target = local_path(str(relative), entry.local, reject_symlinks=True)
-                files.append((child, target))
-        else:
-            files.append((
-                item,
-                local_path(str(entry.local), entry.local.parent, reject_symlinks=True),
-            ))
-    for _, target in files:
-        if target in destinations or (target.exists() and not target.is_file()):
-            raise ValueError(f"Conflicting pull destination: {target}")
-        destinations.add(target)
-    for target in destinations:
-        if any(parent in destinations for parent in target.parents):
-            raise ValueError(f"File and directory destinations overlap: {target}")
-    for item, target in files:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        item.download(target)
+            if item.is_directory != entry.directory:
+                raise ValueError(
+                    f"Source has the wrong file/directory type: {entry.remote}"
+                )
+            if entry.directory:
+                for child in item.iter_files():
+                    # Provider paths include the remote root; strip exactly that prefix.
+                    relative = Path(child.path).relative_to(Path(item.path))
+                    target = local_path(
+                        str(relative), entry.local, reject_symlinks=True
+                    )
+                    files.append((child, target))
+            else:
+                files.append((
+                    item,
+                    local_path(
+                        str(entry.local), entry.local.parent, reject_symlinks=True
+                    ),
+                ))
+        for _, target in files:
+            if target in destinations or (target.exists() and not target.is_file()):
+                raise ValueError(f"Conflicting pull destination: {target}")
+            destinations.add(target)
+        for target in destinations:
+            if any(parent in destinations for parent in target.parents):
+                raise ValueError(f"File and directory destinations overlap: {target}")
+        for item, target in files:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            item.download(target)
 
 
 @dataclass(frozen=True)
@@ -385,28 +394,30 @@ def push(files: tuple[PushEntry, ...], *, profile: str | None = None) -> None:
         for file in files
     ):
         raise ValueError("Replace the SharePoint placeholder target before uploading")
-    clients = _transfer_clients(files, profile=profile)
-    for file in files:
-        selected = (
-            file.location.auth_profile if file.location is not None else None
-        ) or profile
-        client = clients[(file.service_type, selected)]
-        if file.service_type is ServiceType.GOOGLE_DRIVE and file.direct_file:
-            if file.location is None:
-                raise ValueError("Google Drive file upload requires a resolved target")
-            client.upload_to_file(file.location, file.local)
-            continue
-        folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
-        if file.location is not None and hasattr(client, "upload_to_location"):
-            location = file.location.model_copy(deep=True)
-            if file.direct_file:
-                location.path = folder
-                location.service_id = None  # Exact file ID is not a folder ID.
-                if location.remote_path is not None:
-                    location.remote_path = location.remote_path.rpartition("/")[0]
-            client.upload_to_location(location, file.relative, file.local)
-        else:
-            client.upload_to_folder(folder, file.relative, file.local)
+    with _transfer_clients(files, profile=profile) as clients:
+        for file in files:
+            selected = (
+                file.location.auth_profile if file.location is not None else None
+            ) or profile
+            client = clients[(file.service_type, selected)]
+            if file.service_type is ServiceType.GOOGLE_DRIVE and file.direct_file:
+                if file.location is None:
+                    raise ValueError(
+                        "Google Drive file upload requires a resolved target"
+                    )
+                client.upload_to_file(file.location, file.local)
+                continue
+            folder = file.remote.rsplit("/", 1)[0] if file.direct_file else file.remote
+            if file.location is not None and hasattr(client, "upload_to_location"):
+                location = file.location.model_copy(deep=True)
+                if file.direct_file:
+                    location.path = folder
+                    location.service_id = None  # Exact file ID is not a folder ID.
+                    if location.remote_path is not None:
+                        location.remote_path = location.remote_path.rpartition("/")[0]
+                client.upload_to_location(location, file.relative, file.local)
+            else:
+                client.upload_to_folder(folder, file.relative, file.local)
 
 
 __all__ = ["PullEntry", "PushEntry", "plan_pull", "plan_push", "pull", "push"]

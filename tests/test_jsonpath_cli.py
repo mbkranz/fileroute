@@ -204,7 +204,9 @@ def test_selected_online_write_reuses_verified_metadata(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(
         "fileroute.clients.get_provider",
-        lambda _: SimpleNamespace(build_default=lambda: object()),
+        lambda _: SimpleNamespace(
+            build_default=lambda: SimpleNamespace(close=lambda: None)
+        ),
     )
     monkeypatch.setattr(
         "fileroute.descriptor.resolve_online",

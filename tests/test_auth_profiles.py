@@ -224,6 +224,47 @@ def test_missing_explicit_secret_reference_never_uses_legacy_secret(
         build_profile_client("team", ServiceType.SHAREPOINT, config_path=path)
 
 
+def test_named_secret_requires_explicit_dotenv_loading_in_python(tmp_path, monkeypatch):
+    from dotenv import load_dotenv
+    from fileroute.auth.microsoft import MicrosoftAuth
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FILEROUTE_TEST_SECRET", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("FILEROUTE_TEST_SECRET=from-file\n")
+    path = tmp_path / "profiles.yaml"
+    save_profile(
+        "team",
+        AuthProfile(
+            provider="sharepoint",
+            tenant_id="tenant",
+            client_id="client",
+            host_url="team.sharepoint.com",
+            client_secret_env="FILEROUTE_TEST_SECRET",
+        ),
+        config_path=path,
+    )
+    secrets = []
+
+    def build(_tenant, _client, secret, **_kwargs):
+        secrets.append(secret)
+        return MicrosoftAuth("token")
+
+    monkeypatch.setattr("fileroute.auth.profiles.MicrosoftAuth.from_app_only", build)
+    with pytest.raises(ProfileError, match="dotenv.load_dotenv"):
+        build_profile_client("team", ServiceType.SHAREPOINT, config_path=path)
+    assert secrets == []
+
+    load_dotenv(env_file, override=False)
+    with build_profile_client("team", ServiceType.SHAREPOINT, config_path=path):
+        pass
+    monkeypatch.setenv("FILEROUTE_TEST_SECRET", "from-runtime")
+    load_dotenv(env_file, override=False)
+    with build_profile_client("team", ServiceType.SHAREPOINT, config_path=path):
+        pass
+    assert secrets == ["from-file", "from-runtime"]
+
+
 def test_sdk_authentication_failures_are_sanitized(tmp_path, monkeypatch):
     path = tmp_path / "profiles.yaml"
     save_profile("team", AuthProfile(provider="gdrive"), config_path=path)
@@ -255,9 +296,12 @@ def test_aws_profile_reuses_sdk_session_and_sts_identity(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr("fileroute.auth.profiles.boto3.Session", session)
-    monkeypatch.setattr("fileroute.clients.s3.S3Client", lambda **_kw: object())
+    monkeypatch.setattr(
+        "fileroute.clients.s3.S3Client",
+        lambda **_kw: SimpleNamespace(close=lambda: captured.append("closed")),
+    )
     assert authenticate_profile("aws", config_path=path).action == "authenticated"
-    assert captured == ["s3", "sts"]
+    assert captured == ["s3", "closed", "sts"]
 
 
 def test_profile_token_caches_are_isolated_by_config_and_generation(

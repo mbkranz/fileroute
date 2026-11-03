@@ -101,6 +101,15 @@ Existing environment and `.env` workflows remain supported. See
 [Authentication](docs/authentication.md) for setup, selection precedence, and
 the [profile template](examples/auth/profiles.yaml).
 
+Python callers explicitly load a private `.env` file with
+`dotenv.load_dotenv(path, override=False)` before building named-profile clients;
+profile secret references read the process environment. Use provider clients in
+a `with` block, or call `close()`, to release sessions they create. Injected
+sessions remain caller-owned. Transfers, online resolution, and profile checks
+close their internally created HTTP clients automatically. Microsoft clients
+ask MSAL for a usable token before each authenticated request; runtime renewal
+never opens a browser. See [Python client lifecycle](docs/authentication.md#python-client-lifecycle).
+
 To publish a new file to Google Drive, target an existing folder; Fileroute
 creates or replaces the file below it. An exact file URL instead replaces that
 file by ID and preserves its existing name:

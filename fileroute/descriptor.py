@@ -6,6 +6,8 @@ performs I/O; online location verification is explicit.
 
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import json
 import re
 import tempfile
@@ -444,17 +446,19 @@ def resolve(
                     from fileroute.auth.profiles import build_profile_client
 
                     clients[key] = build_profile_client(selected, location.service_type)
+                stack.callback(clients[key].close)
             resolve_online(location, clients[key])
 
-    for row in walk(result, include_self=True):
-        if isinstance(row.model, CatalogLink):
-            continue
-        if direction != "push":
-            for location in row.model.sources:
-                enrich(location, required=False)
-        if direction != "pull":
-            for location in row.model.targets or []:
-                enrich(location, required=True)
+    with ExitStack() as stack:
+        for row in walk(result, include_self=True):
+            if isinstance(row.model, CatalogLink):
+                continue
+            if direction != "push":
+                for location in row.model.sources:
+                    enrich(location, required=False)
+            if direction != "pull":
+                for location in row.model.targets or []:
+                    enrich(location, required=True)
     return result
 
 

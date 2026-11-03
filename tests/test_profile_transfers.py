@@ -2,12 +2,14 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from jsonschema import Draft202012Validator
 from typer.testing import CliRunner
 
 from fileroute.cli import app
+from fileroute.clients.sharepoint import SharepointClient
 from fileroute.descriptor import load, resolve, resolve_selection, save
 from fileroute.models import Catalog, Location, Resource, ServiceType
 from fileroute.resolution import ResolvedLocation
@@ -33,14 +35,15 @@ def test_pull_uses_two_accounts_and_reuses_each_client(tmp_path, monkeypatch):
     catalog.resources["four"] = Resource(
         path="downloads/four.csv", sources=[Location(path="s3://bucket/same.csv")]
     )
-    built = []
+    built, closed = [], []
 
     def build(name, service_type):
         built.append((name, service_type))
         return SimpleNamespace(
+            close=lambda: closed.append(name),
             get_from_location=lambda location: SimpleNamespace(
                 is_directory=False, download=lambda target: target.write_text(name)
-            )
+            ),
         )
 
     path = _descriptor(tmp_path, catalog)
@@ -52,6 +55,7 @@ def test_pull_uses_two_accounts_and_reuses_each_client(tmp_path, monkeypatch):
     )
     pull(entries, profile="beta")
     assert built == [("alpha", ServiceType.S3), ("beta", ServiceType.S3)]
+    assert closed == ["beta", "alpha"]
     assert [entry.local.read_text() for entry in entries] == [
         "alpha",
         "beta",
@@ -85,12 +89,13 @@ def test_push_inherits_profile_and_keeps_two_account_destinations(
     def build(name, service_type):
         built.append((name, service_type))
         return SimpleNamespace(
+            close=lambda: None,
             upload_to_location=lambda location, relative, local: uploaded.append((
                 name,
                 location.auth_profile,
                 relative,
                 local.read_text(),
-            ))
+            )),
         )
 
     monkeypatch.setattr("fileroute.auth.profiles.build_profile_client", build)
@@ -138,7 +143,7 @@ def test_online_resolve_scopes_cache_by_profile_and_provider(monkeypatch):
             looked_up.append((name, location.path))
             return ResolvedLocation(service_type, entity_type="File")
 
-        return SimpleNamespace(resolve_location=lookup)
+        return SimpleNamespace(resolve_location=lookup, close=lambda: None)
 
     monkeypatch.setattr("fileroute.auth.profiles.build_profile_client", build)
     result = resolve(Catalog(sources=locations), online=True, profile="beta")
@@ -177,7 +182,8 @@ def test_selected_online_resolve_reuses_profile_for_inherited_targets(
     def build(name, service_type):
         built.append((name, service_type))
         return SimpleNamespace(
-            resolve_location=lambda location: ResolvedLocation(service_type)
+            close=lambda: None,
+            resolve_location=lambda location: ResolvedLocation(service_type),
         )
 
     monkeypatch.setattr("fileroute.auth.profiles.build_profile_client", build)
@@ -212,12 +218,13 @@ def test_invalid_later_profile_fails_before_any_bytes(tmp_path, monkeypatch, dir
         ),
     )
     entries = (plan_pull if direction == "pull" else plan_push)(path, root=tmp_path)
-    events = []
+    events, closed = [], []
 
     def build(name, service_type):
         if name == "missing":
             raise ValueError("Profile 'missing' was not found; run fileroute auth list")
         return SimpleNamespace(
+            close=lambda: closed.append(name),
             get_from_location=lambda location: events.append("lookup"),
             upload_to_location=lambda *args: events.append("upload"),
         )
@@ -226,6 +233,92 @@ def test_invalid_later_profile_fails_before_any_bytes(tmp_path, monkeypatch, dir
     with pytest.raises(ValueError, match="missing.*fileroute auth list"):
         (pull if direction == "pull" else push)(entries)
     assert events == []
+    assert closed == ["alpha"]
+
+
+@pytest.mark.parametrize("direction", ["pull", "push"])
+@pytest.mark.parametrize("fail", [False, True])
+def test_transfer_closes_owned_session_after_operation(
+    tmp_path, monkeypatch, direction, fail
+):
+    local = tmp_path / "file.csv"
+    local.write_text("data")
+    field = "sources" if direction == "pull" else "targets"
+    path = _descriptor(
+        tmp_path,
+        Catalog(
+            resources={
+                "file": Resource(
+                    path="file.csv",
+                    **{
+                        field: [
+                            Location(
+                                path="https://team.sharepoint.com/sites/data/Shared%20Documents/file.csv",
+                                authProfile="team",
+                            )
+                        ]
+                    },
+                )
+            }
+        ),
+    )
+    client = SharepointClient(access_token="token")
+    closed = Mock()
+    monkeypatch.setattr(client.session, "close", closed)
+
+    def transfer(*_args):
+        closed.assert_not_called()
+        if fail:
+            raise ValueError("transfer failed")
+
+    monkeypatch.setattr(
+        client,
+        "get_from_location",
+        lambda _: SimpleNamespace(is_directory=False, download=transfer),
+    )
+    monkeypatch.setattr(client, "upload_to_location", transfer)
+    monkeypatch.setattr(
+        "fileroute.auth.profiles.build_profile_client", lambda *_a: client
+    )
+    entries = (plan_pull if direction == "pull" else plan_push)(path, root=tmp_path)
+    if fail:
+        with pytest.raises(ValueError, match="transfer failed"):
+            (pull if direction == "pull" else push)(entries)
+    else:
+        (pull if direction == "pull" else push)(entries)
+    closed.assert_called_once_with()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_online_resolution_closes_owned_session(monkeypatch, fail):
+    client = SharepointClient(access_token="token")
+    closed = Mock()
+    monkeypatch.setattr(client.session, "close", closed)
+
+    def lookup(_location):
+        closed.assert_not_called()
+        if fail:
+            raise ValueError("lookup failed")
+        return ResolvedLocation(ServiceType.SHAREPOINT, entity_type="File")
+
+    monkeypatch.setattr(client, "resolve_location", lookup)
+    monkeypatch.setattr(
+        "fileroute.auth.profiles.build_profile_client", lambda *_a: client
+    )
+    catalog = Catalog(
+        sources=[
+            Location(
+                path="https://team.sharepoint.com/sites/data/Shared%20Documents/file.csv",
+                authProfile="team",
+            )
+        ]
+    )
+    if fail:
+        with pytest.raises(ValueError, match="lookup failed"):
+            resolve(catalog, online=True)
+    else:
+        resolve(catalog, online=True)
+    closed.assert_called_once_with()
 
 
 def test_offline_work_never_reads_profiles(tmp_path, monkeypatch):
