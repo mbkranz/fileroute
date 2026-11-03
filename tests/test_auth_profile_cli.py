@@ -275,8 +275,12 @@ def test_location_check_reads_metadata_and_suppresses_provider_error_payloads(
     config = tmp_path / "profiles.json"
     configure_s3(config)
     calls: list[str] = []
+    closed: list[bool] = []
 
     class Client:
+        def close(self) -> None:
+            closed.append(True)
+
         def resolve_location(self, location: Location) -> None:
             calls.append(location.path)
 
@@ -300,6 +304,7 @@ def test_location_check_reads_metadata_and_suppresses_provider_error_payloads(
     result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
     assert calls == ["s3://bucket/key"]
+    assert closed == [True]
     assert "Write permission was not checked" in result.output
 
     def fail(_self: object, _location: Location) -> None:
@@ -310,10 +315,12 @@ def test_location_check_reads_metadata_and_suppresses_provider_error_payloads(
     assert failed.exit_code != 0
     assert "Check the URL" in failed.output
     assert "provider-returned-secret-token" not in failed.output
+    assert closed == [True, True]
 
 
+@pytest.mark.parametrize("url", [None, "s3://bucket/key"])
 def test_profile_errors_produce_actionable_nonzero_results(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str | None
 ) -> None:
     from fileroute.auth import profiles
 
@@ -326,9 +333,11 @@ def test_profile_errors_produce_actionable_nonzero_results(
         )
 
     monkeypatch.setattr(profiles, "authenticate_profile", fail)
-    result = runner.invoke(
-        app, ["auth", "check", "--profile", "archive", "--config", str(config)]
-    )
+    monkeypatch.setattr(profiles, "build_profile_client", fail)
+    args = ["auth", "check", "--profile", "archive", "--config", str(config)]
+    if url is not None:
+        args.extend(["--url", url])
+    result = runner.invoke(app, args)
     assert result.exit_code != 0
     assert "Run the provider login" in result.output
 

@@ -10,6 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 API_MODULES = [
+    {
+        "module": "fileroute.clients.base",
+        "path": ROOT / "fileroute" / "clients" / "base.py",
+    },
     {"module": "fileroute.transfer", "path": ROOT / "fileroute" / "transfer.py"},
     {"module": "fileroute.descriptor", "path": ROOT / "fileroute" / "descriptor.py"},
     {"module": "fileroute.diagram", "path": ROOT / "fileroute" / "diagram.py"},

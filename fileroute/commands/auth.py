@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import json
 from pathlib import Path
 import shlex
@@ -339,19 +339,24 @@ def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -
                     raise typer.BadParameter(
                         "The --url provider does not match the selected profile."
                     )
-                client = build_profile_client(
-                    profile, selected.provider, config_path=config, interactive=False
-                )
-                try:
-                    # Provider resolution verifies directories too; an S3
-                    # directory locator alone does not contact the service.
-                    client.resolve_location(location)
-                except Exception:
-                    typer.echo(
-                        "Could not read location metadata. Check the URL and this account's read permissions.",
-                        err=True,
+                with closing(
+                    build_profile_client(
+                        profile,
+                        selected.provider,
+                        config_path=config,
+                        interactive=False,
                     )
-                    raise typer.Exit(code=1) from None
+                ) as client:
+                    try:
+                        # Resolve directories too; an S3 directory locator
+                        # alone does not contact the service.
+                        client.resolve_location(location)
+                    except Exception:
+                        typer.echo(
+                            "Could not read location metadata. Check the URL and this account's read permissions.",
+                            err=True,
+                        )
+                        raise typer.Exit(code=1) from None
         if url is None:
             typer.echo(
                 f"Credentials are available for profile '{profile}'. Location access and write permission were not checked."

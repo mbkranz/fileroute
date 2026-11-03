@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import msal
 
@@ -31,7 +31,9 @@ def _extract_access_token(result: dict[str, object]) -> str:
     token = result.get("access_token")
     if isinstance(token, str) and token:
         return token
-    raise GraphAuthError(f"Token error: {result.get('error_description')}")
+    raise GraphAuthError(
+        "Microsoft token acquisition failed. Check credentials and application permissions."
+    )
 
 
 def _load_cache(path: Path) -> msal.SerializableTokenCache:
@@ -44,6 +46,22 @@ def _load_cache(path: Path) -> msal.SerializableTokenCache:
                 "Cannot read Microsoft token cache; remove it and log in again."
             ) from None
     return cache
+
+
+def _acquire_cached_token(
+    cache: msal.SerializableTokenCache,
+    cache_path: Path | None,
+    acquire: Callable[[], dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    """Keep cache reload, MSAL acquisition, and persistence in one locked scope."""
+    lock = private_file_lock(cache_path) if cache_path is not None else nullcontext()
+    with lock:
+        if cache_path is not None:
+            cache.deserialize(_load_cache(cache_path).serialize())
+        result = acquire()
+        if cache_path is not None and cache.has_state_changed:
+            atomic_private_write(cache_path, cache.serialize())
+        return result
 
 
 class MicrosoftAuth:
@@ -68,6 +86,7 @@ class MicrosoftAuth:
     def __init__(self, access_token: str) -> None:
         """Low-level escape hatch: supply a raw access token directly."""
         self._access_token = access_token
+        self._token_provider: Callable[[], str] | None = None
 
     # ------------------------------------------------------------------
     # Named constructors
@@ -83,31 +102,32 @@ class MicrosoftAuth:
         *,
         cache_path: Path | None = None,
     ) -> "MicrosoftAuth":
-        """Build using client-credential (app-only) flow via MSAL."""
+        """Build renewable app-only auth; MSAL checks its cache on acquisition."""
         if not client_secret:
             raise GraphAuthError(
                 "client_secret is required for Microsoft app_only mode."
             )
         normalized_scopes = normalize_microsoft_scopes(scopes)
         authority = f"https://login.microsoftonline.com/{tenant_id}"
-        lock = (
-            private_file_lock(cache_path) if cache_path is not None else nullcontext()
+        cache = msal.SerializableTokenCache()
+        app = msal.ConfidentialClientApplication(
+            client_id=client_id,
+            client_credential=client_secret,
+            authority=authority,
+            token_cache=cache,
         )
-        with lock:
-            cache = _load_cache(cache_path) if cache_path is not None else None
-            kwargs: dict[str, Any] = {
-                "client_id": client_id,
-                "client_credential": client_secret,
-                "authority": authority,
-            }
-            if cache is not None:
-                kwargs["token_cache"] = cache
-            app = msal.ConfidentialClientApplication(**kwargs)
-            # MSAL 1.23+ checks this cache before contacting the identity provider.
-            result = app.acquire_token_for_client(scopes=normalized_scopes)
-            if cache_path is not None and cache is not None and cache.has_state_changed:
-                atomic_private_write(cache_path, cache.serialize())
-        return cls(_extract_access_token(result))
+
+        def acquire() -> str:
+            result = _acquire_cached_token(
+                cache,
+                cache_path,
+                lambda: app.acquire_token_for_client(scopes=normalized_scopes),
+            )
+            return _extract_access_token(result or {})
+
+        auth = cls(acquire())
+        auth._token_provider = acquire
+        return auth
 
     @classmethod
     def from_delegated(
@@ -128,50 +148,55 @@ class MicrosoftAuth:
         """
         normalized_scopes = normalize_microsoft_scopes(scopes)
         authority = f"https://login.microsoftonline.com/{tenant_id}"
-        lock = (
-            private_file_lock(cache_path) if cache_path is not None else nullcontext()
+        cache = msal.SerializableTokenCache()
+        app = msal.PublicClientApplication(
+            client_id, authority=authority, token_cache=cache
         )
-        with lock:
-            cache = _load_cache(cache_path) if cache_path is not None else None
-            kwargs: dict[str, Any] = {"authority": authority}
-            if cache is not None:
-                kwargs["token_cache"] = cache
-            app = msal.PublicClientApplication(client_id, **kwargs)
+
+        def silent_result() -> dict[str, Any] | None:
             accounts = app.get_accounts()
             if len(accounts) > 1:
                 raise GraphAuthError(
                     "Microsoft profile cache contains multiple accounts; clear it and log in again."
                 )
             if accounts:
-                result = app.acquire_token_silent(
-                    normalized_scopes, account=accounts[0]
-                )
-                if (
-                    cache_path is not None
-                    and cache is not None
-                    and cache.has_state_changed
-                ):
-                    atomic_private_write(cache_path, cache.serialize())
-                if result and "access_token" in result:
-                    return cls(_extract_access_token(result))
-        if not interactive:
+                return app.acquire_token_silent(normalized_scopes, account=accounts[0])
+            return None
+
+        def require_silent_token(result: dict[str, Any] | None) -> str:
+            if result and "access_token" in result:
+                return _extract_access_token(result)
             raise GraphAuthError(
                 "No usable cached Microsoft login. Run 'fileroute auth login sharepoint --profile NAME'."
             )
-        result = app.acquire_token_interactive(scopes=normalized_scopes)
-        token = _extract_access_token(result)
-        if cache_path is not None and cache is not None:
-            with private_file_lock(cache_path):
-                # Another process may refresh while the browser is open. Merge
-                # those entries before adding this consent result.
-                latest = json.loads(_load_cache(cache_path).serialize())
-                for category, entries in json.loads(cache.serialize()).items():
-                    if isinstance(entries, dict):
-                        latest.setdefault(category, {}).update(entries)
-                    else:
-                        latest[category] = entries
-                atomic_private_write(cache_path, json.dumps(latest))
-        return cls(token)
+
+        def acquire() -> str:
+            return require_silent_token(
+                _acquire_cached_token(cache, cache_path, silent_result)
+            )
+
+        result = _acquire_cached_token(cache, cache_path, silent_result)
+        if result and "access_token" in result:
+            token = _extract_access_token(result)
+        elif not interactive:
+            token = require_silent_token(result)
+        else:
+            result = app.acquire_token_interactive(scopes=normalized_scopes)
+            token = _extract_access_token(result)
+            if cache_path is not None:
+                with private_file_lock(cache_path):
+                    # Another process may refresh while the browser is open.
+                    # Merge its entries before adding this consent result.
+                    latest = json.loads(_load_cache(cache_path).serialize())
+                    for category, entries in json.loads(cache.serialize()).items():
+                        if isinstance(entries, dict):
+                            latest.setdefault(category, {}).update(entries)
+                        else:
+                            latest[category] = entries
+                    atomic_private_write(cache_path, json.dumps(latest))
+        auth = cls(token)
+        auth._token_provider = acquire
+        return auth
 
     @classmethod
     def from_settings(cls, config: object | None = None) -> "MicrosoftAuth":
@@ -193,7 +218,19 @@ class MicrosoftAuth:
 
     @property
     def access_token(self) -> str:
-        """The raw Bearer access token string."""
+        """The most recently acquired Bearer token, without performing I/O."""
+        return self._access_token
+
+    def get_access_token(self) -> str:
+        """Acquire a usable token through MSAL without interactive login.
+
+        MSAL owns expiry and renewal decisions. Named constructors retain their
+        MSAL application and reload the private cache when configured. Raw-token
+        instances have no credential source and return their supplied token.
+        See Microsoft's MSAL Python token-acquisition guidance.
+        """
+        if self._token_provider is not None:
+            self._access_token = self._token_provider()
         return self._access_token
 
 

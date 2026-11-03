@@ -79,9 +79,6 @@ class GoogleBaseClient(BaseClient):
         timeout: int = 120,
     ) -> None:
 
-        self.session = session or requests.Session()
-        self.timeout = timeout
-
         if auth is not None and credentials is not None:
             raise ValueError("Provide either auth or credentials, not both.")
 
@@ -91,6 +88,15 @@ class GoogleBaseClient(BaseClient):
             self._auth = auth
         else:
             raise ValueError("GoogleBaseClient requires either auth or credentials.")
+
+        self._owns_session = session is None
+        self.session = requests.Session() if session is None else session
+        self.timeout = timeout
+
+    def close(self) -> None:
+        """Close an internally created session; leave injected sessions open."""
+        if self._owns_session:
+            self.session.close()
 
     @property
     def _hdrs(self) -> dict[str, str]:

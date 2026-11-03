@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from types import TracebackType
+from typing import TYPE_CHECKING, ClassVar, Self
 
 if TYPE_CHECKING:
     from fileroute.item import ServiceItem
@@ -34,6 +35,25 @@ class BaseClient(ABC):
 
     auth_methods: ClassVar[list[str]] = []
     capabilities: ClassVar[ClientCapabilities] = ClientCapabilities()
+
+    def close(self) -> None:
+        """Release owned transport resources; providers without any need no action.
+
+        HTTP providers override this to close only sessions they create.
+        Injected sessions remain caller-owned. This is deliberately nonabstract
+        so existing providers keep working without a new implementation.
+        """
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     @classmethod
     @abstractmethod

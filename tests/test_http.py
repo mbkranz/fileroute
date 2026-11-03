@@ -13,7 +13,13 @@ from fileroute.clients._http import (
 )
 from fileroute.clients.googledrive import GoogleDriveClient
 from fileroute.clients.sharepoint import SharepointClient
-from fileroute.exceptions import GoogleDriveError, GraphApiDriveError, GraphApiSiteError
+from fileroute.auth.microsoft import MicrosoftAuth
+from fileroute.exceptions import (
+    GoogleDriveError,
+    GraphApiDriveError,
+    GraphApiSiteError,
+    GraphAuthError,
+)
 
 
 class DummyResponse:
@@ -187,4 +193,53 @@ def test_presigned_download_omits_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(client.session, "request", request)
     client.download_content(download_url="https://storage.example/file")
+    assert headers == [{}]
+
+
+def test_graph_reacquires_token_before_each_safe_retry(monkeypatch):
+    auth = MicrosoftAuth("initial")
+    tokens = iter(["first", "renewed"])
+    monkeypatch.setattr(auth, "get_access_token", lambda: next(tokens))
+    monkeypatch.setattr("fileroute.clients.sharepoint.time.sleep", lambda _: None)
+    responses = iter([DummyResponse(status_code=503), DummyResponse()])
+    headers = []
+    with SharepointClient(auth=auth) as client:
+
+        def request(_method, _url, **kwargs):
+            headers.append(kwargs["headers"])
+            return next(responses)
+
+        monkeypatch.setattr(client.session, "request", request)
+        client._request(
+            "GET",
+            "https://graph.microsoft.com/items",
+            retry=True,
+            headers={"X-Custom": "value"},
+        )
+        assert client.access_token == "renewed"
+    assert headers == [
+        {"Authorization": "Bearer first", "X-Custom": "value"},
+        {"Authorization": "Bearer renewed", "X-Custom": "value"},
+    ]
+
+
+def test_graph_refresh_failure_stops_request_but_not_presigned_download(monkeypatch):
+    auth = MicrosoftAuth("initial")
+
+    def fail():
+        raise GraphAuthError("login required")
+
+    monkeypatch.setattr(auth, "get_access_token", fail)
+    headers = []
+    with SharepointClient(auth=auth) as client:
+
+        def request(_method, _url, **kwargs):
+            headers.append(kwargs["headers"])
+            return DummyResponse()
+
+        monkeypatch.setattr(client.session, "request", request)
+        with pytest.raises(GraphAuthError, match="login required"):
+            client._request("POST", "https://graph.microsoft.com/create")
+        assert headers == []
+        client.download_content(download_url="https://storage.example/file")
     assert headers == [{}]

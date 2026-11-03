@@ -156,7 +156,9 @@ def test_pull_sources_not_targets_and_dispatch(tmp_path, monkeypatch):
     item = SimpleNamespace(
         is_directory=False, download=lambda target: calls.append(target)
     )
-    client = SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item)
+    client = SimpleNamespace(
+        get_from_weburl=lambda url: calls.append(url) or item, close=lambda: None
+    )
     monkeypatch.setattr("fileroute.clients.s3.S3Client.build_default", lambda: client)
     entries = plan_pull(path, root=tmp_path)
     pull(entries)
@@ -225,7 +227,9 @@ def test_selected_pull_skips_invalid_sibling_and_dispatches_only_selection(
     )
     monkeypatch.setattr(
         "fileroute.clients.s3.S3Client.build_default",
-        lambda: SimpleNamespace(get_from_weburl=lambda url: calls.append(url) or item),
+        lambda: SimpleNamespace(
+            get_from_weburl=lambda url: calls.append(url) or item, close=lambda: None
+        ),
     )
     result = CliRunner().invoke(app, ["pull", str(path), "--select", "good"])
     assert result.exit_code == 0, result.output
@@ -345,7 +349,7 @@ def test_directory_pull_validates_all_remote_paths_before_writes(tmp_path, monke
     )
     monkeypatch.setattr(
         "fileroute.clients.s3.S3Client.build_default",
-        lambda: SimpleNamespace(get_from_weburl=lambda url: item),
+        lambda: SimpleNamespace(get_from_weburl=lambda url: item, close=lambda: None),
     )
     with pytest.raises(ValueError, match="outside"):
         pull(plan_pull(path, root=tmp_path))
@@ -533,7 +537,9 @@ def test_file_resource_uses_root_and_remote_filename(tmp_path, monkeypatch):
     )
     files = plan_push(descriptor, root=tmp_path)
     calls = []
-    client = SimpleNamespace(upload_to_folder=lambda *args: calls.append(args))
+    client = SimpleNamespace(
+        upload_to_folder=lambda *args: calls.append(args), close=lambda: None
+    )
     monkeypatch.setattr(
         "fileroute.clients.sharepoint.SharepointClient.build_default", lambda: client
     )
@@ -561,6 +567,7 @@ def test_google_drive_folder_and_exact_file_targets(tmp_path, monkeypatch):
     )
     calls = []
     client = SimpleNamespace(
+        close=lambda: None,
         upload_to_location=lambda *args: calls.append(("folder", args)),
         upload_to_file=lambda *args: calls.append(("file", args)),
     )

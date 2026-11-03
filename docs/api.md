@@ -2,6 +2,34 @@
 
 Auto-generated from source signatures and docstrings.
 
+## `fileroute.clients.base`
+
+### Classes
+
+#### `ClientCapabilities`
+- Fields:
+  - `supports_download: bool`
+  - `supports_upload: bool`
+
+#### `BaseClient`
+- Abstract base for all drive service clients.
+- Fields:
+  - `auth_methods: ClassVar[list[str]]`
+  - `capabilities: ClassVar[ClientCapabilities]`
+- Methods:
+  - `def close(self) -> None`
+    - Release owned transport resources; providers without any need no action.
+  - `def build_default(cls) -> 'BaseClient'`
+  - `def check_auth(cls) -> None`
+  - `def get_from_weburl(self, url: str) -> ServiceItem`
+  - `def recognizes_url(cls, url: str) -> bool`
+  - `def parse_location(cls, location: 'Location') -> 'ResolvedLocation'`
+  - `def get_from_location(self, location: 'Location') -> ServiceItem`
+  - `def resolve_location(self, location: 'Location') -> 'ResolvedLocation'`
+  - `def upload_to_folder(self, folder_url: str, relative_path: Path, local_file_path: str | Path) -> ServiceItem`
+    - Create or replace a file relative to a remote directory URL.
+
+
 ## `fileroute.transfer`
 
 ### Functions
@@ -272,6 +300,8 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `auth_methods: ClassVar[list[str]]`
 - Methods:
+  - `def close(self) -> None`
+    - Close an internally created session; leave injected sessions open.
   - `def refresh(self) -> None`
   - `def build_default(cls) -> 'GoogleBaseClient'`
     - Construct from environment variables / settings.
@@ -371,13 +401,15 @@ Auto-generated from source signatures and docstrings.
 - Microsoft access-token holder with named constructors for each auth mode.
 - Methods:
   - `def from_app_only(cls, tenant_id: str, client_id: str, client_secret: str, scopes: Sequence[str] | str | None = None, *, cache_path: Path | None = None) -> 'MicrosoftAuth'`
-    - Build using client-credential (app-only) flow via MSAL.
+    - Build renewable app-only auth; MSAL checks its cache on acquisition.
   - `def from_delegated(cls, tenant_id: str, client_id: str, scopes: Sequence[str] | str | None = None, *, cache_path: Path | None = None, interactive: bool = True) -> 'MicrosoftAuth'`
     - Acquire silently from a persistent MSAL cache before optional consent.
   - `def from_settings(cls, config: object | None = None) -> 'MicrosoftAuth'`
     - Build from environment variables or a :class:`~fileroute.auth.settings.MicrosoftAuthConfig`.
   - `def access_token(self) -> str`
-    - The raw Bearer access token string.
+    - The most recently acquired Bearer token, without performing I/O.
+  - `def get_access_token(self) -> str`
+    - Acquire a usable token through MSAL without interactive login.
 
 
 ## `fileroute.auth.token_store`
@@ -512,6 +544,8 @@ Auto-generated from source signatures and docstrings.
   - `auth_methods: ClassVar[list[str]]`
   - `capabilities: ClassVar[ClientCapabilities]`
 - Methods:
+  - `def close(self) -> None`
+    - Close an internally created session; leave injected sessions open.
   - `def build_default(cls) -> 'SharepointClient'`
     - Construct from environment variables / settings.
   - `def check_auth(cls) -> None`

@@ -182,9 +182,85 @@ For example, legacy Microsoft app-only setup still uses
 Legacy S3 use can select `AWS_PROFILE=team-dev`. Existing `--env-file` behavior
 is unchanged: an explicitly selected file overrides the process environment.
 
+Credential loading depends on the entry point:
+
+| Entry point | Dotenv behavior | Precedence |
+| --- | --- | --- |
+| CLI default | Discovers `.env` from the working directory or its parents | Existing environment wins |
+| CLI explicit `--env-file` | Loads the selected file | Selected file overrides the environment |
+| Python named profiles | Reads named secret references from `os.environ`; no dotenv discovery | Caller controls loading |
+| Python legacy `BaseSettings` configuration | Reads `.env` in the working directory | Explicit settings, then environment, then dotenv |
+
+For Python named-profile use, load the intended private file explicitly. This
+keeps filesystem discovery and environment mutation under application control;
+there is no additional Fileroute settings source or implicit secret fallback.
+
+```python
+from dotenv import load_dotenv
+from fileroute.auth.profiles import build_profile_client
+from fileroute.models import ServiceType
+
+load_dotenv("/absolute/private/path/.env", override=False)
+
+with build_profile_client("work-automation", ServiceType.SHAREPOINT) as client:
+    item = client.get_from_weburl("https://contoso.sharepoint.com/sites/data/Shared%20Documents/report.csv")
+    item.download("report.csv")
+```
+
+For CI and cloud workloads, inject the named variable through the existing
+secret manager or runner environment instead. Keep profile configuration as
+YAML/JSON references; neither a catalog nor a profile should contain raw secrets.
+
 For CI, generate private profile configuration in the runner's configuration
 directory and inject secrets or credential files through the runner's existing
 secret mechanism. Choose noninteractive ADC, service-account, app-only, or
 AWS role/profile authentication. Avoid depending on an interactive user's
 cached tokens. Configuration, offline plans, and synthetic tests do not
 establish that a deployed account has the required cloud permissions.
+
+## Python client lifecycle
+
+Reuse one provider client for an operation and scope it with `with` or explicitly
+call `close()`. SharePoint and Google clients close only Requests sessions they
+create. A session supplied via `session=` remains caller-owned and can be shared
+across client scopes. Closing an owned session more than once has no effect.
+Finish downloading items while their client scope is open. Transfers, online
+resolution, and authentication checks clean up their internally created HTTP
+clients on success and failure, including a failure while preparing another
+profile. Other providers inherit a no-op `close()` unless they own resources
+that require cleanup.
+
+```python
+import requests
+from fileroute.auth.microsoft import MicrosoftAuth
+from fileroute.clients.sharepoint import SharepointClient
+
+auth = MicrosoftAuth.from_settings()
+with requests.Session() as session:
+    with SharepointClient(auth=auth, session=session) as client:
+        item = client.get_from_weburl("https://contoso.sharepoint.com/sites/data/Shared%20Documents/report.csv")
+        item.download("report.csv")
+    # The outer session is still open here.
+```
+
+Microsoft auth constructed with `from_app_only` or `from_delegated` retains its
+MSAL application and token cache. `auth.get_access_token()` asks MSAL for a usable
+token; SharePoint calls it before every authenticated request attempt. App-only
+uses MSAL's cache-aware `acquire_token_for_client`; delegated auth uses
+`acquire_token_silent`. Configured persistent caches are reloaded and saved under
+the existing private-file lock. MSAL handles expiry and renewal; no custom expiry
+timer or JWT parser is added. `auth.access_token` remains the most recently
+acquired token and performs no I/O.
+
+Runtime acquisition never opens a browser, even for an object initially created
+with `interactive=True`. If silent acquisition fails, run the explicit login
+command again. Raw-token constructors (`MicrosoftAuth(token)` or
+`SharepointClient(access_token=token)`) have no renewal source. Presigned
+downloads do not acquire or attach a Microsoft token, and authentication errors
+do not trigger automatic replay of mutations.
+
+See [MSAL token acquisition](https://learn.microsoft.com/en-us/entra/msal/python/getting-started/acquiring-tokens)
+and [Requests session management](https://requests.readthedocs.io/en/latest/user/advanced/#session-objects).
+Token cache files retain their existing private permissions, locking, and atomic
+writes. They are not encrypted. An OS keyring backend remains deferred until a
+desktop use case warrants another credential-store dependency.
