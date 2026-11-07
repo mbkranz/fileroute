@@ -40,6 +40,22 @@ Google Cloud project, consent screen, OAuth client, or resource sharing steps.
 See [Authentication](authentication.md) for storage, precedence, ADC/service
 account profiles, and CI. The environment-based setup below remains supported.
 
+## Discover and pull files
+
+Use a folder URL or ID for a folder in My Drive or a shared drive. The
+configured identity needs access to that folder. For a folder shown in
+**Shared with me**, use the folder's own locator. Discovery requires direct
+access without a resource key.
+
+Use the Drive `drive.metadata.readonly` scope for metadata-only discovery and
+`drive.readonly` when the same profile will also pull content. The `drive.file`
+scope limits results to files the app can access. Discovery skips shortcuts and
+matches native Google files by their displayed names. Pull applies its usual
+native document export rules.
+
+See the [discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog)
+and [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+
 ## Manual setup (user OAuth)
 
 This is the most common setup for local development.

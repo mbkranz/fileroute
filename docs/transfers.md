@@ -112,6 +112,14 @@ the configured `drive` scope covers arbitrary accessible files, while
 
 ## Pull
 
+A selected Catalog with a templated source needs discovery before pull. Run
+`fileroute discover catalog.yaml --select NAME --output matches.yaml`, then
+`fileroute pull matches.yaml` from the same working root. The saved catalog uses
+concrete file identities and carries the effective source auth profile, when
+one was selected. A concrete resource can be pulled independently with its own
+selector. Save the discovery output separately from the files it will pull.
+See the [discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog).
+
 A leaf catalog can retrieve a remote directory; a catalog with children
 retrieves only those children. Targets never affect retrieval. Multiple
 sources may describe a transformation, so `pull` refuses to choose among

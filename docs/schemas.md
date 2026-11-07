@@ -119,6 +119,11 @@ See [VS Code JSON schema settings](https://code.visualstudio.com/docs/languages/
 
 ## What editor validation covers
 
+Use a Fileroute release and catalog schema that support source
+`resourcePathTemplate` together. The editor describes the field on Locations.
+Discovery validates its placement on a Catalog source and the relative
+template during planning.
+
 The catalog schema checks nested shapes, required paths, registered-name
 patterns, provider spellings, and authentication-profile name syntax. The
 profile schema checks supported modes, required settings, and incompatible

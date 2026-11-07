@@ -2,6 +2,14 @@
 
 Auto-generated from source signatures and docstrings.
 
+## `fileroute.discovery`
+
+### Functions
+
+- `def discover_resources(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> Catalog`
+  - Discover a catalog's declared remote sources and return concrete resources.
+
+
 ## `fileroute.clients.base`
 
 ### Classes
@@ -204,6 +212,7 @@ Auto-generated from source signatures and docstrings.
 - Fields:
   - `path: str`
   - `service_type: ServiceTypeField | None`
+  - `resource_path_template: str | None`
   - `auth_profile: str | None`
   - `service_id: str | None`
   - `entity_type: EntityTypeValue | None`
@@ -223,6 +232,13 @@ Auto-generated from source signatures and docstrings.
 ## `fileroute.item`
 
 ### Classes
+
+#### `FileMatch`
+- A file, its POSIX path below the searched root, and named captures.
+- Fields:
+  - `item: ServiceItem`
+  - `relative_path: str`
+  - `path_properties: dict[str, Any]`
 
 #### `ServiceItem`
 - Base interface for files and directories in a remote service.
@@ -247,6 +263,8 @@ Auto-generated from source signatures and docstrings.
     - Yield child files and directories in deterministic path order.
   - `def iter_files(self, *, recursive: bool = True) -> Iterator['ServiceItem']`
     - Yield file descendants, excluding directories and the starting item.
+  - `def iter_file_matches(self, resource_path_template: str) -> Iterator[FileMatch]`
+    - Match files below this folder or prefix using a source-relative template.
   - `def download(self, target: Path | str) -> None`
     - Download this item to *target*.
   - `def to_catalog(self) -> Catalog | Resource`
@@ -264,6 +282,7 @@ Auto-generated from source signatures and docstrings.
 
 #### `S3Client`
 - Methods:
+  - `def close(self) -> None`
   - `def build_default(cls) -> 'S3Client'`
   - `def check_auth(cls) -> None`
   - `def get_from_weburl(self, url: str) -> 'S3Item'`

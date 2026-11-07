@@ -214,3 +214,104 @@ poe docs-check
 
 See [Transfers](transfers.md) for inheritance and execution details and
 [Descriptor diagrams](diagram.md) for SVG, HTML, and Markdown output.
+
+## Discover files and pull a concrete catalog
+
+A single catalog can declare SharePoint, S3 and Google Drive roots. Replace the
+example locators and profile names with your own for an online run.
+
+<!-- example:discover:start -->
+```yaml
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
+profile: fileroute-catalog
+catalogs:
+  specifications:
+    path: data/specifications
+    sources:
+      - path: https://contoso.sharepoint.com/sites/docs/Shared%20Documents/Specs
+        resourcePathTemplate: "{survey_id}/{title}-v{revision:d}.docx"
+        authProfile: sharepoint-reader
+  definitions:
+    path: data/definitions
+    sources:
+      - path: s3://example-survey-source/definitions/
+        resourcePathTemplate: "{environment}/{survey_id}/definition_v{revision:d}.json"
+        authProfile: s3-reader
+  drive_references:
+    path: data/references
+    sources:
+      - path: https://drive.google.com/drive/folders/EXAMPLE_FOLDER_ID
+        resourcePathTemplate: "{survey_id}/{title}-v{revision:d}.docx"
+        authProfile: drive-reader
+```
+<!-- example:discover:end -->
+
+<!-- diagram:discover:start -->
+```mermaid
+flowchart LR
+    n0["data/specifications"]
+    n1["SharePoint: docs/Specs"]
+    n2["data/definitions"]
+    n3["S3: example-survey-source/definitions/"]
+    n4["data/references"]
+    n5["Google Drive: EXAMPLE_FOLDER_ID"]
+    n1 --> n0
+    n3 --> n2
+    n5 --> n4
+```
+<!-- diagram:discover:end -->
+
+Inspect the scope offline, then discover the selected files and pull the
+resulting catalog. Run the commands from the same working root.
+
+```bash
+fileroute discover examples/use-cases/discover.yaml --dry-run
+fileroute discover examples/use-cases/discover.yaml --select definitions --output reports/definitions.yaml
+fileroute pull reports/definitions.yaml --dry-run
+fileroute pull reports/definitions.yaml
+```
+
+The output can look like this for an S3 match. The file source records its exact
+identity and the capture values are stored on the resource.
+
+```yaml
+targets: []
+catalogs:
+  definitions:
+    path: data/definitions
+    targets: []
+    resources:
+      dev-2001-definition_v27-json:
+        path: data/definitions/dev/2001/definition_v27.json
+        pathProperties:
+          environment: dev
+          survey_id: "2001"
+          revision: 27
+        sources:
+          - path: s3://example-survey-source/definitions/dev/2001/definition_v27.json
+            serviceType: S3
+            serviceId: "example-survey-source:definitions/dev/2001/definition_v27.json"
+            entityType: File
+            remotePath: definitions/dev/2001/definition_v27.json
+            bucket: example-survey-source
+            authProfile: s3-reader
+```
+
+From Python, use the same descriptor operation. If you already own a resolved
+folder or prefix item, iterate matches directly.
+
+```python
+from pathlib import Path
+
+from fileroute.descriptor import save
+from fileroute.discovery import discover_resources
+
+result = discover_resources(Path("examples/use-cases/discover.yaml"), selector="definitions")
+save(result, Path("reports/definitions.yaml"))
+```
+
+```python
+# root_item is a resolved ServiceItem from your provider client.
+for match in root_item.iter_file_matches("{environment}/{survey_id}/definition_v{revision:d}.json"):
+    print(match.relative_path, match.path_properties)
+```

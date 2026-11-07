@@ -414,6 +414,23 @@
           ],
           "title": "Remotepath"
         },
+        "resourcePathTemplate": {
+          "anyOf": [
+            {
+              "pattern": "\\S",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Full-match parse template relative to this source's remote directory or prefix. Use on a Catalog source with discover.",
+          "examples": [
+            "{environment}/{survey_id}/definition_v{revision:d}.json"
+          ],
+          "title": "Resourcepathtemplate"
+        },
         "serviceId": {
           "anyOf": [
             {
@@ -609,7 +626,7 @@
         },
         "pathProperties": {
           "additionalProperties": true,
-          "description": "Named values extracted from the nearest catalog resourcePathTemplate during resolution.",
+          "description": "Named values captured during source discovery or extracted from the nearest catalog resourcePathTemplate during local resolution.",
           "examples": [
             {
               "surveyid": "example",

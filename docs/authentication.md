@@ -48,6 +48,11 @@ See the [CLI reference](cli.md#fileroute-auth) for exact flags.
 
 ## Storage and selection
 
+`fileroute discover` uses a source's `authProfile` before the command's
+`--profile`. Discovery dry-run validates the declarations offline. Discovery
+uses the configured credentials to list metadata and records the selected
+profile on each resulting file source for pull.
+
 The default configuration is `$XDG_CONFIG_HOME/fileroute/profiles.yaml`, or
 `~/.config/fileroute/profiles.yaml` when `XDG_CONFIG_HOME` is unset.
 `FILEROUTE_CONFIG_DIR` selects a different directory. Auth-management commands

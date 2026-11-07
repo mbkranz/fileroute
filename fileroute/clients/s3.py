@@ -69,8 +69,13 @@ def _parse_s3_source_url(
 class S3Client(BaseClient):
     auth_methods = ["aws_credentials"]
 
-    def __init__(self, *, client: Any = None) -> None:
-        self.client = client or boto3.client("s3")
+    def __init__(self, *, client: Any = None, owns_client: bool = False) -> None:
+        self._owns_client = client is None or owns_client
+        self.client = boto3.client("s3") if client is None else client
+
+    def close(self) -> None:
+        if self._owns_client:
+            self.client.close()
 
     @classmethod
     def build_default(cls) -> "S3Client":
@@ -179,6 +184,7 @@ class S3Client(BaseClient):
         contents: list[dict[str, Any]] = []
         prefixes: list[str] = []
         continuation_token: str | None = None
+        seen_tokens: set[str] = set()
         while True:
             params: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
             if delimiter is not None:
@@ -195,8 +201,11 @@ class S3Client(BaseClient):
             if not response.get("IsTruncated"):
                 break
             continuation_token = response.get("NextContinuationToken")
-            if not continuation_token:
-                break
+            if not isinstance(continuation_token, str) or not continuation_token:
+                raise ValueError(f"Truncated S3 listing has no continuation token for {bucket}/{prefix}")
+            if continuation_token in seen_tokens:
+                raise ValueError(f"Repeated S3 continuation token for {bucket}/{prefix}")
+            seen_tokens.add(continuation_token)
         return contents, prefixes
 
     def resolve_descendant(

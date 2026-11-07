@@ -100,6 +100,23 @@ addresses. Names remain stable when map order changes; location indices do not.
 Registered names take precedence over rootless structural syntax. Use the explicit
 `$`/Pointer address shown by `list` to request a structural address unambiguously.
 
+## Remote source templates
+
+To discover files, give a Catalog a local `path` and one source with a concrete
+remote directory or S3 prefix in `path`. Set `resourcePathTemplate` on that source.
+The pattern matches the entire case-sensitive path below the remote root,
+including the filename. Named fields become `pathProperties`. For example,
+`{survey_id}/definition_v{revision:d}.json` captures an integer revision.
+
+Supported URLs infer the provider. Scoped paths require `serviceType` and its
+namespace, such as an S3 `bucket`. Use a trailing slash for a directory-style S3
+prefix. Set `targets: []` if the collection inherits publication targets.
+
+The Catalog's own `resourcePathTemplate` describes local artifact paths.
+Source templates belong to Catalog sources and accept relative patterns. The
+generated catalog records each matched file and its captures. See the
+[discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog).
+
 ## Linked files and write boundaries
 
 Links resolve relative to each containing file and cannot escape its directory.

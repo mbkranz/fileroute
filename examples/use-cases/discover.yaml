@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../schemas/fileroute-catalog.schema.json
+profile: fileroute-catalog
+catalogs:
+  specifications:
+    path: data/specifications
+    sources:
+      - path: https://contoso.sharepoint.com/sites/docs/Shared%20Documents/Specs
+        resourcePathTemplate: "{survey_id}/{title}-v{revision:d}.docx"
+        authProfile: sharepoint-reader
+  definitions:
+    path: data/definitions
+    sources:
+      - path: s3://example-survey-source/definitions/
+        resourcePathTemplate: "{environment}/{survey_id}/definition_v{revision:d}.json"
+        authProfile: s3-reader
+  drive_references:
+    path: data/references
+    sources:
+      - path: https://drive.google.com/drive/folders/EXAMPLE_FOLDER_ID
+        resourcePathTemplate: "{survey_id}/{title}-v{revision:d}.docx"
+        authProfile: drive-reader

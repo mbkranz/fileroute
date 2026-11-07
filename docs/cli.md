@@ -18,6 +18,7 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 
 * `push`: Publish artifact paths to targets; create...
 * `pull`: Materialize a single remote source into...
+* `discover`: Match remote file paths and build a...
 * `resolve`: Resolve locators offline by default;...
 * `migrate`: Convert named-list descriptors and $ref...
 * `update`: Update descriptor-root or resource...
@@ -68,6 +69,29 @@ $ fileroute pull [OPTIONS] [DESCRIPTOR]
 * `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: Plan without authenticating or writing.
 * `--profile TEXT`: Authentication profile default; each source's authProfile takes precedence.
+* `--help`: Show this message and exit.
+
+## `fileroute discover`
+
+Match remote file paths and build a concrete catalog for pull.
+
+**Usage**:
+
+```console
+$ fileroute discover [OPTIONS] [DESCRIPTOR]
+```
+
+**Arguments**:
+
+* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
+
+**Options**:
+
+* `--select TEXT`: Catalog name or exact selector.
+* `--profile TEXT`: Default auth profile. Source authProfile takes precedence.
+* `--format [text|json]`: Print matches or a concrete JSON catalog.  [default: text]
+* `--output PATH`: Save the concrete catalog as YAML or JSON.
+* `--dry-run`: Show the scope offline using text output.
 * `--help`: Show this message and exit.
 
 ## `fileroute resolve`

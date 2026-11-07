@@ -111,6 +111,7 @@ Run a dry run before an agent initiates a remote write unless the user explicitl
 | Add a resource or catalog | `fileroute add ...` |
 | Edit descriptor/root properties | `fileroute update ...` |
 | Preview or perform retrieval | `fileroute pull [descriptor] --dry-run` / `pull` |
+| Discover files in a templated SharePoint, S3, or Google Drive source | `fileroute discover [descriptor] --dry-run`, then `discover --output matches.yaml` and `pull matches.yaml` |
 | Preview or perform publication | `fileroute push [descriptor] --dry-run` / `push` |
 | Visualize provenance and destinations | `fileroute diagram [descriptor]` |
 | Convert previous named lists and links | `fileroute migrate INPUT OUTPUT_DIR` |

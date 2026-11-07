@@ -168,13 +168,26 @@ class SharepointClient(BaseClient):
         self, endpoint: str, *, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         response_json = self._request("GET", endpoint, params=params, retry=True).json()
+        if not isinstance(response_json, dict):
+            raise GraphApiDriveError("Invalid Microsoft Graph response")
         current_json = response_json
+        seen_links = {endpoint}
         while "@odata.nextLink" in current_json:
+            link = current_json["@odata.nextLink"]
+            if not isinstance(link, str) or link in seen_links or (
+                urlparse(link).scheme != "https"
+                or urlparse(link).netloc != "graph.microsoft.com"
+            ):
+                raise GraphApiDriveError("Invalid or repeated Microsoft Graph continuation link")
+            seen_links.add(link)
             current_json = self._request(
-                "GET", current_json["@odata.nextLink"], retry=True
+                "GET", link, retry=True
             ).json()
-            if "value" in response_json and "value" in current_json:
-                response_json["value"].extend(current_json["value"])
+            if not isinstance(current_json, dict) or not isinstance(
+                current_json.get("value"), list
+            ) or not isinstance(response_json.get("value"), list):
+                raise GraphApiDriveError("Invalid Microsoft Graph paginated response")
+            response_json["value"].extend(current_json["value"])
         response_json.pop("@odata.nextLink", None)
         return response_json
 
@@ -197,8 +210,8 @@ class SharepointClient(BaseClient):
         data = self._request_json(
             f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
         )
-        value = data.get("value", [])
-        if not isinstance(value, list):
+        value = data.get("value")
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
             raise GraphApiDriveError(f"Unexpected drives response for site '{site_id}'")
         return value
 
@@ -263,6 +276,7 @@ class SharepointClient(BaseClient):
                 "folder",
                 "file",
                 "parentReference",
+                "remoteItem",
                 "webUrl",
                 "lastModifiedDateTime",
             ]
@@ -296,6 +310,7 @@ class SharepointClient(BaseClient):
                 "parentReference",
                 "webUrl",
                 "lastModifiedDateTime",
+                "remoteItem",
             ]
         select_query = ",".join(fields)
         data = self._request_json(
@@ -338,7 +353,9 @@ class SharepointClient(BaseClient):
             resolved["drive_id"], item_path=resolved["item_path"]
         )
         path = "" if resolved["item_path"] == "/" else resolved["item_path"].strip("/")
-        return SharepointItem._from_api_response(metadata, self, path=path)
+        return SharepointItem._from_api_response(
+            metadata, self, path=path, drive_id=resolved["drive_id"]
+        )
 
     @classmethod
     def recognizes_url(cls, url: str) -> bool:
@@ -395,7 +412,7 @@ class SharepointClient(BaseClient):
 
     def get_from_id(self, item_id: str, *, drive_id: str, path: str = "") -> "SharepointItem":
         metadata = self.get_item_metadata(drive_id, item_id=item_id)
-        return SharepointItem._from_api_response(metadata, self, path=path)
+        return SharepointItem._from_api_response(metadata, self, path=path, drive_id=drive_id)
 
     def get_from_location(self, location: Location) -> "SharepointItem":
         if location.service_id:
@@ -406,7 +423,7 @@ class SharepointClient(BaseClient):
             _, drive_id = self._location_ids(location)
             metadata = self.get_item_metadata(drive_id, item_path=location.remote_path or "/")
             return SharepointItem._from_api_response(metadata, self,
-                                                     path=location.remote_path or "")
+                                                     path=location.remote_path or "", drive_id=drive_id)
         return self.get_from_weburl(location.path)
 
     def resolve_location(self, location: Location) -> ResolvedLocation:
@@ -688,6 +705,7 @@ class SharepointItem(ServiceItem):
         current_rel_path: str = "",
         *,
         path: str | None = None,
+        drive_id: str | None = None,
     ) -> "SharepointItem":
         is_folder = "folder" in api_payload
         parent_id = api_payload.get("parentReference", {}).get("id")
@@ -698,7 +716,7 @@ class SharepointItem(ServiceItem):
             if current_rel_path:
                 path = f"{current_rel_path}/{path}".strip("/")
 
-        return cls(
+        item = cls(
             client=client,
             api_payload=api_payload,
             id=api_payload.get("id"),
@@ -708,6 +726,10 @@ class SharepointItem(ServiceItem):
             parent_id=parent_id,
             is_folder=is_folder,
         )
+        if drive_id and item._drive_id and drive_id != item._drive_id:
+            raise GraphApiDriveError(f"Conflicting SharePoint drive ID for item {item.id!r}")
+        item._drive_id = item._drive_id or drive_id
+        return item
 
     @property
     def id(self) -> str:
@@ -750,7 +772,8 @@ class SharepointItem(ServiceItem):
 
         child_items = [
             SharepointItem._from_api_response(
-                child_payload, client=self.client, current_rel_path=self.path
+                child_payload, client=self.client, current_rel_path=self.path,
+                drive_id=self._drive_id if not child_payload.get("remoteItem") else None,
             )
             for child_payload in contents
         ]

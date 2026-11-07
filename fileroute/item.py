@@ -3,7 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+import re
+from typing import Any, Iterator
 
 from fileroute.exceptions import AmbiguousPathError
 from fileroute.models import Catalog, Resource, Location, ServiceType
@@ -11,6 +12,20 @@ from fileroute.models import Catalog, Resource, Location, ServiceType
 
 def _index_path(path: str | Path) -> str:
     return str(path).replace("\\", "/").strip("/")
+
+
+def _registered_name(name: str) -> str:
+    key = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-") or "item"
+    return key if re.match(r"[A-Za-z_]", key) else "item-" + key
+
+
+@dataclass(frozen=True)
+class FileMatch:
+    """A file, its POSIX path below the searched root, and named captures."""
+
+    item: ServiceItem
+    relative_path: str
+    path_properties: dict[str, Any]
 
 
 @dataclass
@@ -264,6 +279,18 @@ class ServiceItem(ABC):
             if not item.is_directory
         )
 
+    def iter_file_matches(self, resource_path_template: str) -> Iterator[FileMatch]:
+        """Match files below this folder or prefix using a source-relative template.
+
+        The caller owns the client. Exhaust the iterator to verify that every
+        folder listing succeeded. An empty iterator is a valid result.
+        """
+        from fileroute.discovery import _compile_source_template, _iter_file_matches
+
+        return _iter_file_matches(
+            self, _compile_source_template(resource_path_template)
+        )
+
     def download(self, target: Path | str) -> None:
         """Download this item to *target*.
 
@@ -313,12 +340,8 @@ class ServiceItem(ABC):
             )
         resources: dict[str, Resource] = {}
         catalogs: dict[str, Catalog] = {}
-        import re
-
         for child in self.children:
-            key = re.sub(r"[^A-Za-z0-9_-]+", "-", child.name).strip("-") or "item"
-            if not re.match(r"[A-Za-z_]", key):
-                key = "item-" + key
+            key = _registered_name(child.name)
             if key.casefold() in {name.casefold() for name in [*catalogs, *resources]}:
                 raise ValueError(
                     f"Generated registered name collision: {key}; author a descriptor explicitly"
@@ -338,4 +361,4 @@ class ServiceItem(ABC):
         )
 
 
-__all__ = ["ServiceItem"]
+__all__ = ["FileMatch", "ServiceItem"]

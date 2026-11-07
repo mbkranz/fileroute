@@ -706,7 +706,7 @@ def _build_client(
     frozen = credentials.get_frozen_credentials()
     if not frozen.access_key or not frozen.secret_key:
         raise RuntimeError("AWS credentials are incomplete for this profile.")
-    return S3Client(client=session.client("s3"))
+    return S3Client(client=session.client("s3"), owns_client=True)
 
 
 def _authentication_hint(name: str, profile: AuthProfile, path: Path) -> str:

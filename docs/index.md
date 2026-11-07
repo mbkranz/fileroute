@@ -44,6 +44,10 @@ also gives a quick start for GitHub visitors.
 
 ## Go further
 
+Find files under a remote folder or S3 prefix with `fileroute discover`. The
+[discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog)
+shows how to save the matching files as a catalog and pull them.
+
 - [Descriptor diagrams](diagram.md): SVG, Mermaid, HTML, Markdown, and graph API.
 - [Authentication](authentication.md): SharePoint, Google Drive, and S3 setup.
 - [CLI reference](cli.md) and [Python API](api.md): generated from the code.

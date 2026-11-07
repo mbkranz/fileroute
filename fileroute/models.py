@@ -119,6 +119,13 @@ class Location(_Metadata):
         description="Remote provider. Supported URLs infer this during offline resolution; provider-scoped paths require an explicit serviceType.",
         examples=["GoogleDrive", "SharePoint", "S3"],
     )
+    resource_path_template: str | None = Field(
+        default=None,
+        alias="resourcePathTemplate",
+        pattern=r"\S",
+        description="Full-match parse template relative to this source's remote directory or prefix. Use on a Catalog source with discover.",
+        examples=["{environment}/{survey_id}/definition_v{revision:d}.json"],
+    )
     auth_profile: str | None = Field(
         default=None,
         alias="authProfile",
@@ -270,7 +277,7 @@ class Resource(_Artifact):
     path_properties: dict[str, Any] = Field(
         default_factory=dict,
         alias="pathProperties",
-        description="Named values extracted from the nearest catalog resourcePathTemplate during resolution.",
+        description="Named values captured during source discovery or extracted from the nearest catalog resourcePathTemplate during local resolution.",
         examples=[{"surveyid": "example", "year": 2026}],
     )
 

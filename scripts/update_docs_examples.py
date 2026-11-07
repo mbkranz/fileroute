@@ -16,6 +16,7 @@ NAMES = (
     "sharepoint-mixed-targets",
     "local-three-targets",
     "profile-identities",
+    "discover",
 )
 
 

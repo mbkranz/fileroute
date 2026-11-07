@@ -42,6 +42,7 @@ class GDriveApiFile(pydantic.BaseModel, validate_assignment=True):
     parents: GDriveParents
     webViewLink: Optional[str] = None
     driveId: Optional[str] = None
+    trashed: bool | None = None
 
 
 class GDriveApiDrive(pydantic.BaseModel, validate_assignment=True):
@@ -284,15 +285,14 @@ class GoogleDriveClient(GoogleBaseClient):
         """
         files = []
 
-        if params is None:
-            params = {}
-
-        if queries is None:
-            queries = []
+        params = dict(params or {})
+        queries = list(queries or [])
 
         fields = GDriveApiFile.model_fields.keys()
         if "fields" not in params:
-            params["fields"] = f"nextPageToken, files({', '.join(fields)})"
+            params["fields"] = f"nextPageToken,incompleteSearch,files({', '.join(fields)})"
+        else:
+            params["fields"] = f"nextPageToken,incompleteSearch,{params['fields']}"
 
         if "pageSize" not in params:
             params["pageSize"] = page_size
@@ -304,21 +304,28 @@ class GoogleDriveClient(GoogleBaseClient):
 
         if queries:
             params["q"] = " and ".join(queries)
-        if params:
-            params.update(params)
-
         page_token = None
+        seen_tokens: set[str] = set()
         while True:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = self._request("GET", f"{DRIVE_URL}/files", params=params).json()
+            resp = self._request("GET", f"{DRIVE_URL}/files", params=params.copy()).json()
+            if not isinstance(resp, dict) or not isinstance(
+                resp.get("files", []), list
+            ) or not isinstance(resp.get("incompleteSearch", False), bool):
+                raise GoogleDriveError("Invalid Google Drive listing response")
+            if resp.get("incompleteSearch"):
+                raise GoogleDriveError("Google Drive returned an incomplete listing")
             files.extend(resp.get("files", []))
             page_token = resp.get("nextPageToken")
-            if not page_token:
+            if page_token is None:
                 break
+            if not isinstance(page_token, str) or not page_token or page_token in seen_tokens:
+                raise GoogleDriveError("Invalid or repeated Google Drive continuation token")
+            seen_tokens.add(page_token)
 
-        return [GDriveApiFile(**f) for f in files]
+        return [GDriveApiFile.model_validate(f) for f in files]
 
     def list_children(
         self, parent_id: str, *, drive_id: str | None = None, name: str | None = None
@@ -327,7 +334,7 @@ class GoogleDriveClient(GoogleBaseClient):
         if name is not None:
             escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
             queries.append(f"name = '{escaped_name}'")
-        params: dict[str, Any] = {}
+        params: dict[str, Any] = {"spaces": "drive", "corpora": "user"}
         if drive_id:
             params.update({"corpora": "drive", "driveId": drive_id})
         return self.list_files(queries=queries, params=params)
@@ -355,6 +362,7 @@ class GoogleDriveClient(GoogleBaseClient):
 
         drives = []
         page_token = None
+        seen_tokens: set[str] = set()
 
         while True:
             params: dict[str, str] = {
@@ -367,12 +375,17 @@ class GoogleDriveClient(GoogleBaseClient):
                 params["pageToken"] = page_token
 
             resp = self._request("GET", f"{DRIVE_URL}/drives", params=params).json()
+            if not isinstance(resp, dict) or not isinstance(resp.get("drives", []), list):
+                raise GoogleDriveError("Invalid Google shared drive listing response")
             drives.extend(resp.get("drives", []))
             page_token = resp.get("nextPageToken")
-            if not page_token:
+            if page_token is None:
                 break
+            if not isinstance(page_token, str) or not page_token or page_token in seen_tokens:
+                raise GoogleDriveError("Invalid or repeated Google shared drive continuation token")
+            seen_tokens.add(page_token)
 
-        return [GDriveApiDrive(**f) for f in drives]
+        return [GDriveApiDrive.model_validate(f) for f in drives]
 
     def get_file(self, file_id: str, **kwargs) -> GDriveApiFile:
 
@@ -829,6 +842,7 @@ class GoogleDriveClient(GoogleBaseClient):
                 id=location.drive_id,
                 name=location.drive or "",
                 mime_type=FOLDER_MIME,
+                kind="drive",
                 drive_id=location.drive_id,
                 container_id=location.drive_id,
             )
@@ -950,6 +964,7 @@ class GDriveItem(ServiceItem):
         kind: Optional[str] = None,
         container_id: str | None = None,
         drive_id: str | None = None,
+        trashed: bool | None = None,
     ):
         self.kind = kind
         self._client = client
@@ -961,6 +976,7 @@ class GDriveItem(ServiceItem):
         self._mime_type = mime_type
         self._container_id = container_id
         self._drive_id = drive_id
+        self._trashed = trashed
 
     @classmethod
     def _from_api_response(
@@ -986,7 +1002,10 @@ class GDriveItem(ServiceItem):
             api_metadata_dict["parent_id"] = parents[0] if parents else None
             api_metadata_dict["source_url"] = api_metadata_dict.pop("webViewLink")
             api_metadata_dict["mime_type"] = api_metadata_dict.pop("mimeType")
-            drive_id = drive_id or api_metadata_dict.pop("driveId", None)
+            api_drive_id = api_metadata_dict.pop("driveId", None)
+            if drive_id and api_drive_id and drive_id != api_drive_id:
+                raise ValueError(f"Conflicting Google Drive IDs: {drive_id!r} and {api_drive_id!r}")
+            drive_id = api_drive_id or drive_id
 
         return cls(
             client=client,
@@ -1020,6 +1039,9 @@ class GDriveItem(ServiceItem):
             return indexed
 
         children = self.client.list_children(self.id, drive_id=self._drive_id)
+        for child in children:
+            if not child.id or not child.name or not child.mimeType or child.parents != [self.id]:
+                raise GoogleDriveError(f"Invalid Google Drive child metadata under {self.id!r}")
         child_items = [
             GDriveItem._from_api_response(
                 api_metadata=child,
@@ -1110,7 +1132,7 @@ class GDriveItem(ServiceItem):
         if self.id is None:
             raise ValueError("Cannot refresh an item with no ID")
         refreshed = self.client.get_file(
-            self.id, fields="id,name,mimeType,parents,webViewLink"
+            self.id, fields="id,name,mimeType,parents,webViewLink,trashed"
         )
         old_name = self.name
         old_path = Path(self.path)
@@ -1119,6 +1141,7 @@ class GDriveItem(ServiceItem):
         if self.path and old_path.name == old_name:
             self._path = str(old_path.with_name(self.name)).replace("\\", "/")
         self._mime_type = refreshed.mimeType
+        self._trashed = refreshed.trashed
         self._source_url = refreshed.webViewLink
         self._parent_id = refreshed.parents[0] if refreshed.parents else None
         return self

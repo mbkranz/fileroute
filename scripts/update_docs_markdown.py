@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 API_MODULES = [
+    {"module": "fileroute.discovery", "path": ROOT / "fileroute" / "discovery.py"},
     {
         "module": "fileroute.clients.base",
         "path": ROOT / "fileroute" / "clients" / "base.py",

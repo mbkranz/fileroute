@@ -73,6 +73,12 @@ def plan_pull(
         ):
             continue
         entity = row.model
+        if isinstance(entity, (Catalog, Resource)) and any(
+            source.resource_path_template is not None for source in entity.sources
+        ):
+            raise ValueError(
+                f"{row.name_path or 'root'}: run fileroute discover before pulling a templated source"
+            )
         if isinstance(entity, Catalog) and (entity.resources or entity.catalogs):
             continue
         if not isinstance(entity, (Resource, Catalog)) or not entity.sources:
@@ -124,20 +130,34 @@ def _transfer_clients(
     entries: tuple[PullEntry, ...] | tuple[PushEntry, ...], *, profile: str | None
 ) -> Iterator[dict[tuple[ServiceType, str | None], BaseClient]]:
     """Prepare each selected client before transfers and close it on scope exit."""
+    keys = (
+        (
+            entry.service_type,
+            (entry.location.auth_profile if entry.location is not None else None)
+            or profile,
+        )
+        for entry in entries
+    )
+    with _location_clients(keys) as clients:
+        yield clients
+
+
+@contextmanager
+def _location_clients(
+    keys: Iterator[tuple[ServiceType, str | None]],
+) -> Iterator[dict[tuple[ServiceType, str | None], BaseClient]]:
+    """Open each distinct provider/profile pair and close it on scope exit."""
     with ExitStack() as stack:
         clients: dict[tuple[ServiceType, str | None], BaseClient] = {}
-        for entry in entries:
-            selected = (
-                entry.location.auth_profile if entry.location is not None else None
-            ) or profile
-            key = (entry.service_type, selected)
+        for key in keys:
+            service_type, selected = key
             if key not in clients:
                 if selected is None:
-                    clients[key] = get_provider(entry.service_type).build_default()
+                    clients[key] = get_provider(service_type).build_default()
                 else:
                     from fileroute.auth.profiles import build_profile_client
 
-                    clients[key] = build_profile_client(selected, entry.service_type)
+                    clients[key] = build_profile_client(selected, service_type)
                 stack.callback(clients[key].close)
         yield clients
 
@@ -326,6 +346,8 @@ def plan_push(
             return
         explicit = entity.targets is not None
         targets = entity.targets if explicit else inherited
+        if any(target.resource_path_template is not None for target in targets or []):
+            raise ValueError("resourcePathTemplate is supported only on discovery sources")
         if selected is not None and explicit:
             for target in targets or []:
                 parse_location(target, required=True)

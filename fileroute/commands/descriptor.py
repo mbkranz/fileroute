@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
+from botocore.exceptions import BotoCoreError, ClientError
 
 from fileroute.commands.toolkit import (
     DESCRIPTOR_DEFAULT_HELP,
@@ -15,7 +16,7 @@ from fileroute.commands.toolkit import (
     parse_field_args,
     prepare_descriptor_path,
 )
-from fileroute.exceptions import GoogleApiError, GraphApiError
+from fileroute.exceptions import GoogleApiError, GoogleRefreshError, GraphApiError
 from fileroute.commands.config import active_descriptor, set_active_descriptor
 from fileroute.descriptor import (
     load,
@@ -162,6 +163,64 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             NotImplementedError,
             GoogleApiError,
             GraphApiError,
+        ) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+
+    @app.command("discover")
+    def discover_command(
+        descriptor: Optional[Path] = typer.Argument(None, help=DESCRIPTOR_DEFAULT_HELP),
+        select: Optional[str] = typer.Option(
+            None, "--select", help="Catalog name or exact selector."
+        ),
+        profile: Optional[str] = typer.Option(
+            None, "--profile", help="Default auth profile. Source authProfile takes precedence."
+        ),
+        format: OutputFormat = typer.Option(
+            OutputFormat.TEXT, "--format", help="Print matches or a concrete JSON catalog."
+        ),
+        output: Optional[Path] = typer.Option(
+            None, "--output", help="Save the concrete catalog as YAML or JSON."
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Show the scope offline using text output."
+        ),
+    ) -> None:
+        """Match remote file paths and build a concrete catalog for pull."""
+        from fileroute.discovery import _collect_discovery, _prepare_discovery
+
+        try:
+            if dry_run and (output is not None or format != OutputFormat.TEXT):
+                raise ValueError("--dry-run requires text output and accepts no --output")
+            root = Path.cwd()
+            sources = _prepare_discovery(
+                prepare_descriptor_path(descriptor), root, select, output=output
+            )
+            if dry_run:
+                for source in sources:
+                    typer.echo(
+                        f"{source.name or 'root'}: {source.location.path} "
+                        f"with {source.location.resource_path_template!r} -> {source.local}"
+                    )
+                return
+            result = _collect_discovery(sources, root, profile)
+            resources = [row.model for row in walk(result) if isinstance(row.model, Resource)]
+            if output is not None:
+                target = output.resolve()
+                for resource in resources:
+                    artifact = root / resource.path
+                    if target.is_relative_to(artifact) or artifact.is_relative_to(target):
+                        raise ValueError(f"Discovery output overlaps a pull destination: {artifact}")
+                save(result, output)
+            if format == OutputFormat.JSON:
+                echo_json(result.model_dump(mode="json", by_alias=True, exclude_unset=True))
+            else:
+                for resource in resources:
+                    captures = json.dumps(resource.path_properties, default=str, ensure_ascii=False)
+                    typer.echo(f"{resource.path} {captures}")
+        except (
+            OSError, ValueError, RuntimeError, GoogleApiError, GraphApiError,
+            GoogleRefreshError, BotoCoreError, ClientError,
         ) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
