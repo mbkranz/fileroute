@@ -258,3 +258,32 @@ def test_s3_recursive_traversal_pages_and_synthesizes_directories() -> None:
             "ContinuationToken": "page-2",
         },
     ]
+
+
+def test_s3_push_preserves_the_exact_object_key_and_profile(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from fileroute.descriptor import save
+    from fileroute.models import Catalog, Location, Resource
+    from fileroute.transfer import plan_push, push
+
+    local = tmp_path / "schema.json"
+    local.write_text("{}\n")
+    config = tmp_path / "catalog.yaml"
+    save(Catalog(resources={"schema": Resource(
+        path=local.name,
+        targets=[Location(path="s3://bucket/schemas/v%20.json", authProfile="writer")],
+    )}), config)
+    sdk = Mock()
+    factory = Mock(return_value=S3Client(client=sdk, owns_client=True))
+    monkeypatch.setattr("fileroute.auth.profiles.build_profile_client", factory)
+    plan = plan_push(config, root=tmp_path)
+    assert plan[0].destination == "s3://bucket/schemas/v%20.json"
+    factory.assert_not_called()
+
+    push(plan, profile="unused")
+    assert factory.call_args.args[0] == "writer"
+    sdk.upload_file.assert_called_once_with(
+        str(local), "bucket", "schemas/v%20.json", ExtraArgs={"ContentType": "application/json"}
+    )
+    sdk.close.assert_called_once()

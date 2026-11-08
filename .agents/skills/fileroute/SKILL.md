@@ -68,9 +68,9 @@ Treat this table as a guardrail and verify `docs/transfers.md` when current beha
 | Operation | SharePoint | Google Drive | S3 |
 | --- | --- | --- | --- |
 | `pull` remote source | supported | supported | supported |
-| `push` publication target | supported | supported (binary files) | not implemented |
+| `push` publication target | supported | supported (binary files) | explicit file targets |
 
-Google Drive push supports folder targets and exact existing binary file IDs; reject ambiguous names and Google-native document updates. Descriptors and diagrams may describe S3 targets even though push cannot publish to them yet. `push --dry-run` fails if any target is unsupported; it does not partially publish supported targets.
+Google Drive push supports folder targets and exact existing binary file IDs; reject ambiguous names and Google-native document updates. Use an exact object key for S3 push. `push --dry-run` fails if any target is unsupported; it does not partially publish supported targets.
 
 Fileroute does not stream directly from one cloud provider to another and does not transform files. A remote-to-remote workflow is conceptually `pull` to the local artifact, perform any external transformation if needed, then `push`.
 

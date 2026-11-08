@@ -3,13 +3,14 @@ from fileroute.models import Location, ServiceType
 from fileroute.resolution import ResolvedLocation, relative_path
 
 from pathlib import Path
+import mimetypes
 from typing import Any
 from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
 
-from fileroute.clients.base import BaseClient
+from fileroute.clients.base import BaseClient, ClientCapabilities
 from fileroute.item import ServiceItem
 
 
@@ -68,6 +69,7 @@ def _parse_s3_source_url(
 
 class S3Client(BaseClient):
     auth_methods = ["aws_credentials"]
+    capabilities = ClientCapabilities(supports_upload=True)
 
     def __init__(self, *, client: Any = None, owns_client: bool = False) -> None:
         self._owns_client = client is None or owns_client
@@ -130,6 +132,30 @@ class S3Client(BaseClient):
         if not separator or not bucket:
             raise ValueError(f"Invalid S3 serviceId: {item_id!r}; expected bucket:key")
         return self.get_from_path(bucket=bucket, key=key)
+
+    @classmethod
+    def _upload_destination(cls, location: Location) -> tuple[str, str]:
+        url = urlparse(location.path)
+        resolved = cls.parse_location(location)
+        key = (
+            _parse_s3_source_url(location.path, allow_empty_key=True)[1]
+            if url.scheme else location.path
+        )
+        if (
+            url.query or url.fragment or url.path.startswith("//")
+            or not key or key.endswith("/") or key != resolved.remote_path
+        ):
+            raise ValueError(f"S3 upload requires an exact object key: {location.path!r}")
+        return resolved.context["bucket"], key
+
+    def upload_to_file(self, location: Location, local_file_path: str | Path) -> "S3Item":
+        """Upload bytes to an explicit S3 object key using the configured SDK client."""
+        bucket, key = self._upload_destination(location)
+        mime_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
+        self.client.upload_file(
+            str(local_file_path), bucket, key, ExtraArgs={"ContentType": mime_type}
+        )
+        return S3Item(client=self, bucket=bucket, key=key, is_directory=False)
 
     def get_from_location(self, location: Location) -> "S3Item":
         if location.service_id:

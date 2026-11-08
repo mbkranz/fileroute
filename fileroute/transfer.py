@@ -224,6 +224,8 @@ class PushEntry:
 
     @property
     def destination(self) -> str:
+        if self.service_type is ServiceType.S3 and self.location is not None:
+            return f"s3://{self.location.bucket}/{self.location.remote_path}"
         if self.service_type is ServiceType.GOOGLE_DRIVE and not self.direct_file:
             # A Drive folder URL is an ID, not a hierarchical URL prefix.
             return f"{self.remote} :: {self.relative.as_posix()}"
@@ -302,6 +304,13 @@ def plan_push(
                 f"Google Drive folder URL cannot be a file target: {target.path}"
             )
         direct = relative is None
+        if service is ServiceType.S3:
+            if not direct:
+                raise ValueError("S3 push requires explicit file targets")
+            from fileroute.clients.s3 import S3Client
+
+            _, object_key = S3Client._upload_destination(target)
+            relative = Path(object_key.rsplit("/", 1)[-1])
         if direct:
             if service is ServiceType.GOOGLE_DRIVE:
                 if not target.service_id:
@@ -311,7 +320,7 @@ def plan_push(
                     )
                 # File URLs end in /view or /edit, neither is a filename.
                 relative = Path(local.name)
-            else:
+            elif relative is None:
                 name = unquote(url.path.rsplit("/", 1)[-1])
                 if not name or name in {".", ".."} or "/" in name or "\\" in name:
                     raise ValueError(f"Invalid remote file path: {target.path}")
@@ -422,10 +431,10 @@ def push(files: tuple[PushEntry, ...], *, profile: str | None = None) -> None:
                 file.location.auth_profile if file.location is not None else None
             ) or profile
             client = clients[(file.service_type, selected)]
-            if file.service_type is ServiceType.GOOGLE_DRIVE and file.direct_file:
+            if file.service_type in {ServiceType.GOOGLE_DRIVE, ServiceType.S3} and file.direct_file:
                 if file.location is None:
                     raise ValueError(
-                        "Google Drive file upload requires a resolved target"
+                        "Exact file upload requires a resolved target"
                     )
                 client.upload_to_file(file.location, file.local)
                 continue

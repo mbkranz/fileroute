@@ -122,7 +122,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                     push(files)
                 else:
                     push(files, profile=profile)
-        except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
+        except (OSError, ValueError, NotImplementedError, GraphApiError, BotoCoreError, ClientError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
 

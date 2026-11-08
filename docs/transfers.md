@@ -23,7 +23,11 @@ See the exact [`pull`](cli.md#fileroute-pull) and
 | Direction | SharePoint | Google Drive | S3 |
 | --- | --- | --- | --- |
 | Remote source for `pull` | Supported | Supported | Supported |
-| Publication target for `push` | Supported | Supported | Not implemented |
+| Publication target for `push` | Supported | Supported | Explicit file targets |
+
+For S3 publication, set the full object URI as a resource target, such as
+`s3://example-bucket/schemas/v16.json`. Each upload writes the local bytes to
+that key and sets its content type from the filename.
 
 Descriptors and diagrams may include unsupported publication targets. However,
 `push --dry-run` fails planning if any target in its selected scope is

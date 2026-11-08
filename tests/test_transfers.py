@@ -102,7 +102,7 @@ def test_push_preflight_rejects_bad_plan(tmp_path, kind, monkeypatch):
             path="other", targets=[Location(path=REMOTE + "/file")]
         )
     elif kind == "unsupported":
-        resource.targets = [Location(path="s3://bucket/file")]
+        resource.targets = [Location(path="s3://bucket/prefix/", entityType="Directory")]
     elif kind == "query":
         resource.targets = [Location(path=REMOTE + "/file?download=1")]
     else:
@@ -251,7 +251,7 @@ def test_selected_push_inherits_targets_and_skips_unsupported_sibling(
             "other": Catalog(
                 resources={
                     "bad": Resource(
-                        path="bad.csv", targets=[Location(path="s3://bucket/bad.csv")]
+                        path="bad.csv", targets=[Location(path="s3://bucket/prefix/", entityType="Directory")]
                     )
                 }
             ),
@@ -272,7 +272,7 @@ def test_selected_push_inherits_targets_and_skips_unsupported_sibling(
     result = CliRunner().invoke(app, ["push", str(path), "--select", "batch"])
     assert result.exit_code == 0, result.output
     assert calls == list(selected)
-    with pytest.raises(ValueError, match="Upload is not implemented"):
+    with pytest.raises(ValueError, match="S3 push requires explicit file targets"):
         plan_push(path, root=tmp_path, selector="other")
 
 

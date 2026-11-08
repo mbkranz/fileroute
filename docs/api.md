@@ -289,6 +289,8 @@ Auto-generated from source signatures and docstrings.
   - `def recognizes_url(cls, url: str) -> bool`
   - `def parse_location(cls, location: Location) -> ResolvedLocation`
   - `def get_from_id(self, item_id: str) -> 'S3Item'`
+  - `def upload_to_file(self, location: Location, local_file_path: str | Path) -> 'S3Item'`
+    - Upload bytes to an explicit S3 object key using the configured SDK client.
   - `def get_from_location(self, location: Location) -> 'S3Item'`
   - `def resolve_location(self, location: Location) -> ResolvedLocation`
   - `def get_from_path(self, *, bucket: str, key: str = '') -> 'S3Item'`
