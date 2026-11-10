@@ -109,9 +109,8 @@ refresh or mutation invalidates it.
 
 Live development-tenant validation is still needed for canonical descriptors;
 mocked tests cannot prove access or real transfers. Future capabilities should
-follow demand: S3 upload, SharePoint upload sessions for files
-above 250 MB, descriptor discovery with a defined operator workflow, and a
-small Rich terminal diagram view. Keep transformation tools such as Quarto
+follow demand: exact-key S3 publication, SharePoint upload sessions for files
+above 250 MB, and a small Rich terminal diagram view. Keep transformation tools such as Quarto
 outside Fileroute.
 
 After the first documentation deployment, evaluate Zensical in a separate PR

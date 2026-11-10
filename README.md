@@ -22,6 +22,9 @@ converting existing named lists and `$ref` links. See the
 
 ## Get started
 
+Discovery examples use `uv run fileroute` from this checkout or an installation
+pinned to a Git revision that includes `discover`.
+
 For a repeatable project workflow, add Fileroute as a dependency and commit the
 descriptor and `uv.lock`:
 
