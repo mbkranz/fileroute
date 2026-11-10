@@ -102,15 +102,20 @@ Registered names take precedence over rootless structural syntax. Use the explic
 
 ## Remote source templates
 
-To discover files, give a Catalog a local `path` and one source with a concrete
-remote directory or S3 prefix in `path`. Set `resourcePathTemplate` on that source.
-The pattern matches the entire case-sensitive path below the remote root,
-including the filename. Named fields become `pathProperties`. For example,
+Give each discovery catalog a local `path` and exactly one source. The
+source's `path` identifies a remote folder or S3 prefix, and its
+`resourcePathTemplate` matches the entire case-sensitive path below that root.
+Named fields become `pathProperties`. For example,
 `{survey_id}/definition_v{revision:d}.json` captures an integer revision.
+
+Discovery catalogs are input-only. Set `targets: []` to clear inherited targets.
+Use `--select` to scope discovery to a catalog and its descendants. Each
+selected root with a template must yield a match. Duplicate local paths or
+catalog names stop discovery before it saves a catalog.
 
 Supported URLs infer the provider. Scoped paths require `serviceType` and its
 namespace, such as an S3 `bucket`. Use a trailing slash for a directory-style S3
-prefix. Set `targets: []` if the collection inherits publication targets.
+prefix.
 
 The Catalog's own `resourcePathTemplate` describes local artifact paths.
 Source templates belong to Catalog sources and accept relative patterns. The

@@ -144,10 +144,11 @@ flowchart LR
 ```
 <!-- diagram:local-three-targets:end -->
 
-**Current support:** SharePoint, Google Drive, and S3 remote sources can be
-pulled; SharePoint and Google Drive targets can be pushed. The last descriptor
-has an S3 target, so even `push --dry-run` rejects its entire upload plan.
-To publish its supported targets, use a separate descriptor without S3.
+After rendering the document, preview all three destinations with
+`uv run fileroute push examples/use-cases/local-three-targets.yaml --dry-run`.
+The SharePoint destination is a file path, the Google Drive ID identifies an
+existing file, and the S3 URI gives the exact object key. Configure credentials
+with write access to each target before running `push` without `--dry-run`.
 
 ## Separate source and target identities
 
@@ -261,18 +262,20 @@ flowchart LR
 ```
 <!-- diagram:discover:end -->
 
-Inspect the scope offline, then discover the selected files and pull the
-resulting catalog. Run the commands from the same working root.
+From a checkout with discovery support, preview the roots and templates
+offline. Run discovery to save the matches, then preview and run the pull.
+Use the same working root for each command.
 
 ```bash
-fileroute discover examples/use-cases/discover.yaml --dry-run
-fileroute discover examples/use-cases/discover.yaml --select definitions --output reports/definitions.yaml
-fileroute pull reports/definitions.yaml --dry-run
-fileroute pull reports/definitions.yaml
+uv run fileroute discover examples/use-cases/discover.yaml --select definitions --dry-run
+uv run fileroute discover examples/use-cases/discover.yaml --select definitions --output reports/definitions.yaml
+uv run fileroute pull reports/definitions.yaml --dry-run
+uv run fileroute pull reports/definitions.yaml
 ```
 
-The output can look like this for an S3 match. The file source records its exact
-identity and the capture values are stored on the resource.
+This S3 match records the bucket and object key, along with the captured
+environment, survey ID, and revision. Pull reads the object at that key when
+the transfer runs.
 
 ```yaml
 targets: []

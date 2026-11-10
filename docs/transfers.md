@@ -25,10 +25,6 @@ See the exact [`pull`](cli.md#fileroute-pull) and
 | Remote source for `pull` | Supported | Supported | Supported |
 | Publication target for `push` | Supported | Supported | Explicit file targets |
 
-For S3 publication, set the full object URI as a resource target, such as
-`s3://example-bucket/schemas/v16.json`. Each upload writes the local bytes to
-that key and sets its content type from the filename.
-
 Descriptors and diagrams may include unsupported publication targets. However,
 `push --dry-run` fails planning if any target in its selected scope is
 unsupported; it does not partially publish to supported targets. Select an
@@ -38,8 +34,8 @@ permissions. `resolve --online` reads provider metadata to verify locations.
 
 ## Authentication profiles
 
-Use `--profile NAME` with `pull`, `push`, or `resolve --online` to select a
-default identity for that invocation. A source or target's `authProfile` wins
+Use `--profile NAME` with `discover`, `pull`, `push`, or `resolve --online`
+to select a default identity for that invocation. A source or target's `authProfile` wins
 over that default. Without either, the provider's existing environment/SDK
 configuration applies. A named profile must match the location's provider;
 there is no fallback to a different identity when it fails.
@@ -83,6 +79,35 @@ For a folder target enriched by `resolve --online --write`, push uses its
 `driveId` and `serviceId` directly. An exact file target uses its parent folder
 path on SharePoint. Google Drive instead updates the saved file ID directly.
 
+### S3 publication
+
+Set an explicit target on a resource with the full S3 object key. S3
+publication requires a file target. Folder targets and targets inherited
+from a catalog are rejected during planning.
+
+```yaml
+resources:
+  schema:
+    path: artifacts/v16.json
+    targets:
+      - path: s3://example-bucket/schemas/v16.json
+        authProfile: archive-writer
+```
+
+Save the descriptor as `config/publish.yaml` and configure the named S3
+profile. With `artifacts/v16.json` present, run these commands from the
+project root using a Fileroute installation with S3 push support.
+
+```bash
+uv run fileroute push config/publish.yaml --dry-run
+uv run fileroute push config/publish.yaml
+```
+
+The dry run shows the exact bucket and key offline. Each push writes the current local bytes to that key
+and sets the content type from the key's filename. If the key already exists,
+the upload replaces its current contents. See [S3 authentication](authentication.md#s3-and-aws-profiles)
+for configuring the named profile.
+
 ### Google Drive publication
 
 The destination folder must exist. A folder target creates missing child
@@ -114,15 +139,39 @@ upload. Existing Google OAuth credentials need write access to the target;
 the configured `drive` scope covers arbitrary accessible files, while
 `drive.file` is limited to files the app created or the user opened with it.
 
-## Pull
+## Discover and pull
 
-A selected Catalog with a templated source needs discovery before pull. Run
+| Command | Use it when | Result |
+| --- | --- | --- |
+| `fileroute discover` | You know a remote root and a `resourcePathTemplate`. | Lists matching remote paths. With `--output`, it saves a catalog of sources and local destinations. Artifact contents stay remote. |
+| `fileroute pull` | You have a catalog with concrete sources and local paths. | Downloads the listed artifacts to those paths. |
+
+Pull an authored catalog directly when the sources are already known. For a
+catalog with a templated source, run
 `fileroute discover catalog.yaml --select NAME --output matches.yaml`, then
 `fileroute pull matches.yaml` from the same working root. The saved catalog uses
 concrete file identities and carries the effective source auth profile, when
 one was selected. A concrete resource can be pulled independently with its own
 selector. Save the discovery output separately from the files it will pull.
 See the [discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog).
+
+`discover --dry-run` previews the remote roots, templates, and local roots
+offline. `pull --dry-run` previews the transfers in a concrete catalog offline.
+
+### If you know Git
+
+`fileroute discover` is closest to [`git ls-remote`][git-ls-remote], which lists
+remote refs and their commit IDs. Discovery can also save those matches as a
+Fileroute catalog. [`git fetch`][git-fetch] downloads Git objects and refs into
+the local repository, and [`git pull`][git-pull] then integrates fetched changes
+into the current branch. `fileroute pull` downloads artifact contents to the
+local paths declared in the catalog.
+
+[git-ls-remote]: https://git-scm.com/docs/git-ls-remote
+[git-fetch]: https://git-scm.com/docs/git-fetch
+[git-pull]: https://git-scm.com/docs/git-pull
+
+## Pull
 
 A leaf catalog can retrieve a remote directory; a catalog with children
 retrieves only those children. Targets never affect retrieval. Multiple

@@ -168,7 +168,9 @@ or manage AWS SSO login. `auth login s3 --profile archive-reader` checks the
 existing credential chain and points to native AWS login when needed. Omitting
 `--aws-profile` uses Boto3's default credential chain, suitable for an attached
 role in automation. A credentials-only check does not prove bucket permissions;
-add a concrete S3 URL for a location read check.
+add a concrete S3 URL with `--url` for a location read check. For
+[S3 publication](transfers.md#s3-publication), choose a profile with write
+access to the target object key. The dry run checks the upload plan offline.
 
 AWS SSO profiles refer to an `sso-session` and an account/role. Fileroute adds a
 provider-independent identity name above that existing AWS configuration. See

@@ -6,9 +6,8 @@ files to SharePoint, Google Drive, and S3 locations. Preview transfers without
 credentials, visualize the relationships, pull remote inputs, and publish to
 supported targets through the CLI or Python API. Python 3.11+ is required.
 
-**Current transfer support:** SharePoint, Google Drive, and S3 can be pulled;
-SharePoint and Google Drive can be pushed. S3 targets can be described and
-diagrammed, but `push --dry-run` rejects them until upload support exists.
+**Transfer support.** Pull from SharePoint, Google Drive, and S3. Push to
+SharePoint, Google Drive, and [explicit S3 object keys](docs/transfers.md#s3-publication).
 Fileroute does not transform files or transfer directly between cloud providers.
 
 ## Descriptor format change
@@ -21,6 +20,9 @@ converting existing named lists and `$ref` links. See the
 [migration guide](docs/descriptors.md#migrate-the-old-format).
 
 ## Get started
+
+Discovery and S3 publication examples use `uv run fileroute` from this checkout
+or an installation pinned to a Git revision that includes both features.
 
 For a repeatable project workflow, add Fileroute as a dependency and commit the
 descriptor and `uv.lock`:
@@ -128,9 +130,11 @@ for nested folders, shared drives, and ambiguous names.
 
 ## Documentation
 
-Use `fileroute discover` to match remote file paths in a SharePoint folder, S3
-prefix, or Google Drive folder and save the matches as a catalog for `pull`.
-See the [discovery walkthrough](docs/use-cases.md#discover-files-and-pull-a-concrete-catalog).
+Use `fileroute discover` when you know the remote folder or prefix and a path
+pattern. It lists matches and can save them as a catalog. Use `fileroute pull`
+to download files to the local paths in a catalog you wrote or discovered.
+See [discovery and pull](docs/transfers.md#discover-and-pull) and the
+[discovery walkthrough](docs/use-cases.md#discover-files-and-pull-a-concrete-catalog).
 
 - [Descriptor model, paths, references, and resolution](docs/descriptors.md)
 - [More use cases, saved YAML, and generated diagrams](docs/use-cases.md)
