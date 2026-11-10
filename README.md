@@ -128,9 +128,11 @@ for nested folders, shared drives, and ambiguous names.
 
 ## Documentation
 
-Use `fileroute discover` to match remote file paths in a SharePoint folder, S3
-prefix, or Google Drive folder and save the matches as a catalog for `pull`.
-See the [discovery walkthrough](docs/use-cases.md#discover-files-and-pull-a-concrete-catalog).
+Use `fileroute discover` when you know the remote folder or prefix and a path
+pattern. It lists matches and can save them as a catalog. Use `fileroute pull`
+to download files to the local paths in a catalog you wrote or discovered.
+See [discovery and pull](docs/transfers.md#discover-and-pull) and the
+[discovery walkthrough](docs/use-cases.md#discover-files-and-pull-a-concrete-catalog).
 
 - [Descriptor model, paths, references, and resolution](docs/descriptors.md)
 - [More use cases, saved YAML, and generated diagrams](docs/use-cases.md)

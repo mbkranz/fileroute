@@ -110,15 +110,39 @@ upload. Existing Google OAuth credentials need write access to the target;
 the configured `drive` scope covers arbitrary accessible files, while
 `drive.file` is limited to files the app created or the user opened with it.
 
-## Pull
+## Discover and pull
 
-A selected Catalog with a templated source needs discovery before pull. Run
+| Command | Use it when | Result |
+| --- | --- | --- |
+| `fileroute discover` | You know a remote root and a `resourcePathTemplate`. | Lists matching remote paths. With `--output`, it saves a catalog of sources and local destinations. Artifact contents stay remote. |
+| `fileroute pull` | You have a catalog with concrete sources and local paths. | Downloads the listed artifacts to those paths. |
+
+Pull an authored catalog directly when the sources are already known. For a
+catalog with a templated source, run
 `fileroute discover catalog.yaml --select NAME --output matches.yaml`, then
 `fileroute pull matches.yaml` from the same working root. The saved catalog uses
 concrete file identities and carries the effective source auth profile, when
 one was selected. A concrete resource can be pulled independently with its own
 selector. Save the discovery output separately from the files it will pull.
 See the [discovery walkthrough](use-cases.md#discover-files-and-pull-a-concrete-catalog).
+
+`discover --dry-run` previews the remote roots, templates, and local roots
+offline. `pull --dry-run` previews the transfers in a concrete catalog offline.
+
+### If you know Git
+
+`fileroute discover` is closest to [`git ls-remote`][git-ls-remote], which lists
+remote refs and their commit IDs. Discovery can also save those matches as a
+Fileroute catalog. [`git fetch`][git-fetch] downloads Git objects and refs into
+the local repository, and [`git pull`][git-pull] then integrates fetched changes
+into the current branch. `fileroute pull` downloads artifact contents to the
+local paths declared in the catalog.
+
+[git-ls-remote]: https://git-scm.com/docs/git-ls-remote
+[git-fetch]: https://git-scm.com/docs/git-fetch
+[git-pull]: https://git-scm.com/docs/git-pull
+
+## Pull
 
 A leaf catalog can retrieve a remote directory; a catalog with children
 retrieves only those children. Targets never affect retrieval. Multiple
