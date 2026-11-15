@@ -283,7 +283,7 @@ $ fileroute diagram [OPTIONS] [DESCRIPTOR]
 
 ## `fileroute auth`
 
-Authentication helpers.
+Authentication helpers. Start with `fileroute auth describe`.
 
 **Usage**:
 
@@ -297,12 +297,39 @@ $ fileroute auth [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
+* `describe`: Explain authentication setup and profile...
 * `configure`: Save a named profile without logging in or...
 * `list`: List configured names, providers, and...
 * `show`: Show settings and secret references; never...
 * `remove`: Remove a profile and its Fileroute token...
 * `check`: Check credentials and optional read access...
 * `login`: Interactive login commands.
+
+### `fileroute auth describe`
+
+Explain authentication setup and profile selection offline.
+
+**Usage**:
+
+```console
+$ fileroute auth describe [OPTIONS] [PROVIDER]
+```
+
+**Arguments**:
+
+* `[PROVIDER]`: Provider to learn about.
+
+**Options**:
+
+* `--mode [adc|service_account|user_oauth|app_only|delegated|default]`: Authentication mode.
+* `--url TEXT`: Infer the provider from a URL.
+* `--descriptor PATH`: Catalog descriptor.
+* `--select TEXT`: Resource or catalog selector.
+* `--operation [pull|push|discover]`: Route to explain.
+* `--location TEXT`: Exact location selector within the route.
+* `--profile TEXT`: Invocation's default profile.
+* `--format [text|json]`: [default: text]
+* `--help`: Show this message and exit.
 
 ### `fileroute auth configure`
 

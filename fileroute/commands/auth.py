@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from contextlib import closing, contextmanager
 import json
-from pathlib import Path
 import shlex
 import sys
+from contextlib import closing, contextmanager
+from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from pydantic import ValidationError
 import typer
+from pydantic import ValidationError
 
-from fileroute.commands.toolkit import examples_epilog, load_env_file
+from fileroute.auth.describe import AuthDescribeArgs, Operation, describe_auth
+from fileroute.auth.profiles import ProfileMode
+from fileroute.commands.toolkit import OutputFormat, examples_epilog, load_env_file
 from fileroute.models import Location, ServiceType
 
 
@@ -98,6 +100,79 @@ def _run_microsoft_login(
 
 
 def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -> None:
+    @auth_app.command("describe")
+    def auth_describe(
+        provider: str | None = typer.Argument(None, help="Provider to learn about."),
+        mode: ProfileMode | None = typer.Option(None, help="Authentication mode."),
+        url: str | None = typer.Option(None, help="Infer the provider from a URL."),
+        descriptor: Path | None = typer.Option(None, help="Catalog descriptor."),
+        selector: str | None = typer.Option(
+            None, "--select", help="Resource or catalog selector."
+        ),
+        operation: Operation | None = typer.Option(None, help="Route to explain."),
+        location: str | None = typer.Option(
+            None, help="Exact location selector within the route."
+        ),
+        profile: str | None = typer.Option(None, help="Invocation's default profile."),
+        format: OutputFormat = typer.Option(OutputFormat.TEXT, "--format"),
+    ) -> None:
+        """Explain authentication setup and profile selection offline."""
+        with _profile_errors():
+            try:
+                result = describe_auth(
+                    AuthDescribeArgs(
+                        provider=provider,
+                        mode=mode,
+                        url=url,
+                        descriptor=descriptor,
+                        selector=selector,
+                        operation=operation,
+                        location=location,
+                        profile=profile,
+                    )
+                )
+            except ValidationError:
+                raise
+            except FileNotFoundError as exc:
+                raise typer.BadParameter(
+                    "Choose an existing catalog with --descriptor."
+                ) from exc
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+        if format == OutputFormat.JSON:
+            typer.echo(result.model_dump_json(indent=2))
+        elif not result.guides and not result.routes:
+            typer.echo("No remote locations apply to this scope.")
+        else:
+            for route in result.routes:
+                typer.echo(f"{route.provider or 'Unknown provider'} · {route.url}")
+                if route.consumer_selector:
+                    typer.echo(f"  Selected by {route.consumer_selector}")
+                mode_label = f" · {route.mode}" if route.mode else ""
+                typer.echo(
+                    f"  Profile: {route.profile or 'Provider defaults'} ({route.profile_source}){mode_label}"
+                )
+                if route.origin_descriptor:
+                    typer.echo(
+                        f"  Declared in {route.origin_descriptor} at {route.origin_selector}"
+                    )
+                if route.error:
+                    typer.echo(f"  {route.error}")
+            for guide in result.guides:
+                typer.echo(
+                    f"{guide.title} ({guide.mode})"
+                    + (" · configure default" if guide.default else "")
+                )
+                if provider or url or operation:
+                    if guide.required_settings:
+                        typer.echo(
+                            "  Required settings: " + ", ".join(guide.required_settings)
+                        )
+                    for step in guide.next_steps:
+                        typer.echo(f"  {step}")
+        if any(route.error for route in result.routes):
+            raise typer.Exit(code=1)
+
     @auth_app.command("configure")
     def auth_configure(
         name: str = typer.Argument(
@@ -271,7 +346,7 @@ def register_auth_commands(auth_app: typer.Typer, auth_login_app: typer.Typer) -
             profiles = load_profiles(config_path=config).profiles
         if not profiles:
             typer.echo(
-                "No profiles configured. Run 'fileroute auth configure NAME --provider PROVIDER'."
+                "No profiles configured. Run 'fileroute auth describe' to choose a setup method."
             )
         for name, profile in sorted(profiles.items()):
             typer.echo(f"{name}\t{profile.provider}\t{profile.mode}")

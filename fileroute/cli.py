@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dotenv import find_dotenv, load_dotenv
 import typer
+from dotenv import find_dotenv, load_dotenv
 
 from fileroute.commands import (
     register_auth_commands,
@@ -19,7 +19,10 @@ app = typer.Typer(
 clone_app = typer.Typer(
     help="Clone descriptor state for new local variants.", rich_markup_mode="markdown"
 )
-auth_app = typer.Typer(help="Authentication helpers.", rich_markup_mode="markdown")
+auth_app = typer.Typer(
+    help="Authentication helpers. Start with `fileroute auth describe`.",
+    rich_markup_mode="markdown",
+)
 auth_login_app = typer.Typer(
     help="Interactive login commands.", rich_markup_mode="markdown"
 )

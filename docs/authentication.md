@@ -11,6 +11,22 @@ transfers download or upload content.
 
 ## Configure and use a profile
 
+Start with `fileroute auth describe` to see the providers and setup options. A
+provider and mode show the required settings and next commands. Pass a URL to
+infer the provider, or describe a catalog route to see the selected profile
+and where its location was declared.
+
+```bash
+fileroute auth describe sharepoint --mode delegated
+fileroute auth describe --url s3://example-bucket/releases/schema.json
+fileroute auth describe --descriptor catalog.yaml --select outputs.union-schema --operation push
+```
+
+Use `--profile` to preview an invocation default and `--location` to narrow a
+catalog route to one exact location selector. Add `--format json` for structured
+output. The guide reads descriptor and profile definitions offline. Run
+`auth check` to verify credentials or read access.
+
 ```bash
 uv run fileroute auth configure work --provider sharepoint
 uv run fileroute auth login sharepoint --profile work
