@@ -1,0 +1,17 @@
+profiles:
+  archive-reader:
+    provider: S3
+    aws_profile: example-dev
+  governance-reader:
+    provider: SharePoint
+    mode: delegated
+    tenant_id: example.onmicrosoft.com
+    client_id: 00000000-0000-0000-0000-000000000001
+    host_url: example.sharepoint.com
+  governance-publisher:
+    provider: SharePoint
+    mode: app_only
+    tenant_id: example.onmicrosoft.com
+    client_id: 00000000-0000-0000-0000-000000000002
+    client_secret_env: EXAMPLE_GRAPH_CLIENT_SECRET
+    host_url: example.sharepoint.com

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+fileroute/ui/static/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.sites-runtime/
+public/downloads/
+public/licenses/

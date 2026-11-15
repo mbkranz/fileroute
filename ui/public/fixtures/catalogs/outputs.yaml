@@ -1,0 +1,13 @@
+title: Outputs
+path: staging/schemas
+targets:
+  - path: https://example.sharepoint.com/sites/governance/Shared%20Documents/Published%20Schemas
+    entityType: Directory
+    authProfile: governance-publisher
+resources:
+  union-schema:
+    title: Survey union schema
+    path: staging/schemas/1001/v8.json
+    sources:
+      - path: staging/specs/1001/v8.json
+      - path: staging/definitions/1001/v8.json

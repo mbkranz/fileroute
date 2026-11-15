@@ -1,0 +1,5 @@
+name: legacy
+title: Legacy survey catalog
+resources:
+  - name: survey
+    path: legacy/survey.json

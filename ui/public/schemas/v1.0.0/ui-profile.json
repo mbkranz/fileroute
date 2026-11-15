@@ -1,0 +1,32 @@
+{
+  "$id": "https://fileroute-control-center.inwardchime4.chatgpt.site/schemas/v1.0.0/ui-profile.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "auth": "/schemas/fileroute-auth-profiles.schema.json",
+  "baseline": "57a55c1a88bbaf15fd2898f770d0597309ab4b59",
+  "catalog": "/schemas/fileroute-catalog.schema.json",
+  "cli": {
+    "activate": "activate",
+    "add": "add",
+    "auth check": "auth.check",
+    "auth configure": "auth.profile.save",
+    "auth list": "auth.profile.list",
+    "auth login gdrive": "auth.login.gdrive",
+    "auth login microsoft": "auth.login.microsoft",
+    "auth login s3": "auth.login.s3",
+    "auth login sharepoint": "auth.login.sharepoint",
+    "auth remove": "auth.profile.remove",
+    "auth show": "auth.profile.show",
+    "clone descriptor": "clone.descriptor",
+    "diagram": "diagram",
+    "discover": "discovery.preview",
+    "list": "list",
+    "migrate": "migrate",
+    "pull": "transfer.preview",
+    "push": "transfer.preview",
+    "resolve": "resolve",
+    "update": "update"
+  },
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "operations": "/schemas/v1.0.0/fileroute-operations.schema.json",
+  "version": "1.0.0"
+}

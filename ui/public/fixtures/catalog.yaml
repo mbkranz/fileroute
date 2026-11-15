@@ -1,0 +1,19 @@
+title: Survey governance
+description: Synthetic catalog for the Fileroute UI pilot.
+catalogs:
+  outputs:
+    descriptor: catalogs/outputs.yaml
+  releases:
+    title: Survey releases
+    path: releases
+    sources:
+      - path: s3://example-fileroute-fixtures/surveys/
+        resourcePathTemplate: "{survey}/v{revision:d}.json"
+        authProfile: archive-reader
+resources:
+  mapping:
+    title: Salesforce mapping workbook
+    path: workflow-inputs/mappings/content.xlsx
+    sources:
+      - path: https://example.sharepoint.com/sites/governance/Shared%20Documents/Salesforce%20Mapping.xlsx
+        authProfile: governance-reader

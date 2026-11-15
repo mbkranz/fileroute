@@ -1,0 +1,257 @@
+{
+  "updated": "2026-11-14",
+  "repository": {
+    "integration": "codex/s3-publication",
+    "commit": "edd2cdd8ca9847b838cc780b239ab25259e597da",
+    "main": "5e2e25c06e1409ef831e902718f878ae98841c25",
+    "baseline": "57a55c1a88bbaf15fd2898f770d0597309ab4b59",
+    "implementation": "No published UI branch found"
+  },
+  "next": {
+    "title": "Verify the explorer in the upstream UI",
+    "description": "Review a linked YAML edit and the publish preview from the same graph node. Compare the preview with the pinned CLI dry run.",
+    "commands": [
+      "fileroute pull catalog.yaml --select '$.resources.mapping' --dry-run",
+      "fileroute push catalog.yaml --select '$.catalogs.outputs.resources[\"union-schema\"]' --dry-run"
+    ]
+  },
+  "parity": [
+    {
+      "id": "catalog",
+      "label": "Catalog and resource inspection",
+      "cli": "list · activate",
+      "local": "Local adapter",
+      "gate": "Validate selection precedence and linked YAML/JSON in upstream UI."
+    },
+    {
+      "id": "descriptors",
+      "label": "Descriptor editing and resolve",
+      "cli": "add · update · resolve",
+      "local": "Local adapter",
+      "gate": "Confirm physical writeback, stale revision rejection, and editable schema edge cases."
+    },
+    {
+      "id": "discovery",
+      "label": "Remote discovery",
+      "cli": "discover",
+      "local": "Offline preview",
+      "gate": "Compare provider doubles, captured fields, and reviewed-catalog write protections."
+    },
+    {
+      "id": "connections",
+      "label": "Authentication",
+      "cli": "auth *",
+      "local": "Profile inspection",
+      "gate": "Verify consent and read checks with doubles before approved provider tests."
+    },
+    {
+      "id": "transfers",
+      "label": "Transfer plans and execution",
+      "cli": "pull · push",
+      "local": "Offline preview",
+      "gate": "Verify re-planning, idempotency, and partial failure using doubles."
+    },
+    {
+      "id": "diagrams",
+      "label": "Diagrams",
+      "cli": "diagram",
+      "local": "Local adapter",
+      "gate": "Verify all four exports and Markdown’s companion SVG from the installed app."
+    },
+    {
+      "id": "migration",
+      "label": "Migration and cloning",
+      "cli": "migrate · clone descriptor",
+      "local": "Offline preview",
+      "gate": "Verify legacy graph conversion, new directory policy, and clone overwrite behavior."
+    },
+    {
+      "id": "execution",
+      "label": "Execution status",
+      "cli": "Operation jobs",
+      "local": "Approval gate",
+      "gate": "Verify queued, running, succeeded, and failed states with provider doubles."
+    },
+    {
+      "id": "cli-setup",
+      "label": "CLI setup",
+      "cli": "help · shell completion",
+      "local": "Local adapter",
+      "gate": "Compare tracked Typer flags and install completion in a disposable shell environment."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "pilot",
+      "title": "Catalog and pilot previews",
+      "status": "Workbench verified",
+      "detail": "The workbench shares selection between List and Graph and matches both pilot routes. Wire the upstream UI command and verify from an installed package.",
+      "acceptance": "Shared selection, exact route pairs, fixed working root, and zero provider construction."
+    },
+    {
+      "id": "author",
+      "title": "Authoring, resolution, and connections",
+      "status": "In progress",
+      "detail": "The inspector edits authored descriptors through schema forms with a unified diff. Exercise the forms and six AuthProfile modes after upstream integration.",
+      "acceptance": "Linked edits match the reviewed diff and preserve omitted, null, and empty targets."
+    },
+    {
+      "id": "discover",
+      "title": "Discovery and execution",
+      "status": "Pending",
+      "detail": "Verify scope preview, revision captures, result save, re-planning, repeat submission, and partial outcomes.",
+      "acceptance": "Use test doubles before requesting a staged S3 provider test."
+    },
+    {
+      "id": "release",
+      "title": "Utilities and parity release",
+      "status": "Pending",
+      "detail": "Wire fileroute ui into Typer, track options in CI, and include Vite static assets in the wheel and sdist.",
+      "acceptance": "Install the wheel and a wheel rebuilt from the sdist with Node absent."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "base",
+      "layer": "Pinned Python and CLI",
+      "status": "Passed locally",
+      "detail": "194 focused tests covering schemas, selectors, discovery, transfers, resolution, migration, and diagrams at 57a55c1.",
+      "command": "uv run --frozen pytest -q tests/test_catalog_schema.py tests/test_auth_schema.py tests/test_schema_export.py tests/test_jsonpath_cli.py tests/test_discovery.py tests/test_transfers.py tests/test_resolution.py tests/test_migration.py tests/test_diagram.py"
+    },
+    {
+      "id": "freshness",
+      "layer": "Auth and catalog schema freshness",
+      "status": "Passed locally",
+      "detail": "Both released-model schema exports matched the tracked artifacts at 57a55c1.",
+      "command": "uv run --frozen python scripts/export_schema.py --check"
+    },
+    {
+      "id": "workbench",
+      "layer": "Local FastAPI workbench",
+      "status": "Passed locally",
+      "detail": "49 checks passed, including both CLI dry runs, linked YAML diff and write parity, 28 operation schemas, all six auth modes, and scoped approval with provider doubles.",
+      "command": "uv run --no-project python -m pytest -q"
+    },
+    {
+      "id": "site-preview",
+      "layer": "Control Center browser preview",
+      "status": "Passed locally",
+      "detail": "Verified shared Graph and List selection, a linked YAML diff, sample draft persistence and download, and publish and discovery previews with scoped CLI commands.",
+      "command": "npm run build"
+    },
+    {
+      "id": "ci",
+      "layer": "Hosted Fileroute CI",
+      "status": "Pending",
+      "detail": "GitHub returned no Actions runs for the pinned parity commit. UI-specific CI requires an upstream implementation ref.",
+      "command": ""
+    },
+    {
+      "id": "dist",
+      "layer": "Fileroute package deployment",
+      "status": "Pending",
+      "detail": "Verify the UI extra, wheel assets, sdist rebuild, and base CLI install with a clean environment.",
+      "command": "poe ui-build && uv build"
+    },
+    {
+      "id": "merge",
+      "layer": "Fileroute merge",
+      "status": "Pending",
+      "detail": "Confirm implementation PR and required checks, then record the merged SHA.",
+      "command": ""
+    },
+    {
+      "id": "live",
+      "layer": "Live-service acceptance",
+      "status": "Approval required",
+      "detail": "Approve each credentialed provider check and reviewed transfer scope after offline and provider-double tests.",
+      "command": ""
+    }
+  ],
+  "decisions": [
+    {
+      "id": "forms",
+      "title": "Choose production form rendering",
+      "status": "Open",
+      "detail": "Prototype record editing with the generated schemas. Prior Jedison checks passed Resource and all six AuthProfile modes and hit reference-expansion failures on the full catalog and profiles documents. This control center uses vanilla TypeScript controls and Ajv 2020.",
+      "link": ""
+    },
+    {
+      "id": "integration",
+      "title": "Confirm the Fileroute UI integration base",
+      "status": "Open",
+      "detail": "Choose the branch and commit that carry discovery and exact-key S3 publication before implementing the upstream UI command.",
+      "link": "https://github.com/mbkranz/fileroute/commit/edd2cdd8ca9847b838cc780b239ab25259e597da"
+    },
+    {
+      "id": "auth",
+      "title": "Verify provider client lifecycle",
+      "status": "Open",
+      "detail": "Keep token renewal and ownership of HTTP client sessions visible when wiring long-running jobs and testing consent flows.",
+      "link": "https://github.com/mbkranz/fileroute/pull/46"
+    },
+    {
+      "id": "acceptance",
+      "title": "Select the first approved live scope",
+      "status": "Open",
+      "detail": "Compare the staged S3 catalog with the publication preview, then decide the provider, profile, and specific test scope to approve.",
+      "link": ""
+    }
+  ],
+  "gates": [
+    {
+      "id": "workbench",
+      "title": "Local workbench pilot dry-run parity",
+      "status": "Passed",
+      "detail": "Both fixture previews match the pinned CLI dry runs, with network and authentication blocked during the check."
+    },
+    {
+      "id": "local",
+      "title": "Upstream UI and CLI dry-run parity",
+      "status": "Pending",
+      "detail": "Both pilot routes match through fileroute ui using a fixed working root."
+    },
+    {
+      "id": "provider",
+      "title": "Provider-double execution",
+      "status": "Pending",
+      "detail": "Cover discovery, consent, re-planning, repeat submission and partial transfer failures."
+    },
+    {
+      "id": "ci",
+      "title": "Hosted Fileroute CI",
+      "status": "Pending",
+      "detail": "Record check results for the exact upstream implementation commit."
+    },
+    {
+      "id": "package",
+      "title": "Wheel and sdist acceptance",
+      "status": "Pending",
+      "detail": "Install and launch on a clean machine with Node absent."
+    },
+    {
+      "id": "merge",
+      "title": "Upstream PR merge",
+      "status": "Pending",
+      "detail": "Record the merged branch and SHA."
+    },
+    {
+      "id": "live",
+      "title": "Live provider acceptance",
+      "status": "Approval required",
+      "detail": "Record the approved provider, profile, reviewed scope, and result."
+    }
+  ],
+  "schemaReview": [
+    {
+      "id": "transfer.preview",
+      "status": "Validated locally",
+      "detail": "Both pilot route arguments passed Pydantic and Draft 2020-12 validation. Results matched the pinned CLI dry runs."
+    },
+    {
+      "id": "auth.profile.save",
+      "status": "Validated locally",
+      "detail": "All six provider modes passed Python and Draft 2020-12 validation. The browser switches OAuth modes and reports the required client reference."
+    }
+  ]
+}
