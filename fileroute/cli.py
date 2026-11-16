@@ -8,6 +8,8 @@ from fileroute.commands import (
     register_descriptor_commands,
     register_diagram_command,
 )
+from fileroute.commands.steps import register_steps_commands
+from fileroute.commands.conversion import register_conversion_commands
 
 load_dotenv(find_dotenv(usecwd=True))
 
@@ -23,13 +25,17 @@ auth_app = typer.Typer(help="Authentication helpers.", rich_markup_mode="markdow
 auth_login_app = typer.Typer(
     help="Interactive login commands.", rich_markup_mode="markdown"
 )
+steps_app = typer.Typer(help="Run endpoint processing using native Poe sequences.")
 app.add_typer(auth_app, name="auth")
 app.add_typer(clone_app, name="clone")
+app.add_typer(steps_app, name="steps")
 auth_app.add_typer(auth_login_app, name="login")
 
 register_descriptor_commands(app, clone_app)
 register_diagram_command(app)
 register_auth_commands(auth_app, auth_login_app)
+register_steps_commands(steps_app)
+register_conversion_commands(steps_app)
 
 
 def main() -> None:

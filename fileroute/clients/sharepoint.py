@@ -174,18 +174,24 @@ class SharepointClient(BaseClient):
         seen_links = {endpoint}
         while "@odata.nextLink" in current_json:
             link = current_json["@odata.nextLink"]
-            if not isinstance(link, str) or link in seen_links or (
-                urlparse(link).scheme != "https"
-                or urlparse(link).netloc != "graph.microsoft.com"
+            if (
+                not isinstance(link, str)
+                or link in seen_links
+                or (
+                    urlparse(link).scheme != "https"
+                    or urlparse(link).netloc != "graph.microsoft.com"
+                )
             ):
-                raise GraphApiDriveError("Invalid or repeated Microsoft Graph continuation link")
+                raise GraphApiDriveError(
+                    "Invalid or repeated Microsoft Graph continuation link"
+                )
             seen_links.add(link)
-            current_json = self._request(
-                "GET", link, retry=True
-            ).json()
-            if not isinstance(current_json, dict) or not isinstance(
-                current_json.get("value"), list
-            ) or not isinstance(response_json.get("value"), list):
+            current_json = self._request("GET", link, retry=True).json()
+            if (
+                not isinstance(current_json, dict)
+                or not isinstance(current_json.get("value"), list)
+                or not isinstance(response_json.get("value"), list)
+            ):
                 raise GraphApiDriveError("Invalid Microsoft Graph paginated response")
             response_json["value"].extend(current_json["value"])
         response_json.pop("@odata.nextLink", None)
@@ -211,7 +217,9 @@ class SharepointClient(BaseClient):
             f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
         )
         value = data.get("value")
-        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        if not isinstance(value, list) or any(
+            not isinstance(item, dict) for item in value
+        ):
             raise GraphApiDriveError(f"Unexpected drives response for site '{site_id}'")
         return value
 
@@ -373,7 +381,9 @@ class SharepointClient(BaseClient):
         if cls.recognizes_url(location.path):
             parts = [unquote(part) for part in parsed.path.split("/") if part]
             if len(parts) < 2 or parts[0].lower() != "sites":
-                raise ValueError(f"Cannot parse SharePoint site from URL: {location.path}")
+                raise ValueError(
+                    f"Cannot parse SharePoint site from URL: {location.path}"
+                )
             context["site"] = parts[1]
             if len(parts) > 2:
                 context["drive"] = parts[2]
@@ -381,17 +391,28 @@ class SharepointClient(BaseClient):
         elif not parsed.scheme:
             remote_path = relative_path(location.path)
         elif parsed.scheme not in {"http", "https"}:
-            raise ValueError(f"SharePoint requires an HTTP URL or scoped path: {location.path}")
+            raise ValueError(
+                f"SharePoint requires an HTTP URL or scoped path: {location.path}"
+            )
         # Explicitly provided context is also accepted for a relative path.
-        context.update({key: value for key in ("site", "site_id", "drive", "drive_id")
-                        if (value := getattr(location, key)) is not None and key not in context})
+        context.update({
+            key: value
+            for key in ("site", "site_id", "drive", "drive_id")
+            if (value := getattr(location, key)) is not None and key not in context
+        })
         if not parsed.scheme and not (context.get("site") or context.get("site_id")):
-            raise ValueError(f"SharePoint path requires site or siteId: {location.path}")
+            raise ValueError(
+                f"SharePoint path requires site or siteId: {location.path}"
+            )
         if not parsed.scheme and not (context.get("drive") or context.get("drive_id")):
-            raise ValueError(f"SharePoint path requires drive or driveId: {location.path}")
+            raise ValueError(
+                f"SharePoint path requires drive or driveId: {location.path}"
+            )
         return ResolvedLocation(ServiceType.SHAREPOINT, remote_path, context=context)
 
-    def _location_ids(self, location: Location, *, need_site_id: bool = False) -> tuple[str | None, str]:
+    def _location_ids(
+        self, location: Location, *, need_site_id: bool = False
+    ) -> tuple[str | None, str]:
         parsed = urlparse(location.path)
         if self.recognizes_url(location.path):
             self.host_url = parsed.hostname or self.host_url
@@ -401,41 +422,63 @@ class SharepointClient(BaseClient):
         drive_id = location.drive_id
         if not drive_id:
             if not site_id:
-                raise ValueError(f"SharePoint location needs site/siteId: {location.path}")
+                raise ValueError(
+                    f"SharePoint location needs site/siteId: {location.path}"
+                )
             if not location.drive:
                 if not self.recognizes_url(location.path):
-                    raise ValueError(f"SharePoint location needs drive/driveId: {location.path}")
+                    raise ValueError(
+                        f"SharePoint location needs drive/driveId: {location.path}"
+                    )
                 drive_id = self.get_drive_id(site_id)
             else:
                 drive_id = self.get_drive_id(site_id, drive_name=location.drive)
         return site_id, drive_id
 
-    def get_from_id(self, item_id: str, *, drive_id: str, path: str = "") -> "SharepointItem":
+    def get_from_id(
+        self, item_id: str, *, drive_id: str, path: str = ""
+    ) -> "SharepointItem":
         metadata = self.get_item_metadata(drive_id, item_id=item_id)
-        return SharepointItem._from_api_response(metadata, self, path=path, drive_id=drive_id)
+        return SharepointItem._from_api_response(
+            metadata, self, path=path, drive_id=drive_id
+        )
 
     def get_from_location(self, location: Location) -> "SharepointItem":
         if location.service_id:
             _, drive_id = self._location_ids(location)
-            return self.get_from_id(location.service_id, drive_id=drive_id,
-                                    path=location.remote_path or "")
+            return self.get_from_id(
+                location.service_id, drive_id=drive_id, path=location.remote_path or ""
+            )
         if location.drive_id or location.site or location.site_id:
             _, drive_id = self._location_ids(location)
-            metadata = self.get_item_metadata(drive_id, item_path=location.remote_path or "/")
-            return SharepointItem._from_api_response(metadata, self,
-                                                     path=location.remote_path or "", drive_id=drive_id)
+            metadata = self.get_item_metadata(
+                drive_id, item_path=location.remote_path or "/"
+            )
+            return SharepointItem._from_api_response(
+                metadata, self, path=location.remote_path or "", drive_id=drive_id
+            )
         return self.get_from_weburl(location.path)
 
     def resolve_location(self, location: Location) -> ResolvedLocation:
         site_id, drive_id = self._location_ids(location, need_site_id=True)
-        item = self.get_from_location(location.model_copy(update={"drive_id": drive_id}))
-        context = {key: value for key in ("site", "drive")
-                   if (value := getattr(location, key)) is not None}
+        item = self.get_from_location(
+            location.model_copy(update={"drive_id": drive_id})
+        )
+        context = {
+            key: value
+            for key in ("site", "drive")
+            if (value := getattr(location, key)) is not None
+        }
         if site_id:
             context["site_id"] = site_id
         context["drive_id"] = drive_id
-        return ResolvedLocation(ServiceType.SHAREPOINT, location.remote_path,
-                                item.id, "Directory" if item.is_directory else "File", context)
+        return ResolvedLocation(
+            ServiceType.SHAREPOINT,
+            location.remote_path,
+            item.id,
+            "Directory" if item.is_directory else "File",
+            context,
+        )
 
     def get_from_path(
         self, *, site_name: str, item_path: str = "/", library_name: str | None = None
@@ -480,12 +523,16 @@ class SharepointClient(BaseClient):
         """
 
         if download_url:
-            response = self._request("GET", download_url, authenticated=False, retry=True)
+            response = self._request(
+                "GET", download_url, authenticated=False, retry=True
+            )
         elif drive_id and item_id:
             url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
             response = self._request("GET", url, retry=True)
         else:
-            raise GraphApiDriveError("Need drive_id and item_id if not using download_url")
+            raise GraphApiDriveError(
+                "Need drive_id and item_id if not using download_url"
+            )
         return response.content
 
     def _put_file(self, url: str, local_file_path: str | Path) -> dict[str, Any]:
@@ -497,8 +544,7 @@ class SharepointClient(BaseClient):
             try:
                 with local_path.open("rb") as stream:
                     return self._request(
-                        "PUT", url, headers={"Content-Type": content_type},
-                        data=stream,
+                        "PUT", url, headers={"Content-Type": content_type}, data=stream
                     ).json()
             except GraphApiDriveError as exc:
                 if attempt == 3 or not (
@@ -600,8 +646,10 @@ class SharepointClient(BaseClient):
 
         destination = self._resolve_weburl(folder_url)
         return self._upload_to_drive_folder(
-            destination["drive_id"], destination["item_path"].strip("/"),
-            relative, local,
+            destination["drive_id"],
+            destination["item_path"].strip("/"),
+            relative,
+            local,
         )
 
     def upload_to_location(
@@ -610,30 +658,58 @@ class SharepointClient(BaseClient):
         """Upload beneath a verified folder ID or a scoped provider path."""
         _, drive_id = self._location_ids(location)
         return self._upload_to_drive_folder(
-            drive_id, location.remote_path or "", relative_path, local_file_path,
+            drive_id,
+            location.remote_path or "",
+            relative_path,
+            local_file_path,
             folder_id=location.service_id,
         )
 
     def _upload_to_drive_folder(
-        self, drive_id: str, folder_path: str, relative: Path,
-        local: str | Path, *, folder_id: str | None = None,
+        self,
+        drive_id: str,
+        folder_path: str,
+        relative: Path,
+        local: str | Path,
+        *,
+        folder_id: str | None = None,
     ) -> "SharepointItem":
         relative = Path(relative)
         local = Path(local)
         if relative.is_absolute() or ".." in relative.parts or not relative.name:
             raise ValueError(f"Unsafe relative upload path: {relative}")
         if local.stat().st_size > 250_000_000:
-            raise ValueError(f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}")
-        folder = (self.get_item_metadata(drive_id, item_id=folder_id)
-                  if folder_id else self.get_item_metadata(drive_id, item_path=folder_path or "/"))
+            raise ValueError(
+                f"File exceeds Microsoft Graph's 250 MB PUT limit: {local}"
+            )
+        folder = (
+            self.get_item_metadata(drive_id, item_id=folder_id)
+            if folder_id
+            else self.get_item_metadata(drive_id, item_path=folder_path or "/")
+        )
         if "folder" not in folder:
             raise ValueError(f"Publication destination is not a folder: {folder_path}")
+        if folder_id and folder.get("id") != folder_id:
+            raise ValueError(
+                "Verified SharePoint folder ID differs from the selected target"
+            )
 
         parent_id = folder["id"]
         for part in relative.parts[:-1]:
             folder_path = f"{folder_path}/{part}".strip("/")
+
+            def read_child() -> dict[str, Any]:
+                if folder_id:
+                    # Stable target IDs survive folder renames and moves. Do
+                    # not return to the old root-relative spelling after lookup.
+                    return self._request_json(
+                        f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+                        f"/items/{parent_id}:/{quote(part, safe='')}"
+                    )
+                return self.get_item_metadata(drive_id, item_path=folder_path)
+
             try:
-                child = self.get_item_metadata(drive_id, item_path=folder_path)
+                child = read_child()
             except GraphApiDriveError as exc:
                 if exc.status_code != 404:
                     raise
@@ -651,20 +727,34 @@ class SharepointClient(BaseClient):
                 except GraphApiDriveError as error:
                     if error.status_code != HTTPStatus.CONFLICT:
                         raise
-                    child = self.get_item_metadata(drive_id, item_path=folder_path)
+                    child = read_child()
                 else:
                     child = response.json()
             if "folder" not in child:
                 raise ValueError(f"Upload path is occupied by a file: {folder_path}")
+            if folder_id and (
+                not isinstance(child.get("id"), str)
+                or not child["id"]
+                or child.get("name") != part
+                or child.get("parentReference", {}).get("id", parent_id) != parent_id
+            ):
+                raise ValueError(f"Invalid SharePoint child folder metadata: {part!r}")
             parent_id = child["id"]
 
         remote_path = f"{folder_path}/{relative.name}".strip("/")
+        destination = (
+            f"items/{parent_id}:/{quote(relative.name, safe='')}"
+            if folder_id
+            else f"root:/{quote(remote_path, safe='/')}"
+        )
         payload = self._put_file(
             f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
-            f"/root:/{quote(remote_path, safe='/')}:/content",
+            f"/{destination}:/content",
             local,
         )
-        return SharepointItem._from_api_response(payload, self, path=remote_path)
+        return SharepointItem._from_api_response(
+            payload, self, path=None if folder_id else remote_path, drive_id=drive_id
+        )
 
 
 __all__ = ["SharepointClient", "SharepointItem"]
@@ -727,7 +817,9 @@ class SharepointItem(ServiceItem):
             is_folder=is_folder,
         )
         if drive_id and item._drive_id and drive_id != item._drive_id:
-            raise GraphApiDriveError(f"Conflicting SharePoint drive ID for item {item.id!r}")
+            raise GraphApiDriveError(
+                f"Conflicting SharePoint drive ID for item {item.id!r}"
+            )
         item._drive_id = item._drive_id or drive_id
         return item
 
@@ -772,8 +864,12 @@ class SharepointItem(ServiceItem):
 
         child_items = [
             SharepointItem._from_api_response(
-                child_payload, client=self.client, current_rel_path=self.path,
-                drive_id=self._drive_id if not child_payload.get("remoteItem") else None,
+                child_payload,
+                client=self.client,
+                current_rel_path=self.path,
+                drive_id=self._drive_id
+                if not child_payload.get("remoteItem")
+                else None,
             )
             for child_payload in contents
         ]

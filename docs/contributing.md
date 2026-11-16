@@ -110,8 +110,9 @@ refresh or mutation invalidates it.
 Live development-tenant validation is still needed for canonical descriptors;
 mocked tests cannot prove access or real transfers. Future capabilities should
 follow demand: exact-key S3 publication, SharePoint upload sessions for files
-above 250 MB, and a small Rich terminal diagram view. Keep transformation tools such as Quarto
-outside Fileroute.
+above 250 MB, and a small Rich terminal diagram view. Keep transformation tools
+such as Quarto behind endpoint processing commands; native Poe owns sequencing,
+and provider clients transfer bytes.
 
 After the first documentation deployment, evaluate Zensical in a separate PR
 against the same pages, diagrams, and strict build checks before changing the

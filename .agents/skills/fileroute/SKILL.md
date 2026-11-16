@@ -111,7 +111,9 @@ Run a dry run before an agent initiates a remote write unless the user explicitl
 | Add a resource or catalog | `fileroute add ...` |
 | Edit descriptor/root properties | `fileroute update ...` |
 | Preview or perform retrieval | `fileroute pull [descriptor] --dry-run` / `pull` |
-| Discover files in a templated SharePoint, S3, or Google Drive source | `fileroute discover [descriptor] --dry-run`, then `discover --output matches.yaml` and `pull matches.yaml` |
+| Discover files in a templated SharePoint, S3, or Google Drive source | `fileroute discover [descriptor] --dry-run`, then report with `discover`, apply with `--write`, or export with `--output matches.yaml` |
+| Process acquired files or prepare publications | Source `afterPull` / target `beforePush` native Poe `steps`; options remain in `params` (`args`) |
+| Edit or replay an endpoint sequence | `fileroute steps add` / `fileroute steps run`; inspect `--help` |
 | Preview or perform publication | `fileroute push [descriptor] --dry-run` / `push` |
 | Visualize provenance and destinations | `fileroute diagram [descriptor]` |
 | Convert previous named lists and links | `fileroute migrate INPUT OUTPUT_DIR` |
@@ -158,7 +160,7 @@ Do not replace a simple CLI workflow with custom Python merely because Python is
 - Treating `sources` and `targets` as interchangeable.
 - Assuming a described target is currently writable.
 - Assuming offline `resolve` verifies remote state; online verification requires `--online`.
-- Assuming Fileroute transforms files or copies directly between remote services.
+- Assuming ordinary pulls convert formats without configured endpoint steps, or that Fileroute copies directly between remote services.
 - Hard-coding credentials or secrets into descriptors, scripts, or commands committed to the repository.
 
 ## Repository references

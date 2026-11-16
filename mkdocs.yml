@@ -13,6 +13,7 @@ nav:
       - Use cases: use-cases.md
       - Descriptors: descriptors.md
       - Transfers: transfers.md
+      - Endpoint processing: processing.md
       - Diagrams: diagram.md
   - Authentication:
       - Provider setup: authentication.md

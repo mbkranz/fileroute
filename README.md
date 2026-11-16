@@ -213,7 +213,11 @@ calculate or persist them. Saves use the canonical `resourcePathTemplate` name;
 conflicting values for its two input names are rejected.
 
 Transfers do not expand placeholders, discover matching files, or replace
-explicit resource paths. Extracted properties are metadata, not authorization
+explicit resource paths. Source `afterPull` and target `beforePush` sequences
+can prepare different file representations using native Poe. Processing uses
+staged copies; converter, template, and mapping options stay in sequence
+arguments. See [Endpoint processing](docs/processing.md).
+Extracted properties are metadata, not authorization
 or approval decisions. Select publication scope explicitly, for example
 `fileroute push catalog.yaml --select documentation`.
 

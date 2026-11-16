@@ -2,7 +2,10 @@
 
 `pull` reads one remote source into each artifact's local `path`. `push`
 publishes the file at `path` to **every** target. They are separate steps:
-Fileroute neither streams directly between providers nor transforms files.
+Endpoint processing can prepare a different representation: source `afterPull`
+runs after acquisition, and target `beforePush` runs before publication. Both
+use native Poe sequences with the `steps`/`sequence` and `params`/`args` aliases.
+See [Endpoint processing](processing.md).
 
 ```bash
 uv run fileroute pull config/fileroute.yaml --dry-run

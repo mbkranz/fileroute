@@ -2,12 +2,148 @@
 
 Auto-generated from source signatures and docstrings.
 
+## `fileroute.tasks`
+
+### Functions
+
+- `def resolve_output(request: StepsRequest) -> Path`
+  - Resolve the native output argument lexically, without filesystem access.
+- `def execute_steps(request: StepsRequest, *, runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> StepsResult`
+  - Run actual Poe in a child process and require its exact staged output.
+- `def default_markdown_sequence() -> SequenceSpec`
+  - An explicit local MarkItDown hook; source format checks occur at execution.
+
+### Classes
+
+#### `SequenceSpec`
+- Serializable native sequence, with catalog aliases and pure validation.
+
+#### `StepsRequest`
+- Concrete local inputs and output candidate for one endpoint hook.
+- Fields:
+  - `sequence: SequenceSpec`
+  - `input: Path`
+  - `output: Path`
+  - `root: Path`
+  - `catalog_dir: Path`
+  - `work_dir: Path`
+  - `context: dict[str, Any]`
+  - `arguments: list[str]`
+
+#### `StepsResult`
+- Fields:
+  - `output: Path`
+  - `exit_code: int`
+  - `stdout: str`
+  - `stderr: str`
+
+#### `StepExecutionError`
+- A native task or its required output failed; diagnostics remain available.
+
+
+## `fileroute.conversion`
+
+### Functions
+
+- `def read_mapping(path: Path) -> dict[str, str]`
+  - Read a YAML/JSON map of variable names to RFC 6901 JSON Pointers.
+- `def render_template(template: Path, context: dict[str, Any], *, mappings: dict[str, str] | None = None) -> str`
+  - Render a local template; missing inputs fail rather than disappearing.
+- `def convert_document(request: ConversionRequest, *, converter: Callable[[Path], dict[str, Any]] = _extract, office_runner: Callable[..., subprocess.CompletedProcess] = _run_office, find_executable: Callable[[str], str | None] = shutil.which) -> ConversionResult`
+  - Extract a local document, optionally map/render it, then publish atomically.
+- `def render_document(request: ConversionRequest) -> ConversionResult`
+  - Render JSON/YAML structured data without invoking a document converter.
+
+### Classes
+
+#### `ConversionRequest`
+- One local input and output; paths are interpreted by the caller's cwd.
+- Fields:
+  - `source: Path`
+  - `output: Path`
+  - `template: Path | None`
+  - `mapping_file: Path | None`
+  - `mappings: dict[str, str]`
+  - `data: dict[str, Any]`
+  - `timeout_seconds: float`
+- Methods:
+  - `def one_mapping_source(self) -> ConversionRequest`
+
+#### `ConversionResult`
+- Confirmed local output, independent of remote availability or approval.
+- Fields:
+  - `source: Path`
+  - `output: Path`
+  - `source_sha256: str`
+  - `output_sha256: str`
+  - `characters: int`
+
+
 ## `fileroute.discovery`
+
+### Constants
+
+- `DiscoveryStatus = Literal['new', 'changed', 'renamed', 'moved', 'missing_from_scope', 'unchanged', 'unknown']`
 
 ### Functions
 
 - `def discover_resources(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> Catalog`
   - Discover a catalog's declared remote sources and return concrete resources.
+- `def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult`
+  - Preserve registered identity and authored processing while updating observations.
+- `def discover_report(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None, to_markdown: bool = False) -> DiscoveryResult`
+  - Acquire remote metadata and propose stable-identity catalog reconciliation.
+
+### Classes
+
+#### `DiscoveryRequest`
+- Metadata inventory request; no downloads or descriptor writes are implied.
+- Fields:
+  - `descriptor: Path`
+  - `root: Path | None`
+  - `selector: str | None`
+  - `profile: str | None`
+  - `to_markdown: bool`
+
+#### `DiscoveryScan`
+- One scope's observed files; incomplete inventory cannot establish absence.
+- Fields:
+  - `scope: str`
+  - `resources: dict[str, Resource]`
+  - `complete: bool`
+  - `error: str | None`
+
+#### `DiscoveryObservation`
+- Fields:
+  - `resource: str`
+  - `scope: str`
+  - `service_type: ServiceType | None`
+  - `service_id: str | None`
+  - `local_path: str | None`
+  - `statuses: list[DiscoveryStatus]`
+  - `metadata: dict[str, Any]`
+  - `error: str | None`
+
+#### `ReconcileDiscoveryRequest`
+- Reconcile an expanded catalog against previously acquired metadata.
+- Fields:
+  - `catalog: Catalog`
+  - `scans: list[DiscoveryScan]`
+  - `descriptor: Path`
+  - `root: Path`
+  - `to_markdown: bool`
+
+#### `DiscoveryResult`
+- Reviewable proposal; only callers explicitly requesting writes persist it.
+- Fields:
+  - `catalog: Catalog`
+  - `observations: list[DiscoveryObservation]`
+  - `complete: bool`
+  - `errors: list[str]`
+  - `writes: dict[Path, Catalog]`
+- Methods:
+  - `def as_dict(self) -> dict[str, Any]`
+    - JSON-ready report, with proposed owner filenames and catalog metadata.
 
 
 ## `fileroute.clients.base`
@@ -40,15 +176,19 @@ Auto-generated from source signatures and docstrings.
 
 ## `fileroute.transfer`
 
+### Constants
+
+- `StepsRunner = Callable[['StepsRequest'], 'StepsResult']`
+
 ### Functions
 
 - `def plan_pull(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PullEntry, ...]`
   - Plan remote sources to local paths, offline.
 - `def plan_push(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
-- `def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None) -> None`
+- `def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None, run_dir: Path | None = None, runner: StepsRunner | None = None) -> tuple[PullReceipt, ...]`
   - Download planned files after resolving paths and selected credentials.
-- `def push(files: tuple[PushEntry, ...], *, profile: str | None = None) -> None`
+- `def push(files: tuple[PushEntry, ...], *, profile: str | None = None, run_dir: Path | None = None, runner: StepsRunner | None = None) -> tuple[PushReceipt, ...]`
   - Publish a plan using location profiles ahead of the run's default.
 
 ### Classes
@@ -60,6 +200,26 @@ Auto-generated from source signatures and docstrings.
   - `service_type: ServiceType`
   - `directory: bool`
   - `location: Location | None`
+  - `root: Path | None`
+  - `catalog_origin: Path | None`
+  - `resource: str | None`
+  - `hook: SequenceSpec | None`
+
+#### `PullReceipt`
+- Observed input and output of one pull; absent metadata stays unknown.
+- Fields:
+  - `resource: str | None`
+  - `outcome: Literal['complete', 'failed']`
+  - `stage: str`
+  - `source_url: str`
+  - `source_id: str | None`
+  - `source_version: str | None`
+  - `source_sha256: str | None`
+  - `raw_source: Path | None`
+  - `output: Path`
+  - `output_sha256: str | None`
+  - `error: str | None`
+  - `report: Path | None`
 
 #### `PushEntry`
 - Fields:
@@ -69,8 +229,26 @@ Auto-generated from source signatures and docstrings.
   - `service_type: ServiceType`
   - `direct_file: bool`
   - `location: Location | None`
+  - `root: Path | None`
+  - `catalog_origin: Path | None`
+  - `resource: str | None`
+  - `hook: SequenceSpec | None`
 - Methods:
   - `def destination(self) -> str`
+
+#### `PushReceipt`
+- One independently prepared publication and its truthful effect status.
+- Fields:
+  - `resource: str | None`
+  - `outcome: Literal['prepared', 'complete', 'failed', 'unknown']`
+  - `stage: str`
+  - `input: Path`
+  - `input_sha256: str | None`
+  - `output: Path`
+  - `output_sha256: str | None`
+  - `destination: str`
+  - `error: str | None`
+  - `report: Path | None`
 
 
 ## `fileroute.descriptor`
@@ -222,6 +400,8 @@ Auto-generated from source signatures and docstrings.
   - `drive: str | None`
   - `drive_id: str | None`
   - `bucket: str | None`
+  - `after_pull: SequenceSpec | None`
+  - `before_push: SequenceSpec | None`
 
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.
@@ -366,6 +546,10 @@ Auto-generated from source signatures and docstrings.
 #### `GDriveItem`
 - A Google Drive file or folder item backed by the Drive REST API.
 - Methods:
+  - `def observed_metadata(self) -> dict[str, Any]`
+    - Return optional files metadata from Drive, without downloading bytes.
+  - `def version(self) -> str | None`
+    - Last observed provider version; never a downloaded-content checksum.
   - `def client(self) -> 'GoogleDriveClient'`
   - `def parent_id(self) -> Optional[str]`
   - `def mime_type(self) -> Optional[str]`

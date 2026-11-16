@@ -45,6 +45,12 @@ name. Root descriptors may have a `title` for display.
 | `serviceId`, `entityType` | Provider-native item ID and file/directory/container type |
 | `site`, `siteId`, `drive`, `driveId`, `bucket` | Provider namespace metadata |
 | `remotePath` | Path within the provider namespace, filled by offline resolution |
+| Source `afterPull` | Native Poe sequence after download and before local promotion |
+| Target `beforePush` | Native Poe sequence preparing an independent staged upload |
+
+Processing uses `steps` as a `sequence` alias and `params` as an `args` alias.
+Arguments belong to the outer sequence. Converter/template/mapping settings are
+ordinary command arguments; see [Endpoint processing](processing.md).
 
 Names match `[A-Za-z_][A-Za-z0-9_-]*`. Use `title` for spaces and punctuation.
 Names are case-insensitive for lookup and cannot collide within one parent,

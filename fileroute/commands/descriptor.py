@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 import shutil
 from pathlib import Path
 from typing import Any, Optional
@@ -37,6 +38,20 @@ from fileroute.models import (
 )
 
 
+def _check_discovery_output(catalog: Catalog, output: Path, root: Path) -> None:
+    """Keep a saved inventory separate from every intended artifact path."""
+    destination = output.resolve()
+    for row in walk(catalog):
+        if isinstance(row.model, Resource):
+            artifact = (root / row.model.path).resolve()
+            if destination.is_relative_to(artifact) or artifact.is_relative_to(
+                destination
+            ):
+                raise ValueError(
+                    f"Discovery output overlaps a pull destination: {artifact}"
+                )
+
+
 def _add_resource_to_descriptor(
     descriptor: Path | str,
     *,
@@ -44,6 +59,7 @@ def _add_resource_to_descriptor(
     create_if_missing: bool = False,
     catalog: bool = False,
     parent: str | None = None,
+    to: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     descriptor_path = Path(descriptor)
@@ -74,10 +90,24 @@ def _add_resource_to_descriptor(
 
     validate_name(entity_name)
     if catalog:
+        if to is not None:
+            raise ValueError(
+                "--to applies to file resources; use discover --to for a folder"
+            )
         entry = Catalog.model_validate(kwargs)
         parent_catalog.catalogs[entity_name] = entry
     else:
         entry = Resource.model_validate(kwargs)
+        if to is not None:
+            if to != "markdown":
+                raise ValueError("--to currently accepts markdown")
+            if len(entry.sources) != 1:
+                raise ValueError("Markdown conversion requires exactly one source")
+            from fileroute.tasks import default_markdown_sequence
+
+            entry.path = Path(entry.path).with_suffix(".md").as_posix()
+            if entry.sources[0].after_pull is None:
+                entry.sources[0].after_pull = default_markdown_sequence()
         parent_catalog.resources[entity_name] = entry
 
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +136,12 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--profile",
             help="Authentication profile default; each target's authProfile takes precedence.",
         ),
+        run_dir: Optional[Path] = typer.Option(
+            None, "--run-dir", help="Retain processing inputs and receipts here."
+        ),
+        format: OutputFormat = typer.Option(
+            OutputFormat.TEXT, "--format", help="Print progress or JSON receipts."
+        ),
     ) -> None:
         """Publish artifact paths to targets; create or replace files."""
         from fileroute.transfer import plan_push, push
@@ -115,13 +151,29 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             for file in files:
                 target = file.destination
                 typer.echo(
-                    f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}"
+                    f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}",
+                    err=format == OutputFormat.JSON,
                 )
+                if file.hook is not None:
+                    typer.echo(
+                        "  beforePush: native Poe sequence",
+                        err=format == OutputFormat.JSON,
+                    )
             if not dry_run:
-                if profile is None:
-                    push(files)
-                else:
-                    push(files, profile=profile)
+                options = {}
+                if profile is not None:
+                    options["profile"] = profile
+                if run_dir is not None:
+                    options["run_dir"] = run_dir
+                receipts = push(files, **options)
+                if format == OutputFormat.JSON:
+                    echo_json(
+                        json.loads(
+                            json.dumps(
+                                [asdict(row) for row in receipts or ()], default=str
+                            )
+                        )
+                    )
         except (OSError, ValueError, NotImplementedError, GraphApiError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -142,6 +194,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--profile",
             help="Authentication profile default; each source's authProfile takes precedence.",
         ),
+        run_dir: Optional[Path] = typer.Option(
+            None,
+            "--run-dir",
+            help="Retain acquired originals and processing receipts here.",
+        ),
+        format: OutputFormat = typer.Option(
+            OutputFormat.TEXT, "--format", help="Print progress or JSON receipts."
+        ),
     ) -> None:
         """Materialize a single remote source into each artifact's path."""
         from fileroute.transfer import plan_pull, pull
@@ -150,13 +210,29 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             entries = plan_pull(prepare_descriptor_path(descriptor), selector=select)
             for entry in entries:
                 typer.echo(
-                    f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}"
+                    f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}",
+                    err=format == OutputFormat.JSON,
                 )
+                if entry.hook is not None:
+                    typer.echo(
+                        "  afterPull: native Poe sequence",
+                        err=format == OutputFormat.JSON,
+                    )
             if not dry_run:
-                if profile is None:
-                    pull(entries)
-                else:
-                    pull(entries, profile=profile)
+                options = {}
+                if profile is not None:
+                    options["profile"] = profile
+                if run_dir is not None:
+                    options["run_dir"] = run_dir
+                receipts = pull(entries, **options)
+                if format == OutputFormat.JSON:
+                    echo_json(
+                        json.loads(
+                            json.dumps(
+                                [asdict(row) for row in receipts or ()], default=str
+                            )
+                        )
+                    )
         except (
             OSError,
             ValueError,
@@ -174,10 +250,14 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             None, "--select", help="Catalog name or exact selector."
         ),
         profile: Optional[str] = typer.Option(
-            None, "--profile", help="Default auth profile. Source authProfile takes precedence."
+            None,
+            "--profile",
+            help="Default auth profile. Source authProfile takes precedence.",
         ),
         format: OutputFormat = typer.Option(
-            OutputFormat.TEXT, "--format", help="Print matches or a concrete JSON catalog."
+            OutputFormat.TEXT,
+            "--format",
+            help="Print matches or a concrete JSON catalog.",
         ),
         output: Optional[Path] = typer.Option(
             None, "--output", help="Save the concrete catalog as YAML or JSON."
@@ -185,17 +265,36 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         dry_run: bool = typer.Option(
             False, "--dry-run", help="Show the scope offline using text output."
         ),
+        write: bool = typer.Option(
+            False,
+            "--write",
+            help="Apply a complete discovery proposal to its owning catalogs.",
+        ),
+        to: Optional[str] = typer.Option(
+            None,
+            "--to",
+            help="Generate new destinations and afterPull sequences for markdown.",
+        ),
     ) -> None:
         """Match remote file paths and build a concrete catalog for pull."""
-        from fileroute.discovery import _collect_discovery, _prepare_discovery
+        from fileroute.discovery import (
+            _collect_discovery,
+            _prepare_discovery,
+            discover_report,
+        )
 
         try:
-            if dry_run and (output is not None or format != OutputFormat.TEXT):
-                raise ValueError("--dry-run requires text output and accepts no --output")
+            if dry_run and (output is not None or write or format != OutputFormat.TEXT):
+                raise ValueError(
+                    "--dry-run requires text output and accepts no --output or --write"
+                )
+            if write and output is not None:
+                raise ValueError("Use either --write or --output")
+            if to not in (None, "markdown"):
+                raise ValueError("--to currently supports markdown")
             root = Path.cwd()
-            sources = _prepare_discovery(
-                prepare_descriptor_path(descriptor), root, select, output=output
-            )
+            descriptor_path = prepare_descriptor_path(descriptor)
+            sources = _prepare_discovery(descriptor_path, root, select, output=output)
             if dry_run:
                 for source in sources:
                     typer.echo(
@@ -203,24 +302,73 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                         f"with {source.location.resource_path_template!r} -> {source.local}"
                     )
                 return
+            if output is None or to is not None:
+                report = discover_report(
+                    descriptor_path,
+                    root=root,
+                    selector=select,
+                    profile=profile,
+                    to_markdown=to == "markdown",
+                )
+                if not report.complete:
+                    if format == OutputFormat.JSON:
+                        echo_json(report.as_dict())
+                    else:
+                        for observation in report.observations:
+                            typer.echo(
+                                f"{observation.resource}: {', '.join(observation.statuses)}"
+                            )
+                    raise ValueError(
+                        "Discovery incomplete; no catalogs written: "
+                        + "; ".join(report.errors)
+                    )
+                if write:
+                    for filename, document in report.writes.items():
+                        save(document, filename)
+                if output is not None:
+                    _check_discovery_output(report.catalog, output, root)
+                    save(
+                        Catalog.model_validate(
+                            report.catalog.model_dump(
+                                mode="json", by_alias=True, exclude_unset=True
+                            )
+                        ),
+                        output,
+                    )
+                if format == OutputFormat.JSON:
+                    echo_json(report.as_dict())
+                else:
+                    for observation in report.observations:
+                        typer.echo(
+                            f"{observation.resource}: {', '.join(observation.statuses)} {observation.local_path or ''}"
+                        )
+                return
             result = _collect_discovery(sources, root, profile)
-            resources = [row.model for row in walk(result) if isinstance(row.model, Resource)]
+            resources = [
+                row.model for row in walk(result) if isinstance(row.model, Resource)
+            ]
             if output is not None:
-                target = output.resolve()
-                for resource in resources:
-                    artifact = root / resource.path
-                    if target.is_relative_to(artifact) or artifact.is_relative_to(target):
-                        raise ValueError(f"Discovery output overlaps a pull destination: {artifact}")
+                _check_discovery_output(result, output, root)
                 save(result, output)
             if format == OutputFormat.JSON:
-                echo_json(result.model_dump(mode="json", by_alias=True, exclude_unset=True))
+                echo_json(
+                    result.model_dump(mode="json", by_alias=True, exclude_unset=True)
+                )
             else:
                 for resource in resources:
-                    captures = json.dumps(resource.path_properties, default=str, ensure_ascii=False)
+                    captures = json.dumps(
+                        resource.path_properties, default=str, ensure_ascii=False
+                    )
                     typer.echo(f"{resource.path} {captures}")
         except (
-            OSError, ValueError, RuntimeError, GoogleApiError, GraphApiError,
-            GoogleRefreshError, BotoCoreError, ClientError,
+            OSError,
+            ValueError,
+            RuntimeError,
+            GoogleApiError,
+            GraphApiError,
+            GoogleRefreshError,
+            BotoCoreError,
+            ClientError,
         ) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -676,6 +824,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--parent",
             help="Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath (optional $); defaults to root. Use 'fileroute list' to see exact JSONPaths.",
         ),
+        to: Optional[str] = typer.Option(
+            None,
+            "--to",
+            help="Use markdown to create a Markdown path and native afterPull conversion.",
+        ),
     ) -> None:
         """Add a standards-aligned resource or catalog entry to a descriptor."""
         descriptor_path = prepare_descriptor_path(
@@ -694,6 +847,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 name=name,
                 catalog=catalog,
                 parent=parent,
+                to=to,
                 create_if_missing=not explicit_descriptor,
                 **parsed,
             )

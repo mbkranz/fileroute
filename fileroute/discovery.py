@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 import re
-from typing import Iterator
+from typing import Any, Iterator, Literal
 from urllib.parse import parse_qsl, urlsplit
 
 from botocore.exceptions import BotoCoreError, ClientError
 from parse import Parser
+from pydantic import BaseModel, ConfigDict, Field
 
 from fileroute.clients.googledrive import (
     FOLDER_MIME,
@@ -285,6 +286,10 @@ def _file_source(match: FileMatch, source: Location, profile: str | None) -> Loc
             context["bucket"] = item.bucket
     if profile is not None:
         context["authProfile"] = profile
+    if source.after_pull is not None:
+        # A templated catalog source supplies defaults for newly registered
+        # files. Existing endpoints keep their own reviewed processing choices.
+        context["afterPull"] = source.after_pull.model_copy(deep=True)
     return parse_location(
         Location(
             path=path,
@@ -409,4 +414,506 @@ def discover_resources(
     )
 
 
-__all__ = ["discover_resources"]
+DiscoveryStatus = Literal[
+    "new", "changed", "renamed", "moved", "missing_from_scope", "unchanged", "unknown"
+]
+
+
+class DiscoveryRequest(BaseModel):
+    """Metadata inventory request; no downloads or descriptor writes are implied."""
+
+    model_config = ConfigDict(extra="forbid")
+    descriptor: Path
+    root: Path | None = None
+    selector: str | None = None
+    profile: str | None = None
+    to_markdown: bool = False
+
+
+class DiscoveryScan(BaseModel):
+    """One scope's observed files; incomplete inventory cannot establish absence."""
+
+    model_config = ConfigDict(extra="forbid")
+    scope: str
+    resources: dict[str, Resource] = Field(default_factory=dict)
+    complete: bool = True
+    error: str | None = None
+
+
+class DiscoveryObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource: str
+    scope: str
+    service_type: ServiceType | None = None
+    service_id: str | None = None
+    local_path: str | None = None
+    statuses: list[DiscoveryStatus]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class ReconcileDiscoveryRequest(BaseModel):
+    """Reconcile an expanded catalog against previously acquired metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+    catalog: Catalog
+    scans: list[DiscoveryScan]
+    descriptor: Path
+    root: Path
+    to_markdown: bool = False
+
+
+class DiscoveryResult(BaseModel):
+    """Reviewable proposal; only callers explicitly requesting writes persist it.
+
+    ``catalog`` retains expanded runtime origins. ``writes`` contains physical,
+    unexpanded owner documents so a linked catalog is never flattened on save.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    catalog: Catalog
+    observations: list[DiscoveryObservation] = Field(default_factory=list)
+    complete: bool = True
+    errors: list[str] = Field(default_factory=list)
+    writes: dict[Path, Catalog] = Field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        """JSON-ready report, with proposed owner filenames and catalog metadata."""
+        return {
+            "complete": self.complete,
+            "errors": self.errors,
+            "observations": [row.model_dump(mode="json") for row in self.observations],
+            "writes": [str(path) for path in sorted(self.writes)],
+            "catalog": self.catalog.model_dump(
+                mode="json", by_alias=True, exclude_unset=True
+            ),
+        }
+
+
+def _identity(source: Location) -> tuple[ServiceType, str] | None:
+    resolved = parse_location(source.model_copy(deep=True))
+    if resolved.service_type is None or not resolved.service_id:
+        return None
+    return resolved.service_type, resolved.service_id
+
+
+def _observation_metadata(match: FileMatch, scope: str) -> dict[str, Any]:
+    item = match.item
+    metadata: dict[str, Any] = {
+        "scope": scope,
+        "relativePath": match.relative_path,
+        "name": item.name,
+    }
+    if isinstance(item, GDriveItem):
+        metadata.update(item.observed_metadata)
+    return metadata
+
+
+def _scan_source(
+    source: _DiscoverySource, *, client: Any, root: Path, profile: str | None
+) -> DiscoveryScan:
+    scan = DiscoveryScan(scope=source.name)
+    try:
+        item = lookup_item(client, source.location)
+        if item.service_type != source.service:
+            raise ValueError("Resolved root has the wrong provider")
+        if (
+            isinstance(item, GDriveItem)
+            and source.location.drive_id
+            and item._drive_id != source.location.drive_id
+        ):
+            raise ValueError("Google Drive root conflicts with the declared driveId")
+        for match in _iter_file_matches(item, source.parser):
+            local = local_path(match.relative_path, source.local, reject_symlinks=True)
+            if local.exists() and not local.is_file():
+                raise ValueError(f"Discovery destination is not a file: {local}")
+            key = _registered_name(match.relative_path)
+            if key.casefold() in {name.casefold() for name in scan.resources}:
+                raise ValueError(
+                    f"Registered name collision for {match.relative_path!r}"
+                )
+            # Carry authored source processing/profile options to NEW resources.
+            data = source.location.model_dump(by_alias=True, exclude_unset=True)
+            data.pop("resourcePathTemplate", None)
+            data.update(
+                _file_source(match, source.location, profile).model_dump(
+                    by_alias=True, exclude_unset=True
+                )
+            )
+            data["discovery"] = _observation_metadata(match, source.name)
+            scan.resources[key] = Resource(
+                path=local.relative_to(root).as_posix(),
+                pathProperties=match.path_properties,
+                sources=[Location.model_validate(data)],
+            )
+    except (
+        OSError,
+        ValueError,
+        RemoteApiError,
+        GoogleRefreshError,
+        BotoCoreError,
+        ClientError,
+    ) as exc:
+        scan.complete = False
+        scan.error = f"{source.name or 'root'} ({source.location.path}): {exc}"
+    scan.resources = dict(sorted(scan.resources.items()))
+    return scan
+
+
+def _scan_sources(
+    sources: list[_DiscoverySource], root: Path, profile: str | None
+) -> list[DiscoveryScan]:
+    keys = [
+        (source.service, source.location.auth_profile or profile) for source in sources
+    ]
+    try:
+        with _location_clients(keys) as clients:
+            return [
+                _scan_source(
+                    source,
+                    client=clients[
+                        (source.service, source.location.auth_profile or profile)
+                    ],
+                    root=root,
+                    profile=source.location.auth_profile or profile,
+                )
+                for source in sources
+            ]
+    except (
+        OSError,
+        ValueError,
+        RemoteApiError,
+        GoogleRefreshError,
+        BotoCoreError,
+        ClientError,
+    ) as exc:
+        return [
+            DiscoveryScan(scope=source.name, complete=False, error=str(exc))
+            for source in sources
+        ]
+
+
+def _markdown_resource(resource: Resource) -> Resource:
+    """Apply the default converter only to newly discovered supported files."""
+    from fileroute.tasks import default_markdown_sequence
+
+    source = resource.sources[0]
+    metadata = (source.model_extra or {}).get("discovery", {})
+    suffix = Path(str(metadata.get("name", resource.path))).suffix.lower()
+    native_doc = metadata.get("mimeType") == "application/vnd.google-apps.document"
+    if not native_doc and suffix not in {
+        ".docx",
+        ".doc",
+        ".pdf",
+        ".pptx",
+        ".xlsx",
+        ".xls",
+        ".html",
+        ".htm",
+        ".csv",
+        ".txt",
+        ".json",
+        ".xml",
+        ".ipynb",
+        ".epub",
+        ".zip",
+        ".msg",
+    }:
+        return resource
+    data = source.model_dump(by_alias=True, exclude_unset=True)
+    if not data.get("afterPull"):
+        data["afterPull"] = default_markdown_sequence().model_dump(
+            by_alias=True, exclude_unset=True
+        )
+    return resource.model_copy(
+        update={
+            "path": Path(resource.path).with_suffix(".md").as_posix(),
+            "format": "markdown",
+            "sources": [Location.model_validate(data)],
+        }
+    )
+
+
+def _changed_observations(
+    before: dict[str, Any], after: dict[str, Any]
+) -> list[DiscoveryStatus]:
+    changes: list[DiscoveryStatus] = []
+    if before.get("name") is not None and before.get("name") != after.get("name"):
+        changes.append("renamed")
+    old_parent = before.get(
+        "parents", Path(str(before.get("relativePath", ""))).parent.as_posix()
+    )
+    new_parent = after.get(
+        "parents", Path(str(after.get("relativePath", ""))).parent.as_posix()
+    )
+    if before and (
+        old_parent != new_parent or before.get("scope") != after.get("scope")
+    ):
+        changes.append("moved")
+    tokens = ("version", "modifiedTime", "md5Checksum", "sha256Checksum", "mimeType")
+    if any(
+        key in before and key in after and before[key] != after[key] for key in tokens
+    ):
+        changes.append("changed")
+    if not before or any(key in before and key not in after for key in tokens):
+        changes.append("unknown")
+    return changes or ["unchanged"]
+
+
+def _catalog_at(catalog: Catalog, scope: str) -> Catalog:
+    selected = find(catalog, scope) if scope else catalog
+    if not isinstance(selected, Catalog):
+        raise ValueError(f"Discovery scope must select a catalog: {scope!r}")
+    return selected
+
+
+def _check_destinations(catalog: Catalog, root: Path) -> None:
+    destinations: dict[Path, str] = {}
+    for row in walk(catalog):
+        if not isinstance(row.model, Resource):
+            continue
+        path = local_path(row.model.path, root, reject_symlinks=True)
+        if path in destinations:
+            raise ValueError(
+                f"Duplicate discovery destination {path}: {destinations[path]} and {row.name_path}"
+            )
+        destinations[path] = row.name_path
+    for path in destinations:
+        if any(parent in destinations for parent in path.parents):
+            raise ValueError(f"Overlapping discovery destination: {path}")
+
+
+def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
+    """Preserve registered identity and authored processing while updating observations.
+
+    Missing means absent from a successfully scanned scope, not deleted remotely.
+    No descriptors or artifact bytes are written. This function compares metadata;
+    it never claims a provider version is a downloaded-content checksum.
+    """
+    catalog = request.catalog.model_copy(deep=True)
+    existing: dict[tuple[ServiceType, str], tuple[Catalog, str, str, Resource]] = {}
+    existing_scopes: dict[tuple[ServiceType, str], str] = {}
+    scopes = {scan.scope for scan in request.scans}
+    for scope in sorted(scopes):
+        owner = _catalog_at(catalog, scope)
+        for row in walk(owner):
+            if not isinstance(row.model, Resource):
+                continue
+            resource = row.model
+            if len(resource.sources) != 1:
+                # Manually authored non-transfer products remain outside inventory.
+                continue
+            identity = _identity(resource.sources[0])
+            if identity is None:
+                continue
+            parent_scope = (
+                row.name_path.rsplit(".", 1)[0] if "." in row.name_path else ""
+            )
+            parent = _catalog_at(owner, parent_scope)
+            name = row.name_path.rsplit(".", 1)[-1]
+            registered = ".".join(filter(None, (scope, row.name_path)))
+            if identity in existing and existing[identity][2] != registered:
+                raise ValueError(f"Duplicate remote identity {identity}: {registered}")
+            existing[identity] = parent, name, registered, resource
+            existing_scopes[identity] = scope
+
+    result = DiscoveryResult(catalog=catalog)
+    seen: set[tuple[ServiceType, str]] = set()
+    scan_by_scope = {scan.scope: scan for scan in request.scans}
+    for scan in request.scans:
+        owner = _catalog_at(catalog, scan.scope)
+        if not scan.complete:
+            result.complete = False
+            result.errors.append(
+                scan.error or f"Incomplete discovery scope: {scan.scope or 'root'}"
+            )
+        for key, observed in scan.resources.items():
+            if len(observed.sources) != 1:
+                raise ValueError("Discovered resources require exactly one source")
+            identity = _identity(observed.sources[0])
+            if identity is None:
+                raise ValueError(
+                    f"Discovered source lacks stable provider/serviceId: {key}"
+                )
+            if identity in seen:
+                raise ValueError(f"Remote identity observed more than once: {identity}")
+            seen.add(identity)
+            metadata = dict(
+                (observed.sources[0].model_extra or {}).get("discovery", {})
+            )
+            if identity in existing:
+                parent, name, registered, resource = existing[identity]
+                prior = dict(
+                    (resource.sources[0].model_extra or {}).get("discovery", {})
+                )
+                statuses = _changed_observations(prior, metadata)
+                source_data = resource.sources[0].model_dump(
+                    by_alias=True, exclude_unset=True
+                )
+                # Remote location changes never replace authored hooks or arguments.
+                fresh = parse_location(
+                    observed.sources[0].model_copy(deep=True)
+                ).model_dump(by_alias=True, exclude_unset=True)
+                for field in (
+                    "path",
+                    "serviceType",
+                    "serviceId",
+                    "entityType",
+                    "remotePath",
+                    "drive",
+                    "driveId",
+                    "site",
+                    "siteId",
+                    "bucket",
+                ):
+                    if field in fresh:
+                        source_data[field] = fresh[field]
+                    else:
+                        source_data.pop(field, None)
+                source_data["discovery"] = metadata
+                resource = resource.model_copy(
+                    update={"sources": [Location.model_validate(source_data)]}
+                )
+                parent.resources[name] = resource
+            else:
+                resource = (
+                    _markdown_resource(observed) if request.to_markdown else observed
+                )
+                if key.casefold() in {
+                    name.casefold() for name in (*owner.resources, *owner.catalogs)
+                }:
+                    raise ValueError(
+                        f"Discovery registered name {key!r} already exists in {scan.scope or 'root'}"
+                    )
+                owner.resources[key] = resource
+                owner.model_fields_set.add("resources")
+                registered = ".".join(filter(None, (scan.scope, key)))
+                statuses = ["new"]
+            result.observations.append(
+                DiscoveryObservation(
+                    resource=registered,
+                    scope=scan.scope,
+                    service_type=identity[0],
+                    service_id=identity[1],
+                    local_path=resource.path,
+                    statuses=statuses,
+                    metadata=metadata,
+                )
+            )
+    for identity, (_, _, registered, resource) in existing.items():
+        if identity in seen:
+            continue
+        prior = dict((resource.sources[0].model_extra or {}).get("discovery", {}))
+        scope = str(prior.get("scope", existing_scopes[identity]))
+        scan = scan_by_scope.get(scope)
+        if scan is None:
+            continue
+        result.observations.append(
+            DiscoveryObservation(
+                resource=registered,
+                scope=scope,
+                service_type=identity[0],
+                service_id=identity[1],
+                local_path=resource.path,
+                statuses=["missing_from_scope" if scan.complete else "unknown"],
+                metadata=prior,
+                error=scan.error,
+            )
+        )
+    for scan in request.scans:
+        if not scan.complete and not any(
+            row.scope == scan.scope for row in result.observations
+        ):
+            result.observations.append(
+                DiscoveryObservation(
+                    resource=scan.scope or "root",
+                    scope=scan.scope,
+                    statuses=["unknown"],
+                    error=scan.error,
+                )
+            )
+    _check_destinations(catalog, request.root)
+    return result
+
+
+def _owned_writes(
+    before: Catalog, after: Catalog, descriptor: Path
+) -> dict[Path, Catalog]:
+    """Read physical owners and replace only direct resource maps, retaining links."""
+    writes: dict[Path, Catalog] = {}
+    previous = {row.json_pointer: row for row in walk(before, include_self=True)}
+    for row in walk(after, include_self=True):
+        if not isinstance(row.model, Catalog) or row.json_pointer not in previous:
+            continue
+        old = previous[row.json_pointer]
+        assert isinstance(old.model, Catalog)
+        dump = {
+            key: value.model_dump(by_alias=True, exclude_unset=True)
+            for key, value in row.model.resources.items()
+        }
+        old_dump = {
+            key: value.model_dump(by_alias=True, exclude_unset=True)
+            for key, value in old.model.resources.items()
+        }
+        if dump == old_dump:
+            continue
+        path = old.origin_descriptor or descriptor.resolve()
+        if path not in writes:
+            writes[path] = load(path)
+        target = _catalog_at(writes[path], old.origin_pointer)
+        target.resources = {
+            key: value.model_copy(deep=True)
+            for key, value in row.model.resources.items()
+        }
+        target.model_fields_set.add("resources")
+    return writes
+
+
+def discover_report(
+    descriptor: Path,
+    *,
+    root: Path | None = None,
+    selector: str | None = None,
+    profile: str | None = None,
+    to_markdown: bool = False,
+) -> DiscoveryResult:
+    """Acquire remote metadata and propose stable-identity catalog reconciliation.
+
+    This is a report-only operation. Persist ``result.writes`` only after explicit
+    caller authorization and only for a complete scan. Raw bytes are never pulled.
+    ``discover_resources`` retains its original separate-output catalog behavior.
+    """
+    request = DiscoveryRequest(
+        descriptor=descriptor,
+        root=root,
+        selector=selector,
+        profile=profile,
+        to_markdown=to_markdown,
+    )
+    root = (request.root or Path.cwd()).resolve()
+    before = load(request.descriptor, resolve_references=True)
+    sources = _prepare_discovery(request.descriptor, root, request.selector)
+    result = reconcile_discovery(
+        ReconcileDiscoveryRequest(
+            catalog=before,
+            scans=_scan_sources(sources, root, request.profile),
+            descriptor=request.descriptor,
+            root=root,
+            to_markdown=request.to_markdown,
+        )
+    )
+    result.writes = _owned_writes(before, result.catalog, request.descriptor)
+    return result
+
+
+__all__ = [
+    "discover_resources",
+    "DiscoveryStatus",
+    "DiscoveryRequest",
+    "DiscoveryScan",
+    "DiscoveryObservation",
+    "ReconcileDiscoveryRequest",
+    "DiscoveryResult",
+    "reconcile_discovery",
+    "discover_report",
+]

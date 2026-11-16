@@ -97,10 +97,14 @@ def build_graph(catalog: Catalog) -> DescriptorGraph:
             return locations[identity]
         key = f"{kind}:{len(locations) + 1}"
         locations[identity] = key
+        label = _location_label(location)
+        hook = location.after_pull if kind == "source" else location.before_push
+        if hook is not None:
+            label += " · " + ("afterPull" if kind == "source" else "beforePush")
         nodes.append(
             DiagramNode(
                 key=key,
-                label=_location_label(location),
+                label=label,
                 kind=kind,
                 path=location.path,
                 service_type=location.service_type,

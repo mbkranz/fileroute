@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from fileroute.tasks import SequenceSpec
+
 CATALOG_PROFILE = "fileroute-catalog"
 _ARTIFACT_LEGACY_FIELDS = (
     "name",
@@ -179,6 +181,16 @@ class Location(_Metadata):
         description="S3 bucket namespace, required for S3 paths that are not full URLs.",
         examples=["example-reports"],
     )
+    after_pull: SequenceSpec | None = Field(
+        default=None,
+        alias="afterPull",
+        description="Native Poe sequence run after acquisition from this source and before promoting its local artifact. steps/params alias sequence/args.",
+    )
+    before_push: SequenceSpec | None = Field(
+        default=None,
+        alias="beforePush",
+        description="Native Poe sequence run on a staged copy before publication to this target. Its outer output argument identifies the upload candidate.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -187,7 +199,31 @@ class Location(_Metadata):
             raise ValueError(
                 "Locations cannot contain descriptor links; use a location path"
             )
+        if isinstance(value, dict):
+            for authored, native in (
+                ("afterPull", "after_pull"),
+                ("beforePush", "before_push"),
+            ):
+                if authored in value and native in value:
+                    raise ValueError(f"Provide only one of {authored!r} and {native!r}")
         return value
+
+
+def _source_schema(schema: dict[str, Any]) -> None:
+    schema["items"] = {
+        "allOf": [schema["items"], {"properties": {"beforePush": {"type": "null"}}}]
+    }
+
+
+def _target_schema(schema: dict[str, Any]) -> None:
+    for variant in schema.get("anyOf", [schema]):
+        if variant.get("type") == "array":
+            variant["items"] = {
+                "allOf": [
+                    variant["items"],
+                    {"properties": {"afterPull": {"type": "null"}}},
+                ]
+            }
 
 
 class _Artifact(_Metadata):
@@ -225,6 +261,7 @@ class _Artifact(_Metadata):
                 }
             ]
         ],
+        json_schema_extra=_source_schema,
     )
     # None inherits catalog targets; [] explicitly disables publication.
     targets: list[Location] | None = Field(
@@ -239,6 +276,7 @@ class _Artifact(_Metadata):
                 }
             ],
         ],
+        json_schema_extra=_target_schema,
     )
     entity_type: EntityTypeValue | None = Field(
         default=None,
@@ -257,6 +295,18 @@ class _Artifact(_Metadata):
                     f"Unsupported fields {sorted(legacy)}; use keyed resources/catalogs and descriptor links; run fileroute migrate for old descriptors"
                 )
         return value
+
+    @model_validator(mode="after")
+    def _validate_endpoint_hooks(self) -> _Artifact:
+        # Keep the shared Location type: callers may pass existing Location
+        # instances, and inherited target instances retain their identities.
+        for source in self.sources:
+            if source.before_push is not None:
+                raise ValueError("Source locations support afterPull, not beforePush")
+        for target in self.targets or []:
+            if target.after_pull is not None:
+                raise ValueError("Target locations support beforePush, not afterPull")
+        return self
 
 
 class Resource(_Artifact):

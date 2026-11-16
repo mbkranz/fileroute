@@ -214,4 +214,6 @@ __marimo__/
 # Fileroute local credentials and optional project-local auth storage
 .google/
 .fileroute-auth/
+.fileroute/runs/
+.fileroute-steps-*.json
 .env.*
