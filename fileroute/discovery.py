@@ -61,7 +61,7 @@ def match_source_path(location: Location, relative_path: str) -> dict[str, Any] 
 
 
 def _iter_file_matches(
-    root: ServiceItem, parser: Parser, segments: int | None = None
+    root: ServiceItem, parser: Parser, segments: tuple[Parser, ...] | None = None
 ) -> Iterator[FileMatch]:
     if not root.is_directory:
         raise NotADirectoryError(
@@ -91,6 +91,7 @@ def _iter_file_matches(
         item, relative = pending.pop()
         if item.is_directory:
             children = sorted(item.children, key=lambda child: (child.name, child.id))
+            matched_names: set[str] = set()
             for child in reversed(children):
                 if (
                     not child.id
@@ -143,10 +144,19 @@ def _iter_file_matches(
                             f"Invalid SharePoint drive for child {child.id!r}"
                         )
                 depth = child_path.count("/") + 1
-                if segments is None or (
-                    depth < segments if child.is_directory else depth == segments
-                ):
-                    pending.append((child, child_path))
+                if segments is not None:
+                    if depth > len(segments) or child.is_directory != (
+                        depth < len(segments)
+                    ):
+                        continue
+                    if segments[depth - 1].parse(name) is None:
+                        continue
+                    if name in matched_names:
+                        raise ValueError(
+                            f"Ambiguous remote path {child_path!r} under {item.id!r}"
+                        )
+                    matched_names.add(name)
+                pending.append((child, child_path))
         else:
             match = parser.parse(relative)
             if match is not None:
@@ -164,7 +174,10 @@ class _DiscoverySource:
     def matches(self, root: ServiceItem) -> Iterator[FileMatch]:
         template = self.location.resource_path_template or ""
         segments = (
-            _normalized_path(template).count("/") + 1
+            tuple(
+                _compile_template(part)
+                for part in _normalized_path(template).split("/")
+            )
             if self.location.match_path_segments
             else None
         )
@@ -581,7 +594,11 @@ def _scan_source(
                     by_alias=True, exclude_unset=True
                 )
             )
-            data["discovery"] = _observation_metadata(match, source.name)
+            data["discovery"] = {
+                **_observation_metadata(match, source.name),
+                "rootId": item.id,
+                "sourceUrl": data["path"],
+            }
             scan.resources[key] = Resource(
                 path=local.relative_to(root).as_posix(),
                 pathProperties=match.path_properties,

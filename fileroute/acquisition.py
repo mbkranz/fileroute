@@ -33,6 +33,43 @@ class SourceObservation(BaseModel):
     checksum: str | None = None
 
 
+def discovered_drive_file(row: DiscoveryObservation) -> SourceObservation:
+    """Read a positive Drive listing observation without another API call."""
+    data = row.metadata
+    if (
+        not row.observed
+        or row.error
+        or row.service_type != ServiceType.GOOGLE_DRIVE
+        or not row.service_id
+    ):
+        raise ValueError("Expected a positive Google Drive file observation")
+    if not all(
+        data.get(key)
+        for key in (
+            "mimeType",
+            "relativePath",
+            "rootId",
+            "sourceUrl",
+            "name",
+            "parents",
+        )
+    ):
+        raise ValueError("Incomplete Drive discovery metadata")
+    return SourceObservation(
+        id=row.service_id,
+        url=data["sourceUrl"],
+        mime_type=data["mimeType"],
+        name=data["name"],
+        parent_ids=tuple(data["parents"]),
+        version=data.get("version"),
+        trashed=False,
+        properties=data.get("appProperties", {}),
+        root_id=data["rootId"],
+        relative_path=data["relativePath"],
+        checksum=data.get("sha256Checksum"),
+    )
+
+
 def observe_drive(
     client: GoogleDriveClient, file_id: str, *, root_id: str | None = None
 ) -> SourceObservation:
@@ -311,6 +348,7 @@ def checked_move(
 __all__ = [
     "SourceObservation",
     "observe_drive",
+    "discovered_drive_file",
     "VerifiedReceipt",
     "acquire_verified",
     "VerifiedContent",

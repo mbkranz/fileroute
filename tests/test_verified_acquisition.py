@@ -148,3 +148,46 @@ def test_reserved_upload_lost_response_and_unsupported_and_stale_move(tmp_path):
         checked_move(drive, source, "done", conditional_supported=True).outcome
         == "stale"
     )
+
+
+def test_segment_inventory_skips_other_roots_and_compares_the_live_path(tmp_path):
+    from fileroute.discovery import discover_report
+    from fileroute.acquisition import discovered_drive_file
+    from fileroute.clients.googledrive import GDriveItem
+
+    drive = Drive()
+    drive.files["process"] = GDriveApiFile(
+        id="process",
+        name="process",
+        parents=["root"],
+        mimeType=FOLDER_MIME,
+        trashed=False,
+    )
+    drive.files["cache"] = GDriveApiFile(
+        id="cache", name="cache", parents=["root"], mimeType=FOLDER_MIME, trashed=False
+    )
+    drive.files["folder"].parents = ["process"]
+    visited = []
+
+    def children(key, **kwargs):
+        visited.append(key)
+        return [file for file in drive.files.values() if file.parents == [key]]
+
+    drive.list_children = children
+    drive.get_from_location = lambda location: GDriveItem._from_api_response(
+        drive.get_file(location.service_id), drive
+    )
+    descriptor = tmp_path / "catalog.yaml"
+    descriptor.write_text(
+        "path: stage\ntargets: []\nsources:\n- path: https://drive.google.com/drive/folders/root\n  resourcePathTemplate: 'process/{stage}/{filename}'\n  matchPathSegments: true\n"
+    )
+    report = discover_report(descriptor, root=tmp_path, client=drive)
+    assert report.complete and "cache" not in visited
+    (row,) = report.observations
+    assert row.path_properties["stage"] == "Ready"
+    assert discovered_drive_file(row) == observe_drive(drive, "doc", root_id="root")
+    drive.files["other"] = drive.files["folder"].model_copy(update={"id": "other"})
+    ambiguous = discover_report(
+        descriptor, root=tmp_path, previous=report.inventory, client=drive
+    )
+    assert not ambiguous.complete and "Ambiguous" in ambiguous.errors[0]
