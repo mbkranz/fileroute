@@ -1,11 +1,11 @@
 # Transfers
 
 `pull` reads one remote source into each artifact's local `path`. `push`
-publishes the file at `path` to **every** target. They are separate steps:
-Endpoint processing can prepare a different representation: source `afterPull`
-runs after acquisition, and target `beforePush` runs before publication. Both
-use native Poe sequences with the `steps`/`sequence` and `params`/`args` aliases.
-See [Endpoint processing](processing.md).
+publishes the file at `path` to **every** target. They are separate operations.
+The built-in [DOCX/Markdown review profile](processing.md) is inferred from a
+DOCX source/target and Markdown local `path`: pull imports the review and push
+restores DOCX. Other transfers preserve bytes. Custom processing remains ordinary
+application code; there are no endpoint hooks or conversion commands.
 
 ```bash
 uv run fileroute pull config/fileroute.yaml --dry-run
@@ -70,13 +70,19 @@ or validate remote access. See [Authentication](authentication.md).
   name; the target must already exist. Set `entityType: Directory` to append
   the local filename to a folder target. Google Drive `/folders/ID` URLs are
   recognized as folder targets without an explicit entity type.
-- Multiple targets receive multiple copies. Conflicting files aimed at one
+- A DOCX target for a Markdown resource prepares DOCX from the review profile.
+  A folder target with `format: docx` also changes the published `.md` suffix to
+  `.docx`; without a format hint it retains the local filename and bytes.
+- Multiple targets receive independently prepared copies. Conflicting files aimed at one
   destination fail before transfer.
 
 The planner validates local inputs and target support before authentication.
 SharePoint execution creates missing child folders and creates/replaces files;
 it never deletes remote files. Files above Microsoft Graph's 250 MB
-single-request limit fail planning. A dry run cannot verify remote folders,
+single-request limit fail planning for unchanged transfers; converted output is
+checked during preparation. All conversions prepare before the first upload.
+`--run-dir` retains prepared outputs and receipts; otherwise converted outputs
+are temporary. Receipt hashes describe the bytes used for the upload. A dry run cannot verify remote folders,
 access, or permissions.
 For a folder target enriched by `resolve --online --write`, push uses its
 `driveId` and `serviceId` directly. An exact file target uses its parent folder
@@ -160,5 +166,16 @@ catalogs when their source semantics differ.
 Pull prefers a saved `serviceId`, then a provider-scoped `remotePath`, then a
 URL. Online resolution therefore makes subsequent pulls more precise without
 requiring IDs when authoring a descriptor.
+
+A DOCX source and `.md`/`.markdown` local path trigger review import. Downloaded
+bytes are staged first, and a failed conversion preserves the previous Markdown.
+The retained original and images live beside the Markdown in its asset directory.
+Receipts record original and resulting hashes, the actual conversion, and known
+unsupported features. Directory pulls keep their existing filenames and bytes.
+Dry runs infer formats offline from paths or location `format` hints. Opaque
+source URLs can also be resolved from the downloaded item's name/export metadata
+during execution. Exact Google Drive target URLs use the existing binary file's
+name when no format hint is given. Provider-native exports still use the
+[provider's export formats](https://developers.google.com/workspace/drive/api/guides/ref-export-formats).
 
 See [Use cases](use-cases.md) for runnable and metadata-only examples.

@@ -28,7 +28,6 @@ $ fileroute [OPTIONS] COMMAND [ARGS]...
 * `diagram`: Render descriptor sources, artifacts, and...
 * `auth`: Authentication helpers.
 * `clone`: Clone descriptor state for new local...
-* `steps`: Run endpoint processing using native Poe...
 
 ## `fileroute push`
 
@@ -49,7 +48,7 @@ $ fileroute push [OPTIONS] [DESCRIPTOR]
 * `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: List files without authenticating or writing.
 * `--profile TEXT`: Authentication profile default; each target's authProfile takes precedence.
-* `--run-dir PATH`: Retain processing inputs and receipts here.
+* `--run-dir PATH`: Retain publication receipts here.
 * `--format [text|json]`: Print progress or JSON receipts.  [default: text]
 * `--help`: Show this message and exit.
 
@@ -72,7 +71,7 @@ $ fileroute pull [OPTIONS] [DESCRIPTOR]
 * `--select TEXT`: Resource or catalog name or exact selector; use fileroute list.
 * `--dry-run`: Plan without authenticating or writing.
 * `--profile TEXT`: Authentication profile default; each source's authProfile takes precedence.
-* `--run-dir PATH`: Retain acquired originals and processing receipts here.
+* `--run-dir PATH`: Retain acquired originals and transfer receipts here.
 * `--format [text|json]`: Print progress or JSON receipts.  [default: text]
 * `--help`: Show this message and exit.
 
@@ -98,7 +97,6 @@ $ fileroute discover [OPTIONS] [DESCRIPTOR]
 * `--output PATH`: Save the concrete catalog as YAML or JSON.
 * `--dry-run`: Show the scope offline using text output.
 * `--write`: Apply a complete discovery proposal to its owning catalogs.
-* `--to TEXT`: Generate new destinations and afterPull sequences for markdown.
 * `--help`: Show this message and exit.
 
 ## `fileroute resolve`
@@ -256,7 +254,6 @@ $ fileroute add [OPTIONS] NAME
 * `--catalog`: Treat as a catalog of resources or a directory.
 * `--descriptor PATH`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
 * `--parent TEXT`: Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath (optional $); defaults to root. Use 'fileroute list' to see exact JSONPaths.
-* `--to TEXT`: Use markdown to create a Markdown path and native afterPull conversion.
 * `--help`: Show this message and exit.
 
 **Examples**
@@ -599,112 +596,3 @@ fileroute clone descriptor resources/descriptor-copy.yaml --descriptor resources
 ```bash
 fileroute clone descriptor resources/descriptor-copy.json --descriptor resources/descriptor.yaml --dry-run
 ```
-
-## `fileroute steps`
-
-Run endpoint processing using native Poe sequences.
-
-**Usage**:
-
-```console
-$ fileroute steps [OPTIONS] COMMAND [ARGS]...
-```
-
-**Options**:
-
-* `--help`: Show this message and exit.
-
-**Commands**:
-
-* `add`: Add afterPull/beforePush steps to one...
-* `run`: Run one endpoint's sequence locally; do...
-* `convert`: Convert with local MarkItDown; optional...
-* `render`: Render structured inputs with strict Jinja...
-
-### `fileroute steps add`
-
-Add afterPull/beforePush steps to one source/target endpoint.
-
-**Usage**:
-
-```console
-$ fileroute steps add [OPTIONS] [DESCRIPTOR]
-```
-
-**Arguments**:
-
-* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-
-**Options**:
-
-* `--select TEXT`: Exact source/target selector, including its list index.  [required]
-* `--file PATH`: JSON/YAML native sequence definition, with steps/params aliases.
-* `--cmd TEXT`: One native cmd step; input/output parameters use runtime paths.
-* `--auto`: Add the default Markdown conversion to a .md resource source.
-* `--replace`: Replace an existing sequence at the selected endpoint.
-* `--help`: Show this message and exit.
-
-### `fileroute steps run`
-
-Run one endpoint's sequence locally; do not download or upload.
-
-**Usage**:
-
-```console
-$ fileroute steps run [OPTIONS] [DESCRIPTOR]
-```
-
-**Arguments**:
-
-* `[DESCRIPTOR]`: Descriptor file path. Defaults to the saved descriptor or the first standard descriptor path.
-
-**Options**:
-
-* `--select TEXT`: Exact source/target selector, including its list index.  [required]
-* `--input PATH`: Already acquired local input file.  [required]
-* `--output PATH`: Default staging output; native params.output may select another staged filename.
-* `--root PATH`: Transfer root and native Poe project directory; defaults to the current directory.
-* `--work-dir PATH`: Local staging directory; outputs must remain beneath it.
-* `--arg TEXT`: Native outer argument token, repeated in order; use --arg=--option for option tokens.
-* `--dry-run`: Resolve sequence/output without running commands or writing files.
-* `--help`: Show this message and exit.
-
-### `fileroute steps convert`
-
-Convert with local MarkItDown; optional DOC normalization uses LibreOffice.
-
-**Usage**:
-
-```console
-$ fileroute steps convert [OPTIONS]
-```
-
-**Options**:
-
-* `--input PATH`: Acquired original document.  [required]
-* `--output PATH`: Staged Markdown result.  [required]
-* `--template PATH`
-* `--mapping-file PATH`
-* `--mappings-json TEXT`
-* `--data-file PATH`
-* `--timeout FLOAT RANGE`: [default: 120; x>=0.1]
-* `--help`: Show this message and exit.
-
-### `fileroute steps render`
-
-Render structured inputs with strict Jinja and optional JSON Pointers.
-
-**Usage**:
-
-```console
-$ fileroute steps render [OPTIONS]
-```
-
-**Options**:
-
-* `--input PATH`: Structured JSON/YAML input.  [required]
-* `--output PATH`: [required]
-* `--template PATH`: [required]
-* `--mapping-file PATH`
-* `--mappings-json TEXT`
-* `--help`: Show this message and exit.

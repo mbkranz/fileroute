@@ -59,9 +59,13 @@ def _add_resource_to_descriptor(
     create_if_missing: bool = False,
     catalog: bool = False,
     parent: str | None = None,
-    to: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
+    if "to" in kwargs:
+        raise ValueError(
+            "--to/to conversion is not supported; set a Markdown resource path "
+            "and a DOCX source/target for automatic pull/push conversion"
+        )
     descriptor_path = Path(descriptor)
     entity_name = name.strip()
     if not entity_name:
@@ -90,26 +94,11 @@ def _add_resource_to_descriptor(
 
     validate_name(entity_name)
     if catalog:
-        if to is not None:
-            raise ValueError(
-                "--to applies to file resources; use discover --to for a folder"
-            )
         entry = Catalog.model_validate(kwargs)
         parent_catalog.catalogs[entity_name] = entry
     else:
         entry = Resource.model_validate(kwargs)
-        if to is not None:
-            if to != "markdown":
-                raise ValueError("--to currently accepts markdown")
-            if len(entry.sources) != 1:
-                raise ValueError("Markdown conversion requires exactly one source")
-            from fileroute.tasks import default_markdown_sequence
-
-            entry.path = Path(entry.path).with_suffix(".md").as_posix()
-            if entry.sources[0].after_pull is None:
-                entry.sources[0].after_pull = default_markdown_sequence()
         parent_catalog.resources[entity_name] = entry
-
     descriptor_path.parent.mkdir(parents=True, exist_ok=True)
     save(document, descriptor_path)
     return entry.model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -137,7 +126,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             help="Authentication profile default; each target's authProfile takes precedence.",
         ),
         run_dir: Optional[Path] = typer.Option(
-            None, "--run-dir", help="Retain processing inputs and receipts here."
+            None, "--run-dir", help="Retain publication receipts here."
         ),
         format: OutputFormat = typer.Option(
             OutputFormat.TEXT, "--format", help="Print progress or JSON receipts."
@@ -150,15 +139,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             files = plan_push(prepare_descriptor_path(descriptor), selector=select)
             for file in files:
                 target = file.destination
+                conversion = f" ({file.conversion})" if file.conversion else ""
                 typer.echo(
-                    f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}",
+                    f"{'Would upload' if dry_run else 'Uploading'} {file.local} -> {target}{conversion}",
                     err=format == OutputFormat.JSON,
                 )
-                if file.hook is not None:
-                    typer.echo(
-                        "  beforePush: native Poe sequence",
-                        err=format == OutputFormat.JSON,
-                    )
             if not dry_run:
                 options = {}
                 if profile is not None:
@@ -197,7 +182,7 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         run_dir: Optional[Path] = typer.Option(
             None,
             "--run-dir",
-            help="Retain acquired originals and processing receipts here.",
+            help="Retain acquired originals and transfer receipts here.",
         ),
         format: OutputFormat = typer.Option(
             OutputFormat.TEXT, "--format", help="Print progress or JSON receipts."
@@ -209,15 +194,11 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
         try:
             entries = plan_pull(prepare_descriptor_path(descriptor), selector=select)
             for entry in entries:
+                conversion = f" ({entry.conversion})" if entry.conversion else ""
                 typer.echo(
-                    f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}",
+                    f"{'Would download' if dry_run else 'Downloading'} {entry.remote} -> {entry.local}{conversion}",
                     err=format == OutputFormat.JSON,
                 )
-                if entry.hook is not None:
-                    typer.echo(
-                        "  afterPull: native Poe sequence",
-                        err=format == OutputFormat.JSON,
-                    )
             if not dry_run:
                 options = {}
                 if profile is not None:
@@ -270,11 +251,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--write",
             help="Apply a complete discovery proposal to its owning catalogs.",
         ),
-        to: Optional[str] = typer.Option(
-            None,
-            "--to",
-            help="Generate new destinations and afterPull sequences for markdown.",
-        ),
     ) -> None:
         """Match remote file paths and build a concrete catalog for pull."""
         from fileroute.discovery import (
@@ -290,8 +266,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 )
             if write and output is not None:
                 raise ValueError("Use either --write or --output")
-            if to not in (None, "markdown"):
-                raise ValueError("--to currently supports markdown")
             root = Path.cwd()
             descriptor_path = prepare_descriptor_path(descriptor)
             sources = _prepare_discovery(descriptor_path, root, select, output=output)
@@ -302,13 +276,9 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                         f"with {source.location.resource_path_template!r} -> {source.local}"
                     )
                 return
-            if output is None or to is not None:
+            if output is None:
                 report = discover_report(
-                    descriptor_path,
-                    root=root,
-                    selector=select,
-                    profile=profile,
-                    to_markdown=to == "markdown",
+                    descriptor_path, root=root, selector=select, profile=profile
                 )
                 if not report.complete:
                     if format == OutputFormat.JSON:
@@ -325,16 +295,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 if write:
                     for filename, document in report.writes.items():
                         save(document, filename)
-                if output is not None:
-                    _check_discovery_output(report.catalog, output, root)
-                    save(
-                        Catalog.model_validate(
-                            report.catalog.model_dump(
-                                mode="json", by_alias=True, exclude_unset=True
-                            )
-                        ),
-                        output,
-                    )
                 if format == OutputFormat.JSON:
                     echo_json(report.as_dict())
                 else:
@@ -824,11 +784,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
             "--parent",
             help="Catalog parent by name, dot-path, JSON Pointer, or exact JSONPath (optional $); defaults to root. Use 'fileroute list' to see exact JSONPaths.",
         ),
-        to: Optional[str] = typer.Option(
-            None,
-            "--to",
-            help="Use markdown to create a Markdown path and native afterPull conversion.",
-        ),
     ) -> None:
         """Add a standards-aligned resource or catalog entry to a descriptor."""
         descriptor_path = prepare_descriptor_path(
@@ -847,7 +802,6 @@ def register_descriptor_commands(app: typer.Typer, clone_app: typer.Typer) -> No
                 name=name,
                 catalog=catalog,
                 parent=parent,
-                to=to,
                 create_if_missing=not explicit_descriptor,
                 **parsed,
             )

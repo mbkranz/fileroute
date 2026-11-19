@@ -1,4 +1,4 @@
-"""Metadata reconciliation preserves authored names, paths and endpoint processing."""
+"""Metadata reconciliation preserves authored names, paths and publication metadata."""
 
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,13 +11,11 @@ from fileroute.discovery import (
     DiscoveryScan,
     ReconcileDiscoveryRequest,
     discover_report,
-    discover_resources,
     reconcile_discovery,
 )
 from fileroute.models import Catalog, CatalogLink, Location, Resource, ServiceType
 from fileroute.resolution import parse_location
 from fileroute.transfer import PullEntry, pull
-from fileroute.tasks import SequenceSpec
 
 
 def observed(
@@ -62,15 +60,6 @@ def test_stable_identity_preserves_authored_fields_and_reports_simultaneous_chan
     original = original.model_copy(
         update={"path": "reviewed/term.md", "title": "Reviewed title"}
     )
-    source = original.sources[0].model_dump(by_alias=True, exclude_unset=True)
-    source["afterPull"] = {
-        "steps": [{"cmd": "convert"}],
-        "params": {
-            "output": {"default": "${FILEROUTE_OUTPUT}"},
-            "style": {"default": "reviewed"},
-        },
-    }
-    original.sources = [Location.model_validate(source)]
     original.sources[0].model_extra["custom"] = {"retain": True}
     catalog = Catalog(resources={"stable_term": original})
     fresh = observed("other/renamed.docx", version="2", parent="new-folder")
@@ -83,10 +72,6 @@ def test_stable_identity_preserves_authored_fields_and_reports_simultaneous_chan
     resource = report.catalog.resources["stable_term"]
     assert resource.path == "reviewed/term.md" and resource.title == "Reviewed title"
     assert resource.sources[0].model_extra["custom"] == {"retain": True}
-    assert (
-        resource.sources[0].model_dump(by_alias=True)["afterPull"]
-        == source["afterPull"]
-    )
     assert report.observations[0].statuses == ["renamed", "moved", "changed"]
     assert (
         catalog.resources["stable_term"].sources[0].model_extra["discovery"]["version"]
@@ -143,44 +128,6 @@ def test_unchanged_metadata_and_same_name_new_identity(tmp_path):
         )
 
 
-def test_markdown_destination_collision_is_rejected_before_any_write(tmp_path):
-    scans = [
-        DiscoveryScan(
-            scope="",
-            resources={
-                "docx": observed("same.docx"),
-                "html": observed("same.html", item_id="file-2"),
-            },
-        )
-    ]
-    with pytest.raises(ValueError, match="Duplicate discovery destination"):
-        reconcile(tmp_path, Catalog(), scans, to_markdown=True)
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_native_google_document_gets_markdown_hook_without_rewriting_existing_paths(
-    tmp_path,
-):
-    native = observed("Native document")
-    native.sources[0].model_extra["discovery"]["mimeType"] = (
-        "application/vnd.google-apps.document"
-    )
-    report = reconcile(
-        tmp_path,
-        Catalog(),
-        [DiscoveryScan(scope="", resources={"native": native})],
-        to_markdown=True,
-    )
-    resource = report.catalog.resources["native"]
-    assert resource.path == "data/Native document.md"
-    assert (
-        resource.sources[0].model_dump(by_alias=True)["afterPull"]["params"]["output"][
-            "default"
-        ]
-        == "${FILEROUTE_OUTPUT}"
-    )
-
-
 def test_drive_optional_observations_are_retained_without_claiming_content_verification():
     api = GDriveApiFile.model_validate({
         "id": "file",
@@ -207,49 +154,6 @@ def test_drive_optional_observations_are_retained_without_claiming_content_verif
     assert {"version", "modifiedTime", "md5Checksum", "sha256Checksum"} <= set(
         GoogleDriveClient.file_fields
     )
-
-
-def test_markdown_only_changes_new_resources_and_checks_converted_collisions(tmp_path):
-    existing = observed("existing.docx", item_id="existing")
-    catalog = Catalog(resources={"existing": existing})
-    report = reconcile(
-        tmp_path,
-        catalog,
-        [
-            DiscoveryScan(
-                scope="",
-                resources={
-                    "existing_observation": existing,
-                    "new": observed("new.docx"),
-                },
-            )
-        ],
-        to_markdown=True,
-    )
-    assert report.catalog.resources["existing"].path == "data/existing.docx"
-    assert report.catalog.resources["new"].path == "data/new.md"
-    hook = (
-        report.catalog
-        .resources["new"]
-        .sources[0]
-        .model_dump(by_alias=True)["afterPull"]
-    )
-    assert "steps" in hook and "params" in hook
-    with pytest.raises(ValueError, match="Duplicate discovery destination"):
-        reconcile(
-            tmp_path,
-            Catalog(),
-            [
-                DiscoveryScan(
-                    scope="",
-                    resources={
-                        "doc": observed("same.docx"),
-                        "html": observed("same.html", item_id="html"),
-                    },
-                )
-            ],
-            to_markdown=True,
-        )
 
 
 def test_google_metadata_is_optional_and_retained_without_download():
@@ -319,18 +223,19 @@ def test_report_proposes_linked_owner_write_without_flattening_or_saving(
             id="folder", name="Folder", mime_type="application/vnd.google-apps.folder"
         ),
     )
-    report = discover_report(root_path, root=tmp_path, to_markdown=True)
+    report = discover_report(root_path, root=tmp_path)
 
     assert report.complete and list(report.writes) == [child_path]
     assert isinstance(load(root_path).catalogs["terms"], CatalogLink)
     assert (root_path.read_bytes(), child_path.read_bytes()) == initial
     written = report.writes[child_path]
     assert written.sources[0].resource_path_template == "{name}.docx"
-    assert next(iter(written.resources.values())).path == "data/term.md"
+    assert next(iter(written.resources.values())).path == "data/term.docx"
+    assert list(written.resources) == ["term-docx"]
     assert report.as_dict()["complete"] is True
     # Applying only the reviewed owner proposal makes the next scan idempotent.
     save(written, child_path)
-    repeated = discover_report(root_path, root=tmp_path, to_markdown=True)
+    repeated = discover_report(root_path, root=tmp_path)
     assert repeated.writes == {}
     assert repeated.observations[0].statuses == ["unchanged"]
 
@@ -428,59 +333,60 @@ def test_sharepoint_rename_updates_parsed_remote_context_without_changing_author
     assert parse_location(updated.sources[0]).service_id == "same-file"
 
 
-def test_template_source_processing_defaults_propagate_through_both_discovery_apis(
-    tmp_path, monkeypatch
-):
-    hook = SequenceSpec.model_validate({
-        "params": {
-            "input": {"default": "${FILEROUTE_INPUT}"},
-            "output": {"default": "${FILEROUTE_OUTPUT}"},
-            "round": {"type": "integer", "default": 2},
-        },
-        "steps": [
-            {
-                "cmd": 'python -m project.governed_import --input "${input}" --output "${output}" --round "${round}"'
-            }
+def test_inventory_preserves_authored_artifacts_and_publication_choices(tmp_path):
+    raw = observed("raw.docx", item_id="existing")
+    raw.targets = []
+    catalog = Catalog(
+        resources={"raw": raw, "markdown": Resource(path="reviewed.md", format="md")},
+        targets=[Location(path="https://drive.google.com/drive/folders/published")],
+        params={"type": "literal", "steps": ["retained metadata"]},
+    )
+    report = reconcile(
+        tmp_path,
+        catalog,
+        [
+            DiscoveryScan(
+                scope="",
+                resources={
+                    "renamed": observed("renamed.docx", item_id="existing"),
+                    "new": observed("new.docx", item_id="new"),
+                },
+            )
         ],
-    })
-    descriptor = tmp_path / "catalog.yaml"
-    save(
-        Catalog(
-            path="data",
-            targets=[],
-            sources=[
-                Location(
-                    path="https://drive.google.com/drive/folders/folder",
-                    resourcePathTemplate="{name}.docx",
-                    afterPull=hook,
-                )
-            ],
-        ),
-        descriptor,
     )
-    root = GDriveItem(
-        id="folder", name="Folder", mime_type="application/vnd.google-apps.folder"
-    )
-    file = GDriveItem(id="file", name="term.docx", parent_id="folder", version="1")
-    from fileroute.item import FileMatch
+    assert set(report.catalog.resources) == {"raw", "markdown", "new"}
+    assert report.catalog.resources["raw"].path == "data/raw.docx"
+    assert report.catalog.resources["raw"].targets == []
+    assert report.catalog.resources["markdown"] == catalog.resources["markdown"]
+    assert report.catalog.model_extra == catalog.model_extra
+    assert report.catalog.resources["new"].path == "data/new.docx"
+    assert report.catalog.resources["new"].targets is None
+    assert not (tmp_path / "data").exists()
 
-    @contextmanager
-    def clients(keys):
-        yield {(ServiceType.GOOGLE_DRIVE, None): object()}
 
-    monkeypatch.setattr("fileroute.discovery._location_clients", clients)
-    monkeypatch.setattr(
-        "fileroute.discovery.lookup_item", lambda client, location: root
+def test_inventory_keeps_native_google_document_observation_without_declaring_conversion(
+    tmp_path,
+):
+    native = observed("Native document")
+    native.sources[0].model_extra["discovery"]["mimeType"] = (
+        "application/vnd.google-apps.document"
     )
-    monkeypatch.setattr(
-        "fileroute.discovery._iter_file_matches",
-        lambda item, parser: iter([FileMatch(file, "term.docx", {"name": "term"})]),
+    report = reconcile(
+        tmp_path, Catalog(), [DiscoveryScan(scope="", resources={"native": native})]
     )
-    original = descriptor.read_bytes()
-    legacy = discover_resources(descriptor, root=tmp_path)
-    proposal = discover_report(descriptor, root=tmp_path, to_markdown=True)
-    for catalog in (legacy, proposal.catalog):
-        resource = next(iter(catalog.resources.values()))
-        assert resource.sources[0].after_pull.model_dump() == hook.model_dump()
-    assert next(iter(proposal.catalog.resources.values())).path == "data/term.md"
-    assert descriptor.read_bytes() == original
+    assert report.catalog.resources == {"native": native}
+    assert report.catalog.resources["native"].path == "data/Native document"
+    assert not (tmp_path / "data").exists()
+
+
+def test_inventory_rejects_duplicate_acquisition_paths_before_writes(tmp_path):
+    scan = DiscoveryScan(
+        scope="",
+        resources={
+            "one": observed("same.docx"),
+            "two": observed("same.docx", item_id="other"),
+        },
+    )
+    with pytest.raises(ValueError, match="Duplicate discovery destination"):
+        reconcile(tmp_path, Catalog(), [scan])
+    assert list(tmp_path.iterdir()) == []

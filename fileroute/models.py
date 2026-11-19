@@ -15,8 +15,6 @@ from pydantic import (
     model_validator,
 )
 
-from fileroute.tasks import SequenceSpec
-
 CATALOG_PROFILE = "fileroute-catalog"
 _ARTIFACT_LEGACY_FIELDS = (
     "name",
@@ -106,7 +104,19 @@ class Location(_Metadata):
     model_config = ConfigDict(
         title="Source or target location",
         json_schema_extra={
-            "not": {"anyOf": [{"required": [key]} for key in ("descriptor", "$ref")]}
+            "not": {
+                "anyOf": [
+                    {"required": [key]}
+                    for key in (
+                        "descriptor",
+                        "$ref",
+                        "afterPull",
+                        "after_pull",
+                        "beforePush",
+                        "before_push",
+                    )
+                ]
+            }
         },
     )
 
@@ -114,6 +124,11 @@ class Location(_Metadata):
         min_length=1,
         description="Authored remote URL or provider-scoped path. A source may also be a local provenance path; pull requires a supported remote source.",
         examples=["s3://example-reports/monthly/report.csv", "docs/report.qmd"],
+    )
+    format: str | None = Field(
+        default=None,
+        description="Optional file format hint, such as docx or md, when a remote URL has no filename. Pull/push infer the built-in DOCX/Markdown conversion from endpoint formats; folder targets use this as the desired child file format.",
+        examples=["docx", "md"],
     )
     service_type: ServiceTypeField | None = Field(
         default=None,
@@ -181,16 +196,6 @@ class Location(_Metadata):
         description="S3 bucket namespace, required for S3 paths that are not full URLs.",
         examples=["example-reports"],
     )
-    after_pull: SequenceSpec | None = Field(
-        default=None,
-        alias="afterPull",
-        description="Native Poe sequence run after acquisition from this source and before promoting its local artifact. steps/params alias sequence/args.",
-    )
-    before_push: SequenceSpec | None = Field(
-        default=None,
-        alias="beforePush",
-        description="Native Poe sequence run on a staged copy before publication to this target. Its outer output argument identifies the upload candidate.",
-    )
 
     @model_validator(mode="before")
     @classmethod
@@ -200,30 +205,12 @@ class Location(_Metadata):
                 "Locations cannot contain descriptor links; use a location path"
             )
         if isinstance(value, dict):
-            for authored, native in (
-                ("afterPull", "after_pull"),
-                ("beforePush", "before_push"),
-            ):
-                if authored in value and native in value:
-                    raise ValueError(f"Provide only one of {authored!r} and {native!r}")
+            if {"afterPull", "after_pull", "beforePush", "before_push"} & value.keys():
+                raise ValueError(
+                    "Descriptor processing hooks are not supported; use explicit Python "
+                    "operations for custom processing; DOCX/Markdown conversion is inferred by pull/push"
+                )
         return value
-
-
-def _source_schema(schema: dict[str, Any]) -> None:
-    schema["items"] = {
-        "allOf": [schema["items"], {"properties": {"beforePush": {"type": "null"}}}]
-    }
-
-
-def _target_schema(schema: dict[str, Any]) -> None:
-    for variant in schema.get("anyOf", [schema]):
-        if variant.get("type") == "array":
-            variant["items"] = {
-                "allOf": [
-                    variant["items"],
-                    {"properties": {"afterPull": {"type": "null"}}},
-                ]
-            }
 
 
 class _Artifact(_Metadata):
@@ -261,7 +248,6 @@ class _Artifact(_Metadata):
                 }
             ]
         ],
-        json_schema_extra=_source_schema,
     )
     # None inherits catalog targets; [] explicitly disables publication.
     targets: list[Location] | None = Field(
@@ -276,7 +262,6 @@ class _Artifact(_Metadata):
                 }
             ],
         ],
-        json_schema_extra=_target_schema,
     )
     entity_type: EntityTypeValue | None = Field(
         default=None,
@@ -296,18 +281,6 @@ class _Artifact(_Metadata):
                 )
         return value
 
-    @model_validator(mode="after")
-    def _validate_endpoint_hooks(self) -> _Artifact:
-        # Keep the shared Location type: callers may pass existing Location
-        # instances, and inherited target instances retain their identities.
-        for source in self.sources:
-            if source.before_push is not None:
-                raise ValueError("Source locations support afterPull, not beforePush")
-        for target in self.targets or []:
-            if target.after_pull is not None:
-                raise ValueError("Target locations support beforePush, not afterPull")
-        return self
-
 
 class Resource(_Artifact):
     """A materialized artifact and its provenance/publication locations."""
@@ -321,7 +294,7 @@ class Resource(_Artifact):
     )
     format: str | None = Field(
         default=None,
-        description="Optional file format metadata; this does not convert or transform the artifact.",
+        description="Optional file format metadata. DOCX/Markdown transfers infer conversion from file paths and location format hints; other formats are transferred unchanged.",
         examples=["csv", "parquet", "pdf"],
     )
     path_properties: dict[str, Any] = Field(
@@ -367,7 +340,10 @@ def validate_name(name: str) -> str:
 def _catalog_schema(schema: dict[str, Any]) -> None:
     """Expose the input alias without replacing generated property schemas."""
     schema["not"] = {
-        "anyOf": [{"required": [key]} for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema")]
+        "anyOf": [
+            {"required": [key]}
+            for key in (*_ARTIFACT_LEGACY_FIELDS, "$schema", "pipelines")
+        ]
     }
     schema["properties"]["pathTemplate"] = {
         **schema["properties"]["resourcePathTemplate"],
@@ -419,6 +395,11 @@ class Catalog(_Artifact):
     @model_validator(mode="before")
     @classmethod
     def _reject_schema_key(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "pipelines" in value:
+            raise ValueError(
+                "Catalog pipelines are not supported; compose explicit Python operations "
+                "using fileroute.conversion between pull and push"
+            )
         if isinstance(value, dict) and "$schema" in value:
             raise ValueError(
                 "Use 'profile' instead of '$schema' in catalog descriptors"

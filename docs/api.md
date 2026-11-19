@@ -2,81 +2,73 @@
 
 Auto-generated from source signatures and docstrings.
 
-## `fileroute.tasks`
-
-### Functions
-
-- `def resolve_output(request: StepsRequest) -> Path`
-  - Resolve the native output argument lexically, without filesystem access.
-- `def execute_steps(request: StepsRequest, *, runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> StepsResult`
-  - Run actual Poe in a child process and require its exact staged output.
-- `def default_markdown_sequence() -> SequenceSpec`
-  - An explicit local MarkItDown hook; source format checks occur at execution.
-
-### Classes
-
-#### `SequenceSpec`
-- Serializable native sequence, with catalog aliases and pure validation.
-
-#### `StepsRequest`
-- Concrete local inputs and output candidate for one endpoint hook.
-- Fields:
-  - `sequence: SequenceSpec`
-  - `input: Path`
-  - `output: Path`
-  - `root: Path`
-  - `catalog_dir: Path`
-  - `work_dir: Path`
-  - `context: dict[str, Any]`
-  - `arguments: list[str]`
-
-#### `StepsResult`
-- Fields:
-  - `output: Path`
-  - `exit_code: int`
-  - `stdout: str`
-  - `stderr: str`
-
-#### `StepExecutionError`
-- A native task or its required output failed; diagnostics remain available.
-
-
 ## `fileroute.conversion`
 
 ### Functions
 
-- `def read_mapping(path: Path) -> dict[str, str]`
-  - Read a YAML/JSON map of variable names to RFC 6901 JSON Pointers.
-- `def render_template(template: Path, context: dict[str, Any], *, mappings: dict[str, str] | None = None) -> str`
-  - Render a local template; missing inputs fail rather than disappearing.
-- `def convert_document(request: ConversionRequest, *, converter: Callable[[Path], dict[str, Any]] = _extract, office_runner: Callable[..., subprocess.CompletedProcess] = _run_office, find_executable: Callable[[str], str | None] = shutil.which) -> ConversionResult`
-  - Extract a local document, optionally map/render it, then publish atomically.
-- `def render_document(request: ConversionRequest) -> ConversionResult`
-  - Render JSON/YAML structured data without invoking a document converter.
+- `def docx_to_markdown(request: DocxToMarkdownRequest) -> ConversionResult`
+  - Import comments, named styles, media, and source evidence into review-v1.
+- `def markdown_to_docx(request: MarkdownToDocxRequest) -> ConversionResult`
+  - Export review-v1 with native Word comments and the retained named styles.
 
 ### Classes
 
-#### `ConversionRequest`
-- One local input and output; paths are interpreted by the caller's cwd.
+#### `DocxToMarkdownRequest`
+- Import a local DOCX into a review-profile Markdown file and retained assets.
 - Fields:
   - `source: Path`
   - `output: Path`
-  - `template: Path | None`
-  - `mapping_file: Path | None`
-  - `mappings: dict[str, str]`
-  - `data: dict[str, Any]`
   - `timeout_seconds: float`
-- Methods:
-  - `def one_mapping_source(self) -> ConversionRequest`
+
+#### `MarkdownToDocxRequest`
+- Export a review-profile Markdown document using its pinned style reference.
+- Fields:
+  - `source: Path`
+  - `output: Path`
+  - `timeout_seconds: float`
 
 #### `ConversionResult`
-- Confirmed local output, independent of remote availability or approval.
+- Actual local output and integrity evidence, independent of publication.
 - Fields:
   - `source: Path`
   - `output: Path`
   - `source_sha256: str`
   - `output_sha256: str`
-  - `characters: int`
+  - `assets: Path | None`
+  - `unsupported: list[str]`
+
+#### `ReviewProfile`
+- The review-v1 YAML header; assets are relative to the Markdown's directory.
+- Fields:
+  - `docx_profile: Literal['fileroute-review-v1']`
+  - `schema_version: Literal[1]`
+  - `source: RetainedFile`
+  - `reference_docx: RetainedFile`
+  - `converter: str`
+  - `styles: dict[str, str]`
+  - `comments: dict[str, ReviewComment]`
+  - `assets: dict[str, str]`
+  - `unsupported: list[str]`
+  - `properties: dict[str, JsonValue]`
+- Methods:
+  - `def comment_ids(cls, value: dict[str, ReviewComment]) -> dict[str, ReviewComment]`
+  - `def asset_files(cls, value: dict[str, str]) -> dict[str, str]`
+
+#### `ReviewComment`
+- Comment Markdown and original reviewer attributes, keyed by stable body ID.
+- Fields:
+  - `text: str`
+  - `author: str`
+  - `date: str | None`
+  - `initials: str | None`
+
+#### `RetainedFile`
+- An unmodified local input, identified by a relative path and SHA-256.
+- Fields:
+  - `path: str`
+  - `sha256: str`
+- Methods:
+  - `def relative_path(cls, value: str) -> str`
 
 
 ## `fileroute.discovery`
@@ -90,8 +82,8 @@ Auto-generated from source signatures and docstrings.
 - `def discover_resources(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> Catalog`
   - Discover a catalog's declared remote sources and return concrete resources.
 - `def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult`
-  - Preserve registered identity and authored processing while updating observations.
-- `def discover_report(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None, to_markdown: bool = False) -> DiscoveryResult`
+  - Preserve registered identity and authored resource metadata while updating observations.
+- `def discover_report(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> DiscoveryResult`
   - Acquire remote metadata and propose stable-identity catalog reconciliation.
 
 ### Classes
@@ -103,7 +95,6 @@ Auto-generated from source signatures and docstrings.
   - `root: Path | None`
   - `selector: str | None`
   - `profile: str | None`
-  - `to_markdown: bool`
 
 #### `DiscoveryScan`
 - One scope's observed files; incomplete inventory cannot establish absence.
@@ -131,7 +122,6 @@ Auto-generated from source signatures and docstrings.
   - `scans: list[DiscoveryScan]`
   - `descriptor: Path`
   - `root: Path`
-  - `to_markdown: bool`
 
 #### `DiscoveryResult`
 - Reviewable proposal; only callers explicitly requesting writes persist it.
@@ -178,7 +168,7 @@ Auto-generated from source signatures and docstrings.
 
 ### Constants
 
-- `StepsRunner = Callable[['StepsRequest'], 'StepsResult']`
+- `DocumentConversion = Literal['docx-to-md', 'md-to-docx']`
 
 ### Functions
 
@@ -186,9 +176,9 @@ Auto-generated from source signatures and docstrings.
   - Plan remote sources to local paths, offline.
 - `def plan_push(descriptor: Path, *, root: Path | None = None, selector: str | None = None) -> tuple[PushEntry, ...]`
   - Publish path to targets, never sources; validate everything before auth.
-- `def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None, run_dir: Path | None = None, runner: StepsRunner | None = None) -> tuple[PullReceipt, ...]`
+- `def pull(entries: tuple[PullEntry, ...], *, profile: str | None = None, run_dir: Path | None = None) -> tuple[PullReceipt, ...]`
   - Download planned files after resolving paths and selected credentials.
-- `def push(files: tuple[PushEntry, ...], *, profile: str | None = None, run_dir: Path | None = None, runner: StepsRunner | None = None) -> tuple[PushReceipt, ...]`
+- `def push(files: tuple[PushEntry, ...], *, profile: str | None = None, run_dir: Path | None = None) -> tuple[PushReceipt, ...]`
   - Publish a plan using location profiles ahead of the run's default.
 
 ### Classes
@@ -201,9 +191,8 @@ Auto-generated from source signatures and docstrings.
   - `directory: bool`
   - `location: Location | None`
   - `root: Path | None`
-  - `catalog_origin: Path | None`
   - `resource: str | None`
-  - `hook: SequenceSpec | None`
+  - `conversion: DocumentConversion | None`
 
 #### `PullReceipt`
 - Observed input and output of one pull; absent metadata stays unknown.
@@ -220,6 +209,8 @@ Auto-generated from source signatures and docstrings.
   - `output_sha256: str | None`
   - `error: str | None`
   - `report: Path | None`
+  - `conversion: DocumentConversion | None`
+  - `unsupported: tuple[str, ...]`
 
 #### `PushEntry`
 - Fields:
@@ -230,9 +221,8 @@ Auto-generated from source signatures and docstrings.
   - `direct_file: bool`
   - `location: Location | None`
   - `root: Path | None`
-  - `catalog_origin: Path | None`
   - `resource: str | None`
-  - `hook: SequenceSpec | None`
+  - `conversion: DocumentConversion | None`
 - Methods:
   - `def destination(self) -> str`
 
@@ -249,6 +239,7 @@ Auto-generated from source signatures and docstrings.
   - `destination: str`
   - `error: str | None`
   - `report: Path | None`
+  - `conversion: DocumentConversion | None`
 
 
 ## `fileroute.descriptor`
@@ -389,6 +380,7 @@ Auto-generated from source signatures and docstrings.
 - Upstream input or downstream destination, with optional provider metadata.
 - Fields:
   - `path: str`
+  - `format: str | None`
   - `service_type: ServiceTypeField | None`
   - `resource_path_template: str | None`
   - `auth_profile: str | None`
@@ -400,8 +392,6 @@ Auto-generated from source signatures and docstrings.
   - `drive: str | None`
   - `drive_id: str | None`
   - `bucket: str | None`
-  - `after_pull: SequenceSpec | None`
-  - `before_push: SequenceSpec | None`
 
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.

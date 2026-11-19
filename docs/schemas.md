@@ -131,6 +131,14 @@ provider/mode fields. Use it to catch missing service-account file references,
 app-only secret references, and misplaced provider options before running a
 command.
 
+Descriptors do not execute processing. Catalog `pipelines` and location
+`afterPull`/`beforePush` declarations (including snake_case hook spellings) are
+rejected in both runtime validation and the generated schema. Other metadata
+extensions remain available; generic names such as `steps`, `params`, `type`, and
+`kwargs` do not execute anything. Pull/push infer the built-in DOCX/Markdown pair
+from endpoint formats; location `format` hints support opaque URLs and folder
+targets. Use ordinary Python for custom processing; see [DOCX and Markdown reviews](processing.md).
+
 Private profile names cannot be enumerated by a public static schema, and a
 credential reference in a schema does not prove the file exists or the account
 has access. Runtime checks still establish profile lookup, provider matching,

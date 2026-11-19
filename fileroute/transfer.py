@@ -13,8 +13,8 @@ import json
 import mimetypes
 import os
 import shutil
-from tempfile import NamedTemporaryFile
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from typing import Any, Iterator, Literal
 from pathlib import Path, PureWindowsPath
 from urllib.parse import quote, unquote, urlparse
 from uuid import uuid4
@@ -25,19 +25,63 @@ from fileroute.clients.base import BaseClient
 from fileroute.clients.googledrive import DEFAULT_EXPORTS
 from fileroute.descriptor import find, load, walk, resolve, local_path
 from fileroute.resolution import lookup_item, parse_location
+from fileroute.conversion import (
+    ConversionResult,
+    DocxToMarkdownRequest,
+    MarkdownToDocxRequest,
+    docx_to_markdown,
+    markdown_to_docx,
+)
 
-if TYPE_CHECKING:
-    from fileroute.tasks import SequenceSpec, StepsRequest, StepsResult
+DocumentConversion = Literal["docx-to-md", "md-to-docx"]
 
-StepsRunner = Callable[["StepsRequest"], "StepsResult"]
+
+def _document_format(path: str | Path, declared: str | None = None) -> str | None:
+    """Recognize only the built-in document pair, without opening files or URLs."""
+    value = declared or Path(unquote(urlparse(str(path)).path)).suffix
+    return {"docx": "docx", "md": "md", "markdown": "md"}.get(value.lower().lstrip("."))
+
+
+def _location_format(location: Location | None, path: str) -> str | None:
+    if location is None:
+        return _document_format(path)
+    return _document_format(location.remote_path or "", location.format) or (
+        _document_format(path) if location.format is None else None
+    )
+
+
+def _document_conversion(
+    source: str | None, output: str | None, *, direction: Literal["pull", "push"]
+) -> DocumentConversion | None:
+    if (direction == "pull" and source == "md" and output == "docx") or (
+        direction == "push" and source == "docx" and output == "md"
+    ):
+        raise ValueError(
+            "Automatic document transfers use DOCX sources/targets and a Markdown local path. "
+            "Remote Markdown review bundles require their retained files as well; "
+            "use a Markdown local path for this round trip."
+        )
+    if source == "docx" and output == "md":
+        return "docx-to-md"
+    if source == "md" and output == "docx":
+        return "md-to-docx"
+    return None
+
+
+def _convert(
+    source: Path, output: Path, conversion: DocumentConversion
+) -> ConversionResult:
+    """Adapt the two document operations; this is not a configurable task runner."""
+    if conversion == "docx-to-md":
+        return docx_to_markdown(DocxToMarkdownRequest(source=source, output=output))
+    return markdown_to_docx(MarkdownToDocxRequest(source=source, output=output))
 
 
 @dataclass(frozen=True)
 class PullReceipt:
     """Observed input and output of one pull; absent metadata stays unknown.
 
-    ``raw_source`` is an original retained download, never the processing input
-    copy. Receipts describe local execution, not a provider acceptance decision.
+    ``raw_source`` is an original retained download. Receipts describe local execution, not a provider acceptance decision.
     A failed operation saves its receipt before propagating its exception.
     """
 
@@ -53,6 +97,8 @@ class PullReceipt:
     output_sha256: str | None = None
     error: str | None = None
     report: Path | None = None
+    conversion: DocumentConversion | None = None
+    unsupported: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,6 +115,7 @@ class PushReceipt:
     destination: str
     error: str | None = None
     report: Path | None = None
+    conversion: DocumentConversion | None = None
 
 
 def _digest(path: Path) -> str:
@@ -87,104 +134,16 @@ def _report(receipt: PullReceipt | PushReceipt) -> None:
         )
 
 
-def _run_directory(
-    entries: tuple[PullEntry, ...] | tuple[PushEntry, ...],
-    run_dir: Path | None,
-    action: str,
-) -> Path | None:
-    if run_dir is None and not any(entry.hook is not None for entry in entries):
+def _run_directory(run_dir: Path | None, action: str) -> Path | None:
+    if run_dir is None:
         return None
-    root = entries[0].root or Path.cwd()
-    parent = (
-        run_dir
-        if run_dir is not None
-        else local_path(".fileroute/runs", root, reject_symlinks=True)
-    )
-    result = parent.resolve() / f"{action}-{uuid4().hex}"
+    result = run_dir.resolve() / f"{action}-{uuid4().hex}"
     result.mkdir(parents=True)
     return result
 
 
-def _steps_request(
-    entry: PullEntry | PushEntry,
-    *,
-    input: Path,
-    output: Path,
-    work_dir: Path,
-    context: dict[str, Any] | None = None,
-) -> StepsRequest:
-    from fileroute.tasks import StepsRequest
-
-    assert entry.hook is not None
-    return StepsRequest(
-        sequence=entry.hook,
-        input=input,
-        output=output,
-        root=entry.root or Path.cwd(),
-        catalog_dir=(
-            entry.catalog_origin.parent if entry.catalog_origin else Path.cwd()
-        ),
-        work_dir=work_dir,
-        context={"resource": entry.resource, **(context or {})},
-        arguments=[],
-    )
-
-
-def _hook_name(entry: PullEntry | PushEntry) -> str:
-    """Resolve only an output basename offline; native argument parsing does no I/O."""
-    from fileroute.tasks import resolve_output
-
-    work = (entry.root or Path.cwd()) / ".fileroute/processing-plan"
-    request = _steps_request(
-        entry,
-        input=work / "input" / entry.local.name,
-        output=work / "output" / entry.local.name,
-        work_dir=work,
-    )
-    return resolve_output(request).name
-
-
-def _processed_copy(
-    entry: PullEntry | PushEntry,
-    source: Path,
-    directory: Path,
-    *,
-    runner: StepsRunner | None,
-    context: dict[str, Any] | None = None,
-) -> Path:
-    """Give tasks disposable copies; independently validate the returned output."""
-    from fileroute.tasks import execute_steps, resolve_output
-
-    work = directory / "work"
-    input = work / "input" / source.name
-    input.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, input)
-    request = _steps_request(
-        entry,
-        input=input,
-        output=work / "output" / entry.local.name,
-        work_dir=work,
-        context=context,
-    )
-    candidate = local_path(
-        str(resolve_output(request)), work.resolve(), reject_symlinks=True
-    )
-    candidate.parent.mkdir(parents=True, exist_ok=True)
-    result = (runner or execute_steps)(request)
-    if result.exit_code != 0:
-        raise ValueError(f"Processing exited with status {result.exit_code}")
-    output = local_path(str(result.output), work.resolve(), reject_symlinks=True)
-    if not output.is_file():
-        raise ValueError(f"Processing output is not a regular file: {output}")
-    if output != candidate.resolve():
-        raise ValueError(
-            "Processing returned an output different from its declared output"
-        )
-    return output
-
-
 def _promote(source: Path, target: Path, root: Path) -> None:
-    """Replace one local artifact only after a successful, validated processing run."""
+    """Atomically replace one local artifact after a completed download."""
     target = local_path(str(target), root, reject_symlinks=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -226,9 +185,8 @@ class PullEntry:
     directory: bool = False
     location: Location | None = field(default=None, compare=False, repr=False)
     root: Path | None = None
-    catalog_origin: Path | None = None
     resource: str | None = None
-    hook: SequenceSpec | None = None
+    conversion: DocumentConversion | None = None
 
 
 def plan_pull(
@@ -290,11 +248,6 @@ def plan_pull(
             raise ValueError(f"Pull is not implemented for {service}")
         local = local_path(entity.path, root, reject_symlinks=True)
         directory = isinstance(entity, Catalog)
-        hook = getattr(source, "after_pull", None)
-        if directory and hook is not None:
-            raise ValueError(
-                "afterPull requires a file resource; discover concrete resources before processing a directory"
-            )
         for previous in entries:
             if (
                 local == previous.local
@@ -316,9 +269,16 @@ def plan_pull(
                 directory,
                 source,
                 root=root,
-                catalog_origin=row.origin_descriptor,
                 resource=row.name_path or "root",
-                hook=hook,
+                conversion=(
+                    _document_conversion(
+                        _location_format(source, source.path),
+                        _document_format(local),
+                        direction="pull",
+                    )
+                    if not directory
+                    else None
+                ),
             )
         )
     if not entries:
@@ -389,6 +349,24 @@ def _source_name(item: Any, entry: PullEntry) -> str:
     return name
 
 
+def _pull_conversion(
+    item: Any, target: Path, entry: PullEntry
+) -> DocumentConversion | None:
+    if entry.directory:
+        return None
+    mime = getattr(item, "mime_type", None)
+    exported = DEFAULT_EXPORTS.get(mime, mime)
+    extension = mimetypes.guess_extension(exported) if exported else None
+    source_format = (
+        (_document_format("source" + extension) if extension else None)
+        or _location_format(entry.location, entry.remote)
+        or _document_format(_source_name(item, entry))
+    )
+    return _document_conversion(
+        source_format, _document_format(target), direction="pull"
+    )
+
+
 def _source_id(item: Any, entry: PullEntry) -> str | None:
     try:
         identifier = item.id
@@ -413,26 +391,21 @@ def pull(
     *,
     profile: str | None = None,
     run_dir: Path | None = None,
-    runner: StepsRunner | None = None,
 ) -> tuple[PullReceipt, ...]:
     """Download planned files after resolving paths and selected credentials.
 
     A location's ``authProfile`` overrides the run's ``profile`` default. An
     unnamed location/run retains the provider's legacy credential discovery.
     Profile selection is deferred until execution; planning remains offline.
-    Source ``afterPull`` sequences receive working copies, and only successful
-    outputs replace artifacts. Their original downloads and receipts are retained
-    below ``run_dir`` (or ``.fileroute/runs``). An explicit run directory also
-    records raw inputs for ordinary file pulls. Existing directory pulls cannot
-    carry processing sequences; discover concrete resources first.
+    A DOCX source and Markdown local path select the built-in review conversion.
+    Provider export metadata can resolve source formats hidden by opaque URLs.
+    An explicit ``run_dir`` also retains raw downloads and receipts.
     """
     if not entries:
         return ()
-    if any(entry.directory and entry.hook is not None for entry in entries):
-        raise ValueError("afterPull requires concrete file resources, not a directory")
-    execution = _run_directory(entries, run_dir, "pull")
+    execution = _run_directory(run_dir, "pull")
     receipts = []
-    with _transfer_clients(entries, profile=profile) as clients:
+    with _transfer_clients(entries, profile=profile) as clients, ExitStack() as staging:
         files = []
         destinations = set()
         for entry in entries:
@@ -456,7 +429,7 @@ def pull(
                     target = local_path(
                         str(relative), entry.local, reject_symlinks=True
                     )
-                    files.append((child, target, entry))
+                    files.append((child, target, entry, None))
             else:
                 files.append((
                     item,
@@ -464,24 +437,26 @@ def pull(
                         str(entry.local), entry.local.parent, reject_symlinks=True
                     ),
                     entry,
+                    _pull_conversion(item, entry.local, entry),
                 ))
-        for item, target, entry in files:
+        for item, target, entry, conversion in files:
             if target in destinations or (target.exists() and not target.is_file()):
                 raise ValueError(f"Conflicting pull destination: {target}")
-            if (
-                entry.hook is None
-                and target.suffix.lower() == ".md"
-                and Path(_source_name(item, entry)).suffix.lower()
-                in {".doc", ".docx", ".pdf", ".pptx", ".xlsx", ".xls", ".zip", ".msg"}
-            ):
-                raise ValueError(
-                    "Markdown output needs source afterPull conversion; use fileroute steps add --auto"
-                )
             destinations.add(target)
         for target in destinations:
             if any(parent in destinations for parent in target.parents):
                 raise ValueError(f"File and directory destinations overlap: {target}")
-        for index, (item, target, entry) in enumerate(files):
+        for _, target, _, conversion in files:
+            if conversion == "docx-to-md":
+                bundle = target.parent / f"{target.stem}.assets"
+                if any(
+                    path == bundle or path.is_relative_to(bundle)
+                    for path in destinations
+                ):
+                    raise ValueError(
+                        f"Pull destination overlaps retained review assets: {bundle}"
+                    )
+        for index, (item, target, entry, conversion) in enumerate(files):
             directory = execution / f"{index:04d}" if execution is not None else None
             receipt = PullReceipt(
                 resource=entry.resource,
@@ -494,45 +469,46 @@ def pull(
                 raw_source=None,
                 output=target,
                 report=directory / "receipt.json" if directory else None,
+                conversion=conversion,
             )
             try:
-                if directory is None:
+                if directory is None and conversion is None:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     item.download(target)
                 else:
-                    raw = directory / "raw" / _source_name(item, entry)
+                    work = directory or Path(
+                        staging.enter_context(
+                            TemporaryDirectory(prefix="fileroute-pull-")
+                        )
+                    )
+                    raw = work / "raw" / _source_name(item, entry)
+                    if conversion:
+                        raw = raw.with_suffix(
+                            ".docx" if conversion == "docx-to-md" else ".md"
+                        )
                     raw.parent.mkdir(parents=True)
                     receipt = replace(receipt, raw_source=raw)
                     item.download(raw)
                     digest = _digest(raw)
                     receipt = replace(
-                        receipt, raw_source=raw, source_sha256=digest, stage="afterPull"
+                        receipt, raw_source=raw, source_sha256=digest, stage="promote"
                     )
-                    output = (
-                        _processed_copy(
-                            entry,
-                            raw,
-                            directory,
-                            runner=runner,
-                            context={
-                                "source": {
-                                    "url": receipt.source_url,
-                                    "id": receipt.source_id,
-                                    "version": receipt.source_version,
-                                    "sha256": digest,
-                                },
-                                "resource_path": str(entry.local),
-                            },
+                    if conversion:
+                        receipt = replace(receipt, stage="convert")
+                        converted = _convert(raw, target, conversion)
+                        receipt = replace(
+                            receipt,
+                            raw_source=(
+                                raw
+                                if directory
+                                else converted.assets / "original.docx"
+                                if converted.assets
+                                else None
+                            ),
+                            unsupported=tuple(converted.unsupported),
                         )
-                        if entry.hook is not None
-                        else raw
-                    )
-                    if _digest(raw) != digest:
-                        raise ValueError(
-                            "Processing changed the retained original download"
-                        )
-                    receipt = replace(receipt, stage="promote")
-                    _promote(output, target, entry.root or target.parent)
+                    else:
+                        _promote(raw, target, entry.root or target.parent)
                 receipt = replace(
                     receipt,
                     outcome="complete",
@@ -556,9 +532,8 @@ class PushEntry:
     direct_file: bool = False
     location: Location | None = field(default=None, compare=False, repr=False)
     root: Path | None = None
-    catalog_origin: Path | None = None
     resource: str | None = None
-    hook: SequenceSpec | None = None
+    conversion: DocumentConversion | None = None
 
     @property
     def destination(self) -> str:
@@ -585,16 +560,6 @@ def _destination_key(entry: PushEntry) -> str:
         unquote(entry.destination).casefold()
         if entry.service_type is ServiceType.SHAREPOINT
         else entry.destination
-    )
-
-
-def _hook_identity(entry: PushEntry) -> tuple[Path, str | None, Path | None]:
-    return (
-        entry.local,
-        json.dumps(entry.hook.model_dump(mode="json"), sort_keys=True)
-        if entry.hook is not None
-        else None,
-        entry.catalog_origin if entry.hook is not None else None,
     )
 
 
@@ -630,13 +595,7 @@ def plan_push(
             or row.json_pointer.startswith(pointer + "/")
         }
     entries: list[PushEntry] = []
-    destinations: dict[str, tuple[Path, str | None, Path | None]] = {}
-    origins = {
-        id(location): row.origin_descriptor
-        for row in walk(document, include_self=True)
-        if isinstance(row.model, (Catalog, Resource))
-        for location in row.model.targets or []
-    }
+    destinations: dict[str, Path] = {}
 
     def add(
         local: Path, target: Location, relative: Path | None, resource: str | None
@@ -661,10 +620,14 @@ def plan_push(
             )
         if not local.is_file():
             raise ValueError(f"Upload input must be a file: {local}")
-        hook = getattr(target, "before_push", None)
+        conversion = _document_conversion(
+            _document_format(local),
+            _location_format(target, target.path),
+            direction="push",
+        )
         if (
-            hook is None
-            and service is ServiceType.SHAREPOINT
+            service is ServiceType.SHAREPOINT
+            and conversion is None
             and local.stat().st_size > 250_000_000
         ):
             raise ValueError(
@@ -695,6 +658,10 @@ def plan_push(
                 relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Unsafe relative upload path: {relative}")
+        if not direct and conversion:
+            relative = relative.with_suffix(
+                ".docx" if conversion == "md-to-docx" else ".md"
+            )
         entry = PushEntry(
             local,
             target.path,
@@ -703,21 +670,16 @@ def plan_push(
             direct,
             target,
             root,
-            origins.get(id(target)),
             resource,
-            hook,
+            conversion=conversion,
         )
-        if hook is not None and not direct:
-            entry = replace(entry, relative=relative.with_name(_hook_name(entry)))
         # Decoding catches authored aliases for the same remote file.
         key = _destination_key(entry)
         if key in destinations:
-            if destinations[key] != _hook_identity(entry):
-                raise ValueError(
-                    f"Multiple local files or processing sequences target {entry.destination}"
-                )
+            if destinations[key] != entry.local:
+                raise ValueError(f"Multiple local files target {entry.destination}")
             return
-        destinations[key] = _hook_identity(entry)
+        destinations[key] = entry.local
         entries.append(entry)
 
     def visit(
@@ -754,12 +716,6 @@ def plan_push(
             if local is None or not local.is_dir():
                 raise ValueError(
                     f"Upload directory missing or not a directory: {entity.path}"
-                )
-            if any(
-                getattr(target, "before_push", None) is not None for target in targets
-            ):
-                raise ValueError(
-                    "beforePush requires concrete file resources, not a leaf directory catalog"
                 )
             for file in sorted(local.rglob("*")):
                 safe = local_path(str(file), root, reject_symlinks=True)
@@ -798,21 +754,39 @@ def plan_push(
     return tuple(entries)
 
 
+def _push_conversion(file: PushEntry, client: BaseClient) -> DocumentConversion | None:
+    if file.conversion:
+        return file.conversion
+    target_format = _location_format(file.location, file.remote)
+    source_format = _document_format(file.local)
+    if (
+        target_format is None
+        and source_format is not None
+        and file.service_type is ServiceType.GOOGLE_DRIVE
+        and file.direct_file
+        and file.location is not None
+    ):
+        # Exact Drive URLs carry stable IDs, not names. Resolve the existing
+        # target's metadata without changing the ID or treating /view as a name.
+        target = client.get_from_location(file.location)
+        target_format = _document_format(target.name)
+    return _document_conversion(source_format, target_format, direction="push")
+
+
 def push(
     files: tuple[PushEntry, ...],
     *,
     profile: str | None = None,
     run_dir: Path | None = None,
-    runner: StepsRunner | None = None,
 ) -> tuple[PushReceipt, ...]:
     """Publish a plan using location profiles ahead of the run's default.
 
     All selected profiles are checked before uploading any bytes. Unnamed
     locations/runs retain legacy credentials. Files outside the plan are never
-    deleted, and planning never loads authentication configuration. Each target's
-    ``beforePush`` receives an independent working copy. All transformed outputs
-    are prepared and checked before the first upload; canonical inputs are never
-    passed as task output paths. A provider call with a lost response is recorded
+    deleted, and planning never loads authentication configuration.
+    Markdown-to-DOCX targets are prepared from the review profile before any
+    upload; source Markdown and retained assets stay unchanged. Converted outputs
+    are temporary unless ``run_dir`` retains them. A provider call with a lost response is recorded
     as unknown, since a local exception cannot prove that publication failed.
     """
     if not files:
@@ -822,8 +796,11 @@ def push(
         for file in files
     ):
         raise ValueError("Replace the SharePoint placeholder target before uploading")
-    execution = _run_directory(files, run_dir, "push")
-    with _transfer_clients(files, profile=profile) as clients:
+    execution = _run_directory(run_dir, "push")
+    with (
+        _transfer_clients(files, profile=profile) as clients,
+        TemporaryDirectory(prefix="fileroute-push-") as temporary,
+    ):
         prepared: list[tuple[PushEntry, PushReceipt]] = []
         destinations: set[str] = set()
         for index, file in enumerate(files):
@@ -849,21 +826,20 @@ def push(
                         "Google Drive file upload requires a resolved target"
                     )
                 output = file.local
-                if file.hook is not None:
-                    assert directory is not None
-                    output = _processed_copy(file, file.local, directory, runner=runner)
-                    if _digest(file.local) != receipt.input_sha256:
-                        raise ValueError(
-                            "Processing changed the canonical publication input"
-                        )
-                relative = file.relative
-                if file.hook is not None and not file.direct_file:
-                    relative = relative.with_name(output.name)
-                    if relative != file.relative:
-                        raise ValueError(
-                            "Processing output filename differs from the planned destination"
-                        )
-                effective = replace(file, local=output, relative=relative)
+                selected = (
+                    file.location.auth_profile if file.location is not None else None
+                ) or profile
+                conversion = _push_conversion(
+                    file, clients[(file.service_type, selected)]
+                )
+                if conversion:
+                    receipt = replace(receipt, stage="convert", conversion=conversion)
+                    work = directory or Path(temporary) / f"{index:04d}"
+                    output = work / (
+                        "output.docx" if conversion == "md-to-docx" else "output.md"
+                    )
+                    _convert(file.local, output, conversion)
+                effective = replace(file, local=output, conversion=conversion)
                 if (
                     effective.service_type is ServiceType.SHAREPOINT
                     and output.stat().st_size > 250_000_000
@@ -941,11 +917,11 @@ def push(
 
 
 __all__ = [
+    "DocumentConversion",
     "PullEntry",
     "PullReceipt",
     "PushEntry",
     "PushReceipt",
-    "StepsRunner",
     "plan_pull",
     "plan_push",
     "pull",

@@ -9,7 +9,7 @@ supported targets through the CLI or Python API. Python 3.11+ is required.
 **Current transfer support:** SharePoint, Google Drive, and S3 can be pulled;
 SharePoint and Google Drive can be pushed. S3 targets can be described and
 diagrammed, but `push --dry-run` rejects them until upload support exists.
-Fileroute does not transform files or transfer directly between cloud providers.
+Pull and push infer the built-in DOCX/Markdown review conversion from source, local path, and target formats. Other processing stays in ordinary application functions.
 
 ## Descriptor format change
 
@@ -212,11 +212,18 @@ does not calculate properties; use `resolve` or `fileroute resolve --write` to
 calculate or persist them. Saves use the canonical `resourcePathTemplate` name;
 conflicting values for its two input names are rejected.
 
-Transfers do not expand placeholders, discover matching files, or replace
-explicit resource paths. Source `afterPull` and target `beforePush` sequences
-can prepare different file representations using native Poe. Processing uses
-staged copies; converter, template, and mapping options stay in sequence
-arguments. See [Endpoint processing](docs/processing.md).
+Transfers use explicit resource paths. A DOCX `sources` location with a Markdown
+resource `path` makes `pull` import a review document automatically. A DOCX
+`targets` location makes `push` restore it as DOCX. No separate conversion command
+or processing declaration is needed. Opaque URLs and folder targets can declare
+`format: docx`. The review profile retains comments in YAML, explicit comment
+ranges in the body, and the original DOCX for style definitions. Pandoc 3.1+ is
+required for conversion; known unsupported features block export.
+Applications own custom processing and publication decisions; descriptors do not
+run pipelines or endpoint hooks.
+See [DOCX and Markdown reviews](docs/processing.md), including migration from
+removed execution declarations. Poe is only the repository's development task
+runner.
 Extracted properties are metadata, not authorization
 or approval decisions. Select publication scope explicitly, for example
 `fileroute push catalog.yaml --select documentation`.

@@ -72,7 +72,7 @@ Treat this table as a guardrail and verify `docs/transfers.md` when current beha
 
 Google Drive push supports folder targets and exact existing binary file IDs; reject ambiguous names and Google-native document updates. Descriptors and diagrams may describe S3 targets even though push cannot publish to them yet. `push --dry-run` fails if any target is unsupported; it does not partially publish supported targets.
 
-Fileroute does not stream directly from one cloud provider to another and does not transform files. A remote-to-remote workflow is conceptually `pull` to the local artifact, perform any external transformation if needed, then `push`.
+Fileroute infers its built-in DOCX/Markdown review conversion from a DOCX source/target and Markdown local `path`. Ordinary `pull` imports the review and `push` restores DOCX. Location `format: docx` hints support opaque URLs and folder targets. Other processing belongs in the application. Fileroute does not stream directly between providers.
 
 ## Default workflow
 
@@ -112,8 +112,8 @@ Run a dry run before an agent initiates a remote write unless the user explicitl
 | Edit descriptor/root properties | `fileroute update ...` |
 | Preview or perform retrieval | `fileroute pull [descriptor] --dry-run` / `pull` |
 | Discover files in a templated SharePoint, S3, or Google Drive source | `fileroute discover [descriptor] --dry-run`, then report with `discover`, apply with `--write`, or export with `--output matches.yaml` |
-| Process acquired files or prepare publications | Source `afterPull` / target `beforePush` native Poe `steps`; options remain in `params` (`args`) |
-| Edit or replay an endpoint sequence | `fileroute steps add` / `fileroute steps run`; inspect `--help` |
+| Process acquired files or prepare publications | Call explicit typed functions in the owning application; standalone document helpers live in `fileroute.conversion` |
+| Review remote DOCX as local Markdown, then publish DOCX | Set a `.md` resource path and DOCX source/target; ordinary `pull` / `push` infer conversion. Requires Pandoc 3.1+ and retained review assets; see `docs/processing.md` |
 | Preview or perform publication | `fileroute push [descriptor] --dry-run` / `push` |
 | Visualize provenance and destinations | `fileroute diagram [descriptor]` |
 | Convert previous named lists and links | `fileroute migrate INPUT OUTPUT_DIR` |
@@ -160,7 +160,7 @@ Do not replace a simple CLI workflow with custom Python merely because Python is
 - Treating `sources` and `targets` as interchangeable.
 - Assuming a described target is currently writable.
 - Assuming offline `resolve` verifies remote state; online verification requires `--online`.
-- Assuming ordinary pulls convert formats without configured endpoint steps, or that Fileroute copies directly between remote services.
+- Assuming arbitrary format conversions or processing hooks. Only the built-in remote-DOCX/local-Markdown review pair is inferred by pull/push; use application functions for other processing.
 - Hard-coding credentials or secrets into descriptors, scripts, or commands committed to the repository.
 
 ## Repository references

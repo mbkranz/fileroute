@@ -88,7 +88,7 @@ contacts cloud providers.
 
 ## Architecture
 
-`models.py` owns the four descriptor models and provider enum;
+`models.py` owns the descriptor models and provider enum;
 `descriptor.py` handles local I/O, traversal, references, and offline
 resolution. `diagram.py` and `diagram_reports.py` project that metadata
 into a provider-neutral graph and SVG/HTML/Markdown outputs. `transfer.py`
@@ -97,6 +97,17 @@ conversion. `item.py` models live provider-backed hierarchies, while
 `clients/` and `auth/` own provider API and credentials and `commands/`
 owns CLI interaction. Descriptor traversal is separate from live remote
 traversal: diagramming does not authenticate or transfer data.
+
+`conversion.py` co-locates typed request/result/profile models with explicit
+DOCX/Markdown functions and adapts Pandoc's native document model.
+Transfer operations call those functions for the inferred DOCX source/target and
+Markdown local path; CLI pull/push use the same plans and receipts as Python.
+Project workflows own custom processing and publication decisions. Metadata
+models and provider clients contain no conversion implementation. Keep meaningful validation and file-safety
+checks beside the operations; introduce dispatch only for demonstrated authored
+configuration requirements. See the [function-first scope plan](plans/function-first-processing.md)
+for the decision and implementation boundaries. Poe remains a separately
+installed development task runner.
 
 Runtime items expose `refresh()`, `children`, `get_path()`,
 `iter_items()`, `iter_files()`, and `download()`.
@@ -111,8 +122,9 @@ Live development-tenant validation is still needed for canonical descriptors;
 mocked tests cannot prove access or real transfers. Future capabilities should
 follow demand: exact-key S3 publication, SharePoint upload sessions for files
 above 250 MB, and a small Rich terminal diagram view. Keep transformation tools
-such as Quarto behind endpoint processing commands; native Poe owns sequencing,
-and provider clients transfer bytes.
+such as Quarto in explicit application-owned functions. Revisit descriptor-driven
+processing only when repeated real workflows justify a shared execution contract;
+provider clients continue to transfer bytes.
 
 After the first documentation deployment, evaluate Zensical in a separate PR
 against the same pages, diagrams, and strict build checks before changing the

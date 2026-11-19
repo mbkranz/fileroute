@@ -286,10 +286,6 @@ def _file_source(match: FileMatch, source: Location, profile: str | None) -> Loc
             context["bucket"] = item.bucket
     if profile is not None:
         context["authProfile"] = profile
-    if source.after_pull is not None:
-        # A templated catalog source supplies defaults for newly registered
-        # files. Existing endpoints keep their own reviewed processing choices.
-        context["afterPull"] = source.after_pull.model_copy(deep=True)
     return parse_location(
         Location(
             path=path,
@@ -427,7 +423,6 @@ class DiscoveryRequest(BaseModel):
     root: Path | None = None
     selector: str | None = None
     profile: str | None = None
-    to_markdown: bool = False
 
 
 class DiscoveryScan(BaseModel):
@@ -460,7 +455,6 @@ class ReconcileDiscoveryRequest(BaseModel):
     scans: list[DiscoveryScan]
     descriptor: Path
     root: Path
-    to_markdown: bool = False
 
 
 class DiscoveryResult(BaseModel):
@@ -532,7 +526,7 @@ def _scan_source(
                 raise ValueError(
                     f"Registered name collision for {match.relative_path!r}"
                 )
-            # Carry authored source processing/profile options to NEW resources.
+            # Carry source provider/profile metadata to new resources.
             data = source.location.model_dump(by_alias=True, exclude_unset=True)
             data.pop("resourcePathTemplate", None)
             data.update(
@@ -593,47 +587,6 @@ def _scan_sources(
         ]
 
 
-def _markdown_resource(resource: Resource) -> Resource:
-    """Apply the default converter only to newly discovered supported files."""
-    from fileroute.tasks import default_markdown_sequence
-
-    source = resource.sources[0]
-    metadata = (source.model_extra or {}).get("discovery", {})
-    suffix = Path(str(metadata.get("name", resource.path))).suffix.lower()
-    native_doc = metadata.get("mimeType") == "application/vnd.google-apps.document"
-    if not native_doc and suffix not in {
-        ".docx",
-        ".doc",
-        ".pdf",
-        ".pptx",
-        ".xlsx",
-        ".xls",
-        ".html",
-        ".htm",
-        ".csv",
-        ".txt",
-        ".json",
-        ".xml",
-        ".ipynb",
-        ".epub",
-        ".zip",
-        ".msg",
-    }:
-        return resource
-    data = source.model_dump(by_alias=True, exclude_unset=True)
-    if not data.get("afterPull"):
-        data["afterPull"] = default_markdown_sequence().model_dump(
-            by_alias=True, exclude_unset=True
-        )
-    return resource.model_copy(
-        update={
-            "path": Path(resource.path).with_suffix(".md").as_posix(),
-            "format": "markdown",
-            "sources": [Location.model_validate(data)],
-        }
-    )
-
-
 def _changed_observations(
     before: dict[str, Any], after: dict[str, Any]
 ) -> list[DiscoveryStatus]:
@@ -684,7 +637,7 @@ def _check_destinations(catalog: Catalog, root: Path) -> None:
 
 
 def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
-    """Preserve registered identity and authored processing while updating observations.
+    """Preserve registered identity and authored resource metadata while updating observations.
 
     Missing means absent from a successfully scanned scope, not deleted remotely.
     No descriptors or artifact bytes are written. This function compares metadata;
@@ -750,7 +703,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                 source_data = resource.sources[0].model_dump(
                     by_alias=True, exclude_unset=True
                 )
-                # Remote location changes never replace authored hooks or arguments.
+                # Remote location changes retain authored resources and publication choices.
                 fresh = parse_location(
                     observed.sources[0].model_copy(deep=True)
                 ).model_dump(by_alias=True, exclude_unset=True)
@@ -776,9 +729,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                 )
                 parent.resources[name] = resource
             else:
-                resource = (
-                    _markdown_resource(observed) if request.to_markdown else observed
-                )
+                resource = observed.model_copy(deep=True)
                 if key.casefold() in {
                     name.casefold() for name in (*owner.resources, *owner.catalogs)
                 }:
@@ -839,7 +790,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
 def _owned_writes(
     before: Catalog, after: Catalog, descriptor: Path
 ) -> dict[Path, Catalog]:
-    """Read physical owners and replace only direct resource maps, retaining links."""
+    """Update direct resource maps in physical owners, retaining links."""
     writes: dict[Path, Catalog] = {}
     previous = {row.json_pointer: row for row in walk(before, include_self=True)}
     for row in walk(after, include_self=True):
@@ -875,7 +826,6 @@ def discover_report(
     root: Path | None = None,
     selector: str | None = None,
     profile: str | None = None,
-    to_markdown: bool = False,
 ) -> DiscoveryResult:
     """Acquire remote metadata and propose stable-identity catalog reconciliation.
 
@@ -884,11 +834,7 @@ def discover_report(
     ``discover_resources`` retains its original separate-output catalog behavior.
     """
     request = DiscoveryRequest(
-        descriptor=descriptor,
-        root=root,
-        selector=selector,
-        profile=profile,
-        to_markdown=to_markdown,
+        descriptor=descriptor, root=root, selector=selector, profile=profile
     )
     root = (request.root or Path.cwd()).resolve()
     before = load(request.descriptor, resolve_references=True)
@@ -899,7 +845,6 @@ def discover_report(
             scans=_scan_sources(sources, root, request.profile),
             descriptor=request.descriptor,
             root=root,
-            to_markdown=request.to_markdown,
         )
     )
     result.writes = _owned_writes(before, result.catalog, request.descriptor)

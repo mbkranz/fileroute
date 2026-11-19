@@ -1,4 +1,4 @@
-"""Public command handoffs between discovery, native steps, and transfer plans."""
+"""Public command handoffs between discovery inventory and byte transfer plans."""
 
 from typer.testing import CliRunner
 import pytest
@@ -15,11 +15,9 @@ from fileroute.transfer import plan_pull
 
 
 @pytest.mark.parametrize("existing", [False, True])
-def test_markdown_discovery_output_cannot_alias_generated_artifact(
+def test_discovery_output_cannot_alias_acquired_artifact(
     tmp_path, monkeypatch, existing
 ):
-    from fileroute.discovery import DiscoveryResult
-
     monkeypatch.chdir(tmp_path)
     descriptor = tmp_path / "catalog.yaml"
     document = Catalog(
@@ -44,19 +42,18 @@ def test_markdown_discovery_output_cannot_alias_generated_artifact(
         output.write_text("definition: existing authored text\n")
     before = output.read_bytes() if existing else None
     monkeypatch.setattr(
-        "fileroute.discovery.discover_report",
-        lambda *args, **kwargs: DiscoveryResult(catalog=generated),
+        "fileroute.discovery._collect_discovery", lambda *args, **kwargs: generated
     )
 
     result = CliRunner().invoke(
-        app, ["discover", str(descriptor), "--to", "markdown", "--output", str(output)]
+        app, ["discover", str(descriptor), "--output", str(output)]
     )
 
     assert result.exit_code == 1 and "overlaps a pull destination" in result.stderr
     assert output.read_bytes() == before if existing else not output.exists()
 
 
-def test_written_discovery_inventory_is_pullable_with_processing(tmp_path):
+def test_written_discovery_inventory_is_pullable_without_conversion(tmp_path):
     descriptor = tmp_path / "catalog.yaml"
     source = Location(
         path="https://drive.google.com/drive/folders/existing-folder",
@@ -85,14 +82,13 @@ def test_written_discovery_inventory_is_pullable_with_processing(tmp_path):
             scans=[DiscoveryScan(scope="", resources={"term": discovered})],
             descriptor=descriptor,
             root=tmp_path,
-            to_markdown=True,
         )
     )
     save(Catalog.model_validate(report.catalog.model_dump(by_alias=True)), descriptor)
     entries = plan_pull(descriptor, root=tmp_path)
     assert len(entries) == 1
-    assert entries[0].local == tmp_path / "acquired/term.md"
-    assert entries[0].hook is not None
+    assert entries[0].local == tmp_path / "acquired/term.docx"
+    assert set(load(descriptor).resources) == {"term"}
     assert load(descriptor).sources[0].resource_path_template == "{filename}"
 
 
