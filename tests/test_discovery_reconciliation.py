@@ -214,7 +214,9 @@ def test_report_proposes_linked_owner_write_without_flattening_or_saving(
 
     monkeypatch.setattr(
         "fileroute.discovery._iter_file_matches",
-        lambda root, parser: iter([FileMatch(file, "term.docx", {"name": "term"})]),
+        lambda root, parser, segments: iter([
+            FileMatch(file, "term.docx", {"name": "term"})
+        ]),
     )
     # Root validation only needs provider and directory identity before traversal.
     monkeypatch.setattr(
@@ -390,3 +392,50 @@ def test_inventory_rejects_duplicate_acquisition_paths_before_writes(tmp_path):
     with pytest.raises(ValueError, match="Duplicate discovery destination"):
         reconcile(tmp_path, Catalog(), [scan])
     assert list(tmp_path.iterdir()) == []
+
+
+def test_remote_captures_survive_local_resolution_after_ancestor_rename(tmp_path):
+    from fileroute.descriptor import resolve
+
+    prior = observed("Review/term.docx", parent="folder")
+    prior.path_properties = {"stage": "Review"}
+    fresh = observed("Ready/term.docx", parent="folder")
+    fresh.path_properties = {"stage": "Ready"}
+    report = reconcile(
+        tmp_path,
+        Catalog(resourcePathTemplate="{stage}/{filename}", resources={"term": prior}),
+        [DiscoveryScan(scope="", resources={"new_path": fresh})],
+    )
+    assert report.observations[0].statuses == ["moved"]
+    term = resolve(report.catalog).resources["term"]
+    assert term.path == prior.path
+    assert (
+        term.path_properties
+        == report.observations[0].path_properties
+        == {"stage": "Ready"}
+    )
+
+
+def test_report_compares_previous_complete_inventory_without_writing(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "catalog.yaml"
+    path.write_text(
+        "path: local\ntargets: []\nsources:\n  - path: https://drive.google.com/drive/folders/root\n    resourcePathTemplate: '{stage}/{filename}'\n"
+    )
+    scans = iter([
+        [DiscoveryScan(scope="", resources={"file": observed("Review/term.docx")})],
+        [DiscoveryScan(scope="", resources={"file": observed("Ready/term.docx")})],
+        [DiscoveryScan(scope="", complete=False, error="interrupted")],
+        [DiscoveryScan(scope="")],
+    ])
+    monkeypatch.setattr("fileroute.discovery._scan_sources", lambda *args: next(scans))
+    first = discover_report(path, root=tmp_path)
+    moved = discover_report(path, root=tmp_path, previous=first.inventory)
+    assert moved.observations[0].statuses == ["moved"]
+    partial = discover_report(path, root=tmp_path, previous=moved.inventory)
+    assert not partial.complete and partial.inventory is None
+    assert all(not row.observed for row in partial.observations)
+    absent = discover_report(path, root=tmp_path, previous=moved.inventory)
+    assert absent.observations[0].statuses == ["missing_from_scope"]
+    assert absent.inventory.files == []

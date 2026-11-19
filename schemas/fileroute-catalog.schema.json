@@ -430,6 +430,12 @@
           ],
           "title": "Format"
         },
+        "matchPathSegments": {
+          "default": false,
+          "description": "Require remote paths to have the same number of segments as the source template.",
+          "title": "Matchpathsegments",
+          "type": "boolean"
+        },
         "path": {
           "description": "Authored remote URL or provider-scoped path. A source may also be a local provenance path; pull requires a supported remote source.",
           "examples": [

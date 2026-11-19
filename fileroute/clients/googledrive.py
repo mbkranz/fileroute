@@ -48,6 +48,7 @@ class GDriveApiFile(pydantic.BaseModel, validate_assignment=True):
     modifiedTime: str | None = None
     md5Checksum: str | None = None
     sha256Checksum: str | None = None
+    appProperties: dict[str, str] = Field(default_factory=dict)
 
 
 class GDriveApiDrive(pydantic.BaseModel, validate_assignment=True):
@@ -411,6 +412,54 @@ class GoogleDriveClient(GoogleBaseClient):
             seen_tokens.add(page_token)
 
         return [GDriveApiDrive.model_validate(f) for f in drives]
+
+    def reserve_file_id(self) -> str:
+        """Reserve one ID for a retryable binary file creation."""
+        response = self._request(
+            "GET",
+            f"{DRIVE_URL}/files/generateIds",
+            params={"count": 1, "space": "drive"},
+        )
+        ids = response.json().get("ids")
+        if (
+            not isinstance(ids, list)
+            or len(ids) != 1
+            or not isinstance(ids[0], str)
+            or not ids[0]
+        ):
+            raise GoogleDriveError("Drive did not return one reserved ID")
+        return ids[0]
+
+    def get_file_with_etag(self, file_id: str) -> tuple[GDriveApiFile, str | None]:
+        response = self._request(
+            "GET",
+            f"{DRIVE_URL}/files/{file_id}",
+            params={
+                "supportsAllDrives": "true",
+                "fields": ",".join(GDriveApiFile.model_fields),
+            },
+        )
+        return GDriveApiFile.model_validate(response.json()), response.headers.get(
+            "ETag"
+        )
+
+    def move_if_match(
+        self, file_id: str, parent: str, destination: str, etag: str
+    ) -> None:
+        """Send one conditional move. Checked callers must verify provider support and outcome."""
+        if not etag:
+            raise ValueError("Drive conditional move requires a non-empty ETag")
+        self._request(
+            "PATCH",
+            f"{DRIVE_URL}/files/{file_id}",
+            headers={"If-Match": etag},
+            params={
+                "supportsAllDrives": "true",
+                "addParents": destination,
+                "removeParents": parent,
+            },
+            json={},
+        )
 
     def get_file(self, file_id: str, **kwargs) -> GDriveApiFile:
 
@@ -1001,6 +1050,7 @@ class GDriveItem(ServiceItem):
         modifiedTime: str | None = None,
         md5Checksum: str | None = None,
         sha256Checksum: str | None = None,
+        appProperties: dict[str, str] | None = None,
     ):
         self.kind = kind
         self._client = client
@@ -1016,6 +1066,7 @@ class GDriveItem(ServiceItem):
         self._observed_metadata = {
             key: value
             for key, value in {
+                "appProperties": appProperties or None,
                 "version": version,
                 "modifiedTime": modifiedTime,
                 "md5Checksum": md5Checksum,

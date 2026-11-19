@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from string import Formatter
-from typing import Any
 import re
 
 from parse import Parser, compile as compile_template
@@ -64,52 +63,28 @@ def resolve_path_properties(catalog: Catalog) -> None:
 
     The nearest declared template applies to descendants, relative to the path
     of the catalog that declares it. Absolute templates match the whole path.
-    Named parse captures retain their standard types. A literal basename is a
-    naming example: if the full pattern misses, its directory pattern can still
-    supply captures. Basenames containing any capture require a full match.
-    Matching replaces pathProperties, a miss clears it, and absent templates
-    preserve authored properties. Templates never generate transfer paths.
+    Discovery captures describe the remote file and take precedence. Local
+    templates match the complete path and never generate transfer paths.
     """
 
     def descend(
-        current: Catalog,
-        inherited: tuple[str, str | None, Parser, Parser | None] | None = None,
+        current: Catalog, inherited: tuple[str, str | None, Parser] | None = None
     ) -> None:
         context = inherited
         if current.resource_path_template is not None:
             template = _normalized_path(current.resource_path_template)
-            parser = _compile_template(template)
-            directory, separator, basename = template.rpartition("/")
-            directory_parser = None
-            if (
-                separator
-                and basename
-                and not any(
-                    name is not None for _, name, _, _ in Formatter().parse(basename)
-                )
-            ):
-                directory_parser = _compile_template(directory)
-            context = (template, current.path, parser, directory_parser)
+            context = (template, current.path, _compile_template(template))
         if context is not None:
-            template, base, parser, directory_parser = context
+            template, base, parser = context
             for resource in current.resources.values():
+                if any(
+                    "discovery" in (source.model_extra or {})
+                    for source in resource.sources
+                ):
+                    continue
                 candidate = _template_path(resource.path, template, base)
-                captures: dict[str, Any] = {}
-                if candidate is not None:
-                    try:
-                        match = parser.parse(candidate)
-                        if match is None and directory_parser is not None:
-                            directory, separator, basename = candidate.rpartition("/")
-                            if separator and basename:
-                                match = directory_parser.parse(directory)
-                        if match is not None:
-                            captures = match.named
-                    except (ValueError, re.error) as exc:
-                        raise ValueError(
-                            f"Cannot parse resource path {resource.path!r} with "
-                            f"resourcePathTemplate {template!r}: {exc}"
-                        ) from exc
-                resource.path_properties = captures
+                match = parser.parse(candidate) if candidate is not None else None
+                resource.path_properties = match.named if match else {}
         for child in current.catalogs.values():
             if isinstance(child, Catalog):
                 descend(child, context)

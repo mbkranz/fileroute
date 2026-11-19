@@ -273,15 +273,14 @@ paths and URI templates match the whole resource path. The nearest template
 applies to descendant resources, with child templates replacing inherited ones.
 
 ```yaml
-pathTemplate: "drive://test/{var1}/{var2}/test.csv"
+pathTemplate: "drive://test/{var1}/{var2}/file1.csv"
 resources:
   file1:
     path: "drive://test/xx/yy/file1.csv"
 ```
 
 Resolving this catalog yields `pathProperties: {var1: xx, var2: yy}` for `file1`.
-A literal filename is informational when extracting directory fields; a filename
-with capture fields requires a complete match. `{filename}` captures a varying
+Templates require a complete path match, including any literal filename. `{filename}` captures a varying
 filename. Matching is case-sensitive and supports typed named captures such as
 `{revision:d}`. Anonymous captures do not become properties.
 
@@ -303,3 +302,16 @@ The repository templates include local schema hints, and VS Code settings
 associate known catalog filenames with the checked-in schema. See
 [JSON Schemas and editor assistance](schemas.md) for field completion, JSON
 associations, version pinning, and the authentication-profile schema.
+
+For a resource observed through source discovery, the source template determines
+`pathProperties`. A move or an ancestor rename updates the captures even if the
+local artifact path is pinned and the immediate parent ID is unchanged.
+Set `matchPathSegments: true` on the source to require one path component per
+template segment. For example, `{stage}/{filename}` then matches `Ready/form`
+and excludes `Ready/archive/form`. The filename may be extensionless.
+
+Recurring callers can pass the last complete `DiscoveryInventory` to
+`discover_report`. A partial scan includes its positive observations and yields
+no replacement inventory. Inventory is metadata only. Supply a verified content
+receipt to `plan_incremental_pull` when the corresponding bytes or durable
+artifact reference have been verified at the consumer.

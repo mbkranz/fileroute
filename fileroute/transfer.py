@@ -472,7 +472,11 @@ def pull(
                 conversion=conversion,
             )
             try:
-                if directory is None and conversion is None:
+                if (
+                    directory is None
+                    and conversion is None
+                    and receipt.source_version is None
+                ):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     item.download(target)
                 else:
@@ -489,6 +493,22 @@ def pull(
                     raw.parent.mkdir(parents=True)
                     receipt = replace(receipt, raw_source=raw)
                     item.download(raw)
+                    if receipt.source_version is not None:
+                        profile_key = (
+                            entry.location.auth_profile if entry.location else None
+                        ) or profile
+                        reader = clients[(entry.service_type, profile_key)]
+                        if entry.directory:
+                            fresh = reader.get_from_weburl(item.source_url)
+                        elif entry.location is not None:
+                            fresh = lookup_item(reader, entry.location)
+                        else:
+                            fresh = reader.get_from_weburl(entry.remote)
+                        if (
+                            _source_id(fresh, entry) != receipt.source_id
+                            or _source_version(fresh) != receipt.source_version
+                        ):
+                            raise ValueError("Source changed during download")
                     digest = _digest(raw)
                     receipt = replace(
                         receipt, raw_source=raw, source_sha256=digest, stage="promote"
@@ -509,6 +529,8 @@ def pull(
                         )
                     else:
                         _promote(raw, target, entry.root or target.parent)
+                        if directory is None:
+                            receipt = replace(receipt, raw_source=None)
                 receipt = replace(
                     receipt,
                     outcome="complete",

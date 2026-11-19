@@ -12,6 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from parse import Parser
 from pydantic import BaseModel, ConfigDict, Field
 
+from fileroute.clients.base import BaseClient
 from fileroute.clients.googledrive import (
     FOLDER_MIME,
     GDriveItem,
@@ -47,7 +48,21 @@ def _compile_source_template(template: str) -> Parser:
     return _compile_template(normalized)
 
 
-def _iter_file_matches(root: ServiceItem, parser: Parser) -> Iterator[FileMatch]:
+def match_source_path(location: Location, relative_path: str) -> dict[str, Any] | None:
+    """Apply the catalog source template to an exact ID's verified root-relative path."""
+    template = location.resource_path_template
+    if not template:
+        raise ValueError("Expected a source resourcePathTemplate")
+    template = _normalized_path(template)
+    if location.match_path_segments and relative_path.count("/") != template.count("/"):
+        return None
+    match = _compile_source_template(template).parse(relative_path)
+    return match.named if match is not None else None
+
+
+def _iter_file_matches(
+    root: ServiceItem, parser: Parser, segments: int | None = None
+) -> Iterator[FileMatch]:
     if not root.is_directory:
         raise NotADirectoryError(
             f"Discovery root is not a folder or prefix: {root.path!r}"
@@ -127,7 +142,11 @@ def _iter_file_matches(root: ServiceItem, parser: Parser) -> Iterator[FileMatch]
                         raise ValueError(
                             f"Invalid SharePoint drive for child {child.id!r}"
                         )
-                pending.append((child, child_path))
+                depth = child_path.count("/") + 1
+                if segments is None or (
+                    depth < segments if child.is_directory else depth == segments
+                ):
+                    pending.append((child, child_path))
         else:
             match = parser.parse(relative)
             if match is not None:
@@ -141,6 +160,15 @@ class _DiscoverySource:
     location: Location
     service: ServiceType
     parser: Parser
+
+    def matches(self, root: ServiceItem) -> Iterator[FileMatch]:
+        template = self.location.resource_path_template or ""
+        segments = (
+            _normalized_path(template).count("/") + 1
+            if self.location.match_path_segments
+            else None
+        )
+        return _iter_file_matches(root, self.parser, segments)
 
 
 def _prepare_discovery(
@@ -325,7 +353,7 @@ def _collect_discovery(
                         "Google Drive root conflicts with the declared driveId"
                     )
                 matches = sorted(
-                    _iter_file_matches(item, source.parser),
+                    source.matches(item),
                     key=lambda match: (match.relative_path, match.item.id),
                 )
                 if not matches:
@@ -442,9 +470,19 @@ class DiscoveryObservation(BaseModel):
     service_type: ServiceType | None = None
     service_id: str | None = None
     local_path: str | None = None
+    observed: bool = True
     statuses: list[DiscoveryStatus]
+    path_properties: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+
+
+class DiscoveryInventory(BaseModel):
+    """Positive observations from the last complete scan, keyed by provider identity on comparison."""
+
+    model_config = ConfigDict(extra="forbid")
+    roots: dict[str, str]
+    files: list[DiscoveryObservation]
 
 
 class ReconcileDiscoveryRequest(BaseModel):
@@ -470,12 +508,16 @@ class DiscoveryResult(BaseModel):
     complete: bool = True
     errors: list[str] = Field(default_factory=list)
     writes: dict[Path, Catalog] = Field(default_factory=dict)
+    inventory: DiscoveryInventory | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """JSON-ready report, with proposed owner filenames and catalog metadata."""
         return {
             "complete": self.complete,
             "errors": self.errors,
+            "inventory": self.inventory.model_dump(mode="json")
+            if self.inventory
+            else None,
             "observations": [row.model_dump(mode="json") for row in self.observations],
             "writes": [str(path) for path in sorted(self.writes)],
             "catalog": self.catalog.model_dump(
@@ -509,15 +551,19 @@ def _scan_source(
     scan = DiscoveryScan(scope=source.name)
     try:
         item = lookup_item(client, source.location)
-        if item.service_type != source.service:
-            raise ValueError("Resolved root has the wrong provider")
+        if item.service_type != source.service or (
+            source.location.service_id and item.id != source.location.service_id
+        ):
+            raise ValueError(
+                "Resolved root differs from the configured provider or identity"
+            )
         if (
             isinstance(item, GDriveItem)
             and source.location.drive_id
             and item._drive_id != source.location.drive_id
         ):
             raise ValueError("Google Drive root conflicts with the declared driveId")
-        for match in _iter_file_matches(item, source.parser):
+        for match in source.matches(item):
             local = local_path(match.relative_path, source.local, reject_symlinks=True)
             if local.exists() and not local.is_file():
                 raise ValueError(f"Discovery destination is not a file: {local}")
@@ -529,6 +575,7 @@ def _scan_source(
             # Carry source provider/profile metadata to new resources.
             data = source.location.model_dump(by_alias=True, exclude_unset=True)
             data.pop("resourcePathTemplate", None)
+            data.pop("matchPathSegments", None)
             data.update(
                 _file_source(match, source.location, profile).model_dump(
                     by_alias=True, exclude_unset=True
@@ -600,7 +647,10 @@ def _changed_observations(
         "parents", Path(str(after.get("relativePath", ""))).parent.as_posix()
     )
     if before and (
-        old_parent != new_parent or before.get("scope") != after.get("scope")
+        old_parent != new_parent
+        or before.get("scope") != after.get("scope")
+        or Path(before.get("relativePath", "")).parent
+        != Path(after.get("relativePath", "")).parent
     ):
         changes.append("moved")
     tokens = ("version", "modifiedTime", "md5Checksum", "sha256Checksum", "mimeType")
@@ -725,7 +775,10 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                         source_data.pop(field, None)
                 source_data["discovery"] = metadata
                 resource = resource.model_copy(
-                    update={"sources": [Location.model_validate(source_data)]}
+                    update={
+                        "sources": [Location.model_validate(source_data)],
+                        "path_properties": observed.path_properties,
+                    }
                 )
                 parent.resources[name] = resource
             else:
@@ -748,6 +801,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                     service_id=identity[1],
                     local_path=resource.path,
                     statuses=statuses,
+                    path_properties=observed.path_properties or {},
                     metadata=metadata,
                 )
             )
@@ -766,6 +820,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                 service_type=identity[0],
                 service_id=identity[1],
                 local_path=resource.path,
+                observed=False,
                 statuses=["missing_from_scope" if scan.complete else "unknown"],
                 metadata=prior,
                 error=scan.error,
@@ -780,6 +835,7 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
                     resource=scan.scope or "root",
                     scope=scan.scope,
                     statuses=["unknown"],
+                    observed=False,
                     error=scan.error,
                 )
             )
@@ -826,6 +882,8 @@ def discover_report(
     root: Path | None = None,
     selector: str | None = None,
     profile: str | None = None,
+    previous: DiscoveryInventory | None = None,
+    client: BaseClient | None = None,
 ) -> DiscoveryResult:
     """Acquire remote metadata and propose stable-identity catalog reconciliation.
 
@@ -839,20 +897,68 @@ def discover_report(
     root = (request.root or Path.cwd()).resolve()
     before = load(request.descriptor, resolve_references=True)
     sources = _prepare_discovery(request.descriptor, root, request.selector)
+    roots = {
+        source.name: source.location.service_id or source.location.path
+        for source in sources
+    }
+    if previous is not None and previous.roots != roots:
+        raise ValueError("Discovery inventory belongs to different source roots")
+    if client is None:
+        scans = _scan_sources(sources, root, request.profile)
+    else:
+        if len(sources) != 1:
+            raise ValueError("An explicit client requires exactly one discovery source")
+        scans = [
+            _scan_source(
+                sources[0],
+                client=client,
+                root=root,
+                profile=sources[0].location.auth_profile or profile,
+            )
+        ]
     result = reconcile_discovery(
         ReconcileDiscoveryRequest(
-            catalog=before,
-            scans=_scan_sources(sources, root, request.profile),
-            descriptor=request.descriptor,
-            root=root,
+            catalog=before, scans=scans, descriptor=request.descriptor, root=root
         )
     )
+    positives = [row for row in result.observations if row.observed and row.service_id]
+    if previous is not None:
+        prior = {(row.service_type, row.service_id): row for row in previous.files}
+        if len(prior) != len(previous.files):
+            raise ValueError(
+                "Duplicate provider identity in previous discovery inventory"
+            )
+        for row in positives:
+            old = prior.pop((row.service_type, row.service_id), None)
+            row.statuses = (
+                _changed_observations(old.metadata, row.metadata) if old else ["new"]
+            )
+        existing = {(row.service_type, row.service_id) for row in result.observations}
+        by_scope = {scan.scope: scan for scan in scans}
+        for identity, old in prior.items():
+            if identity not in existing:
+                scan = by_scope[old.scope]
+                result.observations.append(
+                    old.model_copy(
+                        update={
+                            "observed": False,
+                            "statuses": [
+                                "missing_from_scope" if scan.complete else "unknown"
+                            ],
+                            "error": scan.error,
+                        }
+                    )
+                )
+    if result.complete:
+        result.inventory = DiscoveryInventory(roots=roots, files=positives)
     result.writes = _owned_writes(before, result.catalog, request.descriptor)
     return result
 
 
 __all__ = [
     "discover_resources",
+    "match_source_path",
+    "DiscoveryInventory",
     "DiscoveryStatus",
     "DiscoveryRequest",
     "DiscoveryScan",

@@ -10,10 +10,10 @@ from fileroute.descriptor import load, resolve, resolve_selection, save
 from fileroute.models import Catalog, Resource
 
 
-def test_uri_template_extracts_directory_values_with_literal_filename_example():
+def test_uri_template_matches_the_whole_path():
     catalog = Catalog.model_validate({
         "path": "an/unrelated/local/root",
-        "pathTemplate": "drive://test/{var1}/{var2}/test.csv",
+        "pathTemplate": "drive://test/{var1}/{var2}/file1.csv",
         "resources": {"file1": {"path": "drive://test/xx/yy/file1.csv"}},
     })
     result = resolve(catalog)
@@ -115,8 +115,11 @@ def test_captured_basename_must_match_completely(basename):
     assert resolve(catalog).resources["file"].path_properties == {}
 
 
-@pytest.mark.parametrize("path", ["drive://other/review/a.csv", "drive://test/review/"])
-def test_literal_filename_fallback_preserves_directory_scope_and_requires_file(path):
+@pytest.mark.parametrize(
+    "path",
+    ["drive://other/review/a.csv", "drive://test/review/", "drive://test/review/a.csv"],
+)
+def test_literal_filename_requires_a_full_match(path):
     catalog = Catalog(
         pathTemplate="drive://test/{phase}/test.csv",
         resources={"file": Resource(path=path)},

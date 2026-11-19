@@ -190,16 +190,14 @@ catalogs:
 Absolute paths and URI templates match the whole resource path. For example:
 
 ```yaml
-pathTemplate: "drive://test/{var1}/{var2}/test.csv"
+pathTemplate: "drive://test/{var1}/{var2}/file1.csv"
 resources:
   file1:
     path: "drive://test/xx/yy/file1.csv"
 ```
 
 `fileroute resolve catalog.yaml` returns `pathProperties: {var1: xx, var2: yy}`
-for `file1`. A literal filename is a naming example: when it differs, directory
-fields are still extracted. If the filename contains a field, the complete
-template must match. Use `{filename}` to extract varying filenames. Matching is
+for `file1`. The entire path, including a literal filename, must match. Use `{filename}` to extract varying filenames. Matching is
 case-sensitive, normalizes path separators, and supports `parse` format types
 such as `{year:d}`. Named fields supply metadata; anonymous fields do not.
 
@@ -267,3 +265,19 @@ existing GitHub schema asset with different bytes.
 
 Fileroute's code and generated profile schemas are covered by the MIT license
 in `LICENSE`. Resources referenced by user catalogs retain their own terms.
+
+For a recurring source inventory, pass the last complete `DiscoveryInventory`
+to `fileroute.discovery.discover_report(previous=...)`. Each observed resource's
+`pathProperties` reflects its current remote path, including a renamed ancestor.
+Set `matchPathSegments: true` on the catalog source to constrain template depth.
+The report retains the provider ID and distinguishes an incomplete scan from a
+file missing within a complete scope. Persist the inventory separately from pull receipts.
+
+Use `fileroute.acquisition.plan_incremental_pull` with selected observations and
+verified content receipts. A move remains visible even when the raw bytes can
+be reused. For Google Drive, `observe_drive` and `acquire_verified` check the
+exact file, version, MIME type and optional root lineage around raw download or
+explicit native export. Only a successful check replaces the destination.
+`ensure_reserved_binary` verifies retries by reserved ID and application properties.
+`checked_move` defaults to unsupported. Enable its conditional capability only
+after testing stale precondition rejection in the intended provider environment.

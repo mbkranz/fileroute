@@ -81,12 +81,20 @@ Auto-generated from source signatures and docstrings.
 
 - `def discover_resources(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> Catalog`
   - Discover a catalog's declared remote sources and return concrete resources.
+- `def match_source_path(location: Location, relative_path: str) -> dict[str, Any] | None`
+  - Apply the catalog source template to an exact ID's verified root-relative path.
 - `def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult`
   - Preserve registered identity and authored resource metadata while updating observations.
-- `def discover_report(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None) -> DiscoveryResult`
+- `def discover_report(descriptor: Path, *, root: Path | None = None, selector: str | None = None, profile: str | None = None, previous: DiscoveryInventory | None = None, client: BaseClient | None = None) -> DiscoveryResult`
   - Acquire remote metadata and propose stable-identity catalog reconciliation.
 
 ### Classes
+
+#### `DiscoveryInventory`
+- Positive observations from the last complete scan, keyed by provider identity on comparison.
+- Fields:
+  - `roots: dict[str, str]`
+  - `files: list[DiscoveryObservation]`
 
 #### `DiscoveryRequest`
 - Metadata inventory request; no downloads or descriptor writes are implied.
@@ -111,7 +119,9 @@ Auto-generated from source signatures and docstrings.
   - `service_type: ServiceType | None`
   - `service_id: str | None`
   - `local_path: str | None`
+  - `observed: bool`
   - `statuses: list[DiscoveryStatus]`
+  - `path_properties: dict[str, Any]`
   - `metadata: dict[str, Any]`
   - `error: str | None`
 
@@ -131,6 +141,7 @@ Auto-generated from source signatures and docstrings.
   - `complete: bool`
   - `errors: list[str]`
   - `writes: dict[Path, Catalog]`
+  - `inventory: DiscoveryInventory | None`
 - Methods:
   - `def as_dict(self) -> dict[str, Any]`
     - JSON-ready report, with proposed owner filenames and catalog metadata.
@@ -383,6 +394,7 @@ Auto-generated from source signatures and docstrings.
   - `format: str | None`
   - `service_type: ServiceTypeField | None`
   - `resource_path_template: str | None`
+  - `match_path_segments: bool`
   - `auth_profile: str | None`
   - `service_id: str | None`
   - `entity_type: EntityTypeValue | None`
@@ -507,6 +519,11 @@ Auto-generated from source signatures and docstrings.
   - `def resolve_descendant(self, *, parent_id: str, name: str, drive_id: str | None = None) -> list[GDriveApiFile]`
   - `def list_drives(self, *, page_size: int = 100) -> list[GDriveApiDrive]`
     - List all Shared Drives the authenticated user has access to.
+  - `def reserve_file_id(self) -> str`
+    - Reserve one ID for a retryable binary file creation.
+  - `def get_file_with_etag(self, file_id: str) -> tuple[GDriveApiFile, str | None]`
+  - `def move_if_match(self, file_id: str, parent: str, destination: str, etag: str) -> None`
+    - Send one conditional move. Checked callers must verify provider support and outcome.
   - `def get_file(self, file_id: str, **kwargs) -> GDriveApiFile`
   - `def infer_export_mime_type(self, file_id: str) -> Optional[str]`
   - `def download_file(self, file_id: str, output_path: Optional[str] = None, mime_type: Optional[str] = None, acknowledge_abuse: bool = False, byte_range: Optional[str] = None, supports_all_drives: bool = True, **kwargs) -> Union[bytes, str]`

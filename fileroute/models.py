@@ -143,6 +143,12 @@ class Location(_Metadata):
         description="Full-match parse template relative to this source's remote directory or prefix. Use on a Catalog source with discover.",
         examples=["{environment}/{survey_id}/definition_v{revision:d}.json"],
     )
+    match_path_segments: bool = Field(
+        default=False,
+        alias="matchPathSegments",
+        strict=True,
+        description="Require remote paths to have the same number of segments as the source template.",
+    )
     auth_profile: str | None = Field(
         default=None,
         alias="authProfile",
