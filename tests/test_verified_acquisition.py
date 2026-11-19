@@ -191,3 +191,26 @@ def test_segment_inventory_skips_other_roots_and_compares_the_live_path(tmp_path
         descriptor, root=tmp_path, previous=report.inventory, client=drive
     )
     assert not ambiguous.complete and "Ambiguous" in ambiguous.errors[0]
+
+
+def test_missing_or_modified_raw_product_requires_a_pull(tmp_path):
+    row = DiscoveryObservation(
+        resource="doc",
+        scope="review",
+        service_type="GoogleDrive",
+        service_id="doc",
+        statuses=["unchanged"],
+        metadata={"version": "1", "mimeType": "binary"},
+    )
+    raw = tmp_path / "raw"
+    prior = VerifiedContent(
+        service_type="GoogleDrive",
+        service_id="doc",
+        version="1",
+        mime_type="binary",
+        sha256="a" * 64,
+        raw=raw,
+    )
+    assert plan_incremental_pull([row], verified=(prior,))[0].action == "acquire"
+    raw.write_bytes(b"unexpected")
+    assert plan_incremental_pull([row], verified=(prior,))[0].action == "acquire"

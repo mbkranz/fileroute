@@ -71,6 +71,75 @@ Auto-generated from source signatures and docstrings.
   - `def relative_path(cls, value: str) -> str`
 
 
+## `fileroute.acquisition`
+
+### Functions
+
+- `def observe_drive(client: GoogleDriveClient, file_id: str, *, root_id: str | None = None) -> SourceObservation`
+  - Inspect exact ID and, optionally, its current path below root. 404 remains ambiguous.
+- `def discovered_drive_file(row: DiscoveryObservation) -> SourceObservation`
+  - Read a positive Drive listing observation without another API call.
+- `def acquire_verified(client: GoogleDriveClient, expected: SourceObservation, destination: Path, *, export_mime: str | None = None) -> VerifiedReceipt`
+  - Stage raw media or explicit native export and promote only after a second stable observation.
+- `def plan_incremental_pull(observations: list[DiscoveryObservation], *, verified: tuple[VerifiedContent, ...] = (), export_mime: str | None = None) -> list[PullDecision]`
+  - Plan selected observations. Callers supply receipts only after verifying their raw artifact or durable pointer.
+- `def ensure_reserved_binary(client: GoogleDriveClient, file_id: str, *, parent: str, name: str, source: Path, mime_type: str, properties: dict[str, str]) -> SourceObservation`
+  - Create at most one binary object, verifying ownership after a conflict or lost response.
+- `def checked_move(client: GoogleDriveClient, expected: SourceObservation, destination: str, *, conditional_supported: bool = False) -> MoveResult`
+  - Move only with operator-verified conditional support, then read back the exact ID.
+
+### Classes
+
+#### `SourceObservation`
+- Exact item facts. relative_path is populated only with verified root ancestry.
+- Fields:
+  - `id: str`
+  - `url: str`
+  - `mime_type: str`
+  - `name: str`
+  - `parent_ids: tuple[str, ...]`
+  - `version: str | None`
+  - `trashed: bool`
+  - `properties: dict[str, str]`
+  - `root_id: str | None`
+  - `relative_path: str | None`
+  - `checksum: str | None`
+- Methods:
+  - `def same_revision(self, other: SourceObservation) -> bool`
+    - Compare provider identity, content and location facts independent of presentation URLs.
+
+#### `VerifiedReceipt`
+- Fields:
+  - `source: SourceObservation`
+  - `raw: Path`
+  - `sha256: str`
+  - `export_mime: str | None`
+  - `observed_at: datetime`
+
+#### `VerifiedContent`
+- Identity of previously verified raw bytes in a caller-verified durable store.
+- Fields:
+  - `service_type: ServiceType`
+  - `service_id: str`
+  - `version: str`
+  - `mime_type: str`
+  - `export_mime: str | None`
+  - `raw: Path | None`
+  - `sha256: str`
+
+#### `PullDecision`
+- Fields:
+  - `observation: DiscoveryObservation`
+  - `action: Literal['acquire', 'reuse', 'unavailable']`
+
+#### `DriveEffectUnconfirmed`
+- The provider could not confirm the requested effect by exact identity.
+
+#### `MoveResult`
+- Fields:
+  - `outcome: Literal['completed', 'stale', 'unsupported', 'unconfirmed']`
+
+
 ## `fileroute.discovery`
 
 ### Constants

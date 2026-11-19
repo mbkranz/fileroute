@@ -657,14 +657,8 @@ def _changed_observations(
     changes: list[DiscoveryStatus] = []
     if before.get("name") is not None and before.get("name") != after.get("name"):
         changes.append("renamed")
-    old_parent = before.get(
-        "parents", Path(str(before.get("relativePath", ""))).parent.as_posix()
-    )
-    new_parent = after.get(
-        "parents", Path(str(after.get("relativePath", ""))).parent.as_posix()
-    )
     if before and (
-        old_parent != new_parent
+        before.get("parents") != after.get("parents")
         or before.get("scope") != after.get("scope")
         or Path(before.get("relativePath", "")).parent
         != Path(after.get("relativePath", "")).parent
@@ -677,6 +671,12 @@ def _changed_observations(
         changes.append("changed")
     if not before or any(key in before and key not in after for key in tokens):
         changes.append("unknown")
+    if not changes and not any(
+        before.get(key) is not None and after.get(key) is not None
+        for key in tokens
+        if key != "mimeType"
+    ):
+        return ["unknown"]
     return changes or ["unchanged"]
 
 

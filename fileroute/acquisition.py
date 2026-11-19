@@ -32,6 +32,10 @@ class SourceObservation(BaseModel):
     relative_path: str | None = None
     checksum: str | None = None
 
+    def same_revision(self, other: SourceObservation) -> bool:
+        """Compare provider identity, content and location facts independent of presentation URLs."""
+        return self.model_dump(exclude={"url"}) == other.model_dump(exclude={"url"})
+
 
 def discovered_drive_file(row: DiscoveryObservation) -> SourceObservation:
     """Read a positive Drive listing observation without another API call."""
@@ -162,7 +166,7 @@ def acquire_verified(
         raise ValueError(
             "Specify an export MIME type only for a native Workspace document"
         )
-    if inspect() != expected:
+    if not expected.same_revision(inspect()):
         raise ValueError("Drive source changed before acquisition")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=destination.parent, prefix=".fileroute-") as directory:
@@ -175,7 +179,7 @@ def acquire_verified(
             client.download_file(expected.id, output_path=str(staged))
         with staged.open("rb") as stream:
             digest = file_digest(stream, "sha256").hexdigest()
-        if inspect() != expected or (
+        if not expected.same_revision(inspect()) or (
             not export_mime and expected.checksum and expected.checksum != digest
         ):
             raise ValueError(

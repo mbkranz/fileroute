@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 API_MODULES = [
     {"module": "fileroute.conversion", "path": ROOT / "fileroute" / "conversion.py"},
+    {"module": "fileroute.acquisition", "path": ROOT / "fileroute" / "acquisition.py"},
     {"module": "fileroute.discovery", "path": ROOT / "fileroute" / "discovery.py"},
     {
         "module": "fileroute.clients.base",
