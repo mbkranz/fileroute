@@ -3,9 +3,10 @@ from __future__ import annotations
 from enum import StrEnum
 import re
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -94,6 +95,17 @@ class _Metadata(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
+class LocationBinding(BaseModel):
+    """Choose the authoritative locator for a Google Drive file source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    by: tuple[Literal["serviceId", "path"]] = Field(
+        description="Choose exactly one locator: serviceId or path.",
+        examples=[["serviceId"], ["path"]],
+    )
+
+
 class Location(_Metadata):
     """Upstream input or downstream destination, with optional provider metadata.
 
@@ -116,7 +128,18 @@ class Location(_Metadata):
                         "before_push",
                     )
                 ]
-            }
+            },
+            "if": {
+                "required": ["binding"],
+                "properties": {"binding": {"type": "object"}},
+            },
+            "then": {
+                "properties": {
+                    "serviceType": {"enum": ["GoogleDrive", None]},
+                    "entityType": {"enum": ["File", None]},
+                    "resourcePathTemplate": {"type": "null"},
+                }
+            },
         },
     )
 
@@ -162,8 +185,12 @@ class Location(_Metadata):
     service_id: str | None = Field(
         default=None,
         alias="serviceId",
-        description="Provider item identifier, preferred over path lookup when present. Online resolution can populate it; S3 uses bucket:key.",
+        description="Provider item identifier, preferred over path lookup unless binding chooses path. Online resolution can populate it; S3 uses bucket:key.",
         examples=["example-reports:monthly/report.csv"],
+    )
+    binding: LocationBinding | None = Field(
+        default=None,
+        description="Choose the locator for a concrete Google Drive resource source. Omit to use the provider's default lookup order.",
     )
     entity_type: EntityTypeValue | None = Field(
         default=None,
@@ -218,6 +245,32 @@ class Location(_Metadata):
                 )
         return value
 
+    @model_validator(mode="after")
+    def _validate_binding(self) -> Location:
+        if self.binding is None:
+            return self
+        if self.service_type not in (None, ServiceType.GOOGLE_DRIVE):
+            raise ValueError("binding is supported only for Google Drive sources")
+        if self.resource_path_template is not None or self.entity_type not in (
+            None,
+            "File",
+        ):
+            raise ValueError("binding requires a concrete file source")
+        return self
+
+
+def _unbound_location(location: Location) -> Location:
+    if location.binding is not None:
+        raise ValueError("binding is supported only on concrete Resource file sources")
+    return location
+
+
+_UnboundLocation = Annotated[
+    Location,
+    AfterValidator(_unbound_location),
+    Field(json_schema_extra={"properties": {"binding": {"type": "null"}}}),
+]
+
 
 class _Artifact(_Metadata):
     model_config = ConfigDict(
@@ -256,7 +309,7 @@ class _Artifact(_Metadata):
         ],
     )
     # None inherits catalog targets; [] explicitly disables publication.
-    targets: list[Location] | None = Field(
+    targets: list[_UnboundLocation] | None = Field(
         default=None,
         description="Publication destinations. Omitted or null inherits the nearest catalog's targets; an empty list opts out. Explicit child targets replace inherited targets.",
         examples=[
@@ -344,7 +397,7 @@ def validate_name(name: str) -> str:
 
 
 def _catalog_schema(schema: dict[str, Any]) -> None:
-    """Expose the input alias without replacing generated property schemas."""
+    """Expose the input alias and restrict the role of catalog source locations."""
     schema["not"] = {
         "anyOf": [
             {"required": [key]}
@@ -354,6 +407,9 @@ def _catalog_schema(schema: dict[str, Any]) -> None:
     schema["properties"]["pathTemplate"] = {
         **schema["properties"]["resourcePathTemplate"],
         "description": "Input alias for resourcePathTemplate; saved using the canonical spelling.",
+    }
+    schema["properties"]["sources"]["items"]["properties"] = {
+        "binding": {"type": "null"}
     }
 
 
@@ -397,6 +453,13 @@ class Catalog(_Artifact):
         default_factory=dict
     )
     _expanded: bool = PrivateAttr(default=False)
+
+    @field_validator("sources")
+    @classmethod
+    def _unbound_sources(cls, sources: list[Location]) -> list[Location]:
+        for source in sources:
+            _unbound_location(source)
+        return sources
 
     @model_validator(mode="before")
     @classmethod
@@ -449,6 +512,7 @@ __all__ = [
     "Catalog",
     "Resource",
     "Location",
+    "LocationBinding",
     "CatalogLink",
     "validate_name",
     "CATALOG_PROFILE",

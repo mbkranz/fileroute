@@ -763,33 +763,31 @@ def reconcile_discovery(request: ReconcileDiscoveryRequest) -> DiscoveryResult:
             )
             if identity in existing:
                 parent, name, registered, resource = existing[identity]
-                prior = dict(
-                    (resource.sources[0].model_extra or {}).get("discovery", {})
-                )
+                source = resource.sources[0]
+                prior = dict((source.model_extra or {}).get("discovery", {}))
                 statuses = _changed_observations(prior, metadata)
-                source_data = resource.sources[0].model_dump(
-                    by_alias=True, exclude_unset=True
-                )
-                # Remote location changes retain authored resources and publication choices.
-                fresh = parse_location(
-                    observed.sources[0].model_copy(deep=True)
-                ).model_dump(by_alias=True, exclude_unset=True)
-                for field in (
-                    "path",
-                    "serviceType",
-                    "serviceId",
-                    "entityType",
-                    "remotePath",
-                    "drive",
-                    "driveId",
-                    "site",
-                    "siteId",
-                    "bucket",
-                ):
-                    if field in fresh:
-                        source_data[field] = fresh[field]
-                    else:
-                        source_data.pop(field, None)
+                source_data = source.model_dump(by_alias=True, exclude_unset=True)
+                # Keep a bound source's authored locators when discovery observes its ID.
+                if source.binding is None:
+                    fresh = parse_location(
+                        observed.sources[0].model_copy(deep=True)
+                    ).model_dump(by_alias=True, exclude_unset=True)
+                    for field in (
+                        "path",
+                        "serviceType",
+                        "serviceId",
+                        "entityType",
+                        "remotePath",
+                        "drive",
+                        "driveId",
+                        "site",
+                        "siteId",
+                        "bucket",
+                    ):
+                        if field in fresh:
+                            source_data[field] = fresh[field]
+                        else:
+                            source_data.pop(field, None)
                 source_data["discovery"] = metadata
                 resource = resource.model_copy(
                     update={

@@ -163,9 +163,10 @@ Pull dry runs plan remote directories as units. Execution enumerates the
 remote files and checks their paths before writing; it replaces existing
 local files at planned paths. Use separate retrieval and publication
 catalogs when their source semantics differ.
-Pull prefers a saved `serviceId`, then a provider-scoped `remotePath`, then a
-URL. Online resolution therefore makes subsequent pulls more precise without
-requiring IDs when authoring a descriptor.
+By default, pull prefers a saved `serviceId`, then a provider-scoped `remotePath`,
+then a URL. A Google Drive file source can explicitly select ID or path lookup
+with `binding.by`. A path-bound pull records the downloaded item's ID in its
+receipt. [Google Drive source bindings](descriptors.md#google-drive-source-bindings)
 
 A DOCX source and `.md`/`.markdown` local path trigger review import. Downloaded
 bytes are staged first, and a failed conversion preserves the previous Markdown.

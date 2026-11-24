@@ -173,6 +173,14 @@ def parse_location(location: Location, *, required: bool = False) -> Location:
         raise ValueError(
             f"serviceType {location.service_type} conflicts with URL {location.path}"
         )
+    if (
+        location.binding is not None
+        and (location.service_type or inferred) != ServiceType.GOOGLE_DRIVE
+    ):
+        raise ValueError(
+            "binding requires a Google Drive file source; set serviceType to "
+            "GoogleDrive or use a Google Drive file URL"
+        )
     if location.service_type is None:
         if inferred is None:
             if required:
@@ -190,7 +198,7 @@ def parse_location(location: Location, *, required: bool = False) -> Location:
 
 
 def lookup_item(client: BaseClient, location: Location) -> ServiceItem:
-    """Prefer an item ID, then a scoped path, then the original web URL."""
+    """Use the provider's lookup for the location and its optional binding."""
     return client.get_from_location(location)
 
 

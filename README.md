@@ -137,6 +137,10 @@ to download files to the local paths in a catalog you wrote or discovered.
 See [discovery and pull](docs/transfers.md#discover-and-pull) and the
 [discovery walkthrough](docs/use-cases.md#discover-files-and-pull-a-concrete-catalog).
 
+For a Google Drive file source, `binding.by` chooses whether Fileroute follows
+the file ID or looks up the current file at a drive-relative path.
+[Google Drive source bindings](docs/descriptors.md#google-drive-source-bindings)
+
 - [Descriptor model, paths, references, and resolution](docs/descriptors.md)
 - [More use cases, saved YAML, and generated diagrams](docs/use-cases.md)
 - [Transfer behavior and provider support](docs/transfers.md)

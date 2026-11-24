@@ -43,6 +43,7 @@ name. Root descriptors may have a `title` for display.
 | `serviceType` | Location provider: `GoogleDrive`, `SharePoint`, or `S3` |
 | `authProfile` | Optional named authentication profile for this location; overrides the invocation's `--profile` |
 | `serviceId`, `entityType` | Provider-native item ID and file/directory/container type |
+| `binding.by` | Optional lookup selector for a Google Drive file under `resources.*.sources` |
 | `site`, `siteId`, `drive`, `driveId`, `bucket` | Provider namespace metadata |
 | `remotePath` | Path within the provider namespace, filled by offline resolution |
 
@@ -207,6 +208,34 @@ content. Offline resolution and `list` do not authenticate. Selected output sepa
 `artifactPath`, `referenceDescriptor`, origin file, and reference chain. Provider
 IDs remain optional; transfer planning resolves relevant locations in memory.
 An S3 directory prefix should end in `/` to distinguish it from an object key.
+
+### Google Drive source bindings
+
+Use `binding.by` with exactly one selector on a Google Drive resource file
+source. The source's `path` is required in both modes.
+
+| `binding.by` | Lookup |
+| --- | --- |
+| `[serviceId]` | Follow the file ID. Use the configured `serviceId` when present, or infer the ID from a recognized Drive file URL in `path`. |
+| `[path]` | Resolve the relative `path` within the configured `driveId` or `drive`. A stored `serviceId` is ignored for lookup, so a replacement at that path can be pulled. |
+
+```yaml
+resources:
+  report:
+    path: artifacts/report.docx
+    sources:
+      - serviceType: GoogleDrive
+        drive: My Drive
+        path: monthly/report.docx
+        binding:
+          by: [path]
+```
+
+Omit `binding` or set it to `null` for the default ID-first lookup. For a path
+binding, `resolve --online --write` preserves the authored `serviceId`, including
+its omission. Pull receipts record the ID of the downloaded file. Discovery
+continues matching registered resources by ID and preserves the authored locator
+when it matches a bound source.
 
 ## Migrate the old format
 

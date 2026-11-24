@@ -596,11 +596,27 @@ def resolve_selection(
             resolved_wrapper = resolve(wrapper, online=online, profile=profile)
             resolved = resolved_wrapper.resources["selected"]
         elif isinstance(model, Location):
-            field = "targets" if "/targets/" in selection.origin_pointer else "sources"
-            resolved = getattr(
-                resolve(Catalog(**{field: [model]}), online=online, profile=profile),
-                field,
-            )[0]
+            field = selection.origin_pointer.rsplit("/", 2)[-2]
+            owner = selection.entry.model
+            if field == "sources" and isinstance(owner, Resource):
+                # Keep the source attached to a resource during validation.
+                source_catalog = Catalog(
+                    resources={"selected": Resource(path=owner.path, sources=[model])}
+                )
+                resolved = (
+                    resolve(
+                        source_catalog, direction="pull", online=online, profile=profile
+                    )
+                    .resources["selected"]
+                    .sources[0]
+                )
+            else:
+                resolved = getattr(
+                    resolve(
+                        Catalog(**{field: [model]}), online=online, profile=profile
+                    ),
+                    field,
+                )[0]
             return resolved, []
         else:
             return model, []

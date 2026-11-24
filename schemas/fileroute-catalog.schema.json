@@ -221,7 +221,12 @@
             ]
           ],
           "items": {
-            "$ref": "#/$defs/Location"
+            "$ref": "#/$defs/Location",
+            "properties": {
+              "binding": {
+                "type": "null"
+              }
+            }
           },
           "title": "Sources",
           "type": "array"
@@ -230,7 +235,12 @@
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/Location"
+                "$ref": "#/$defs/Location",
+                "properties": {
+                  "binding": {
+                    "type": "null"
+                  }
+                }
               },
               "type": "array"
             },
@@ -294,6 +304,16 @@
     "Location": {
       "additionalProperties": true,
       "description": "Upstream input or downstream destination, with optional provider metadata.\n\n``path`` may be a local provenance file or remote URL. ``serviceType`` uses\nOpenMetadata's drive service vocabulary; it is resolved only for transfers.",
+      "if": {
+        "properties": {
+          "binding": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "binding"
+        ]
+      },
       "not": {
         "anyOf": [
           {
@@ -348,6 +368,18 @@
             "archive-reader"
           ],
           "title": "Authprofile"
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LocationBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Choose the locator for a concrete Google Drive resource source. Omit to use the provider's default lookup order."
         },
         "bucket": {
           "anyOf": [
@@ -489,7 +521,7 @@
             }
           ],
           "default": null,
-          "description": "Provider item identifier, preferred over path lookup when present. Online resolution can populate it; S3 uses bucket:key.",
+          "description": "Provider item identifier, preferred over path lookup unless binding chooses path. Online resolution can populate it; S3 uses bucket:key.",
           "examples": [
             "example-reports:monthly/report.csv"
           ],
@@ -545,7 +577,61 @@
       "required": [
         "path"
       ],
+      "then": {
+        "properties": {
+          "entityType": {
+            "enum": [
+              "File",
+              null
+            ]
+          },
+          "resourcePathTemplate": {
+            "type": "null"
+          },
+          "serviceType": {
+            "enum": [
+              "GoogleDrive",
+              null
+            ]
+          }
+        }
+      },
       "title": "Source or target location",
+      "type": "object"
+    },
+    "LocationBinding": {
+      "additionalProperties": false,
+      "description": "Choose the authoritative locator for a Google Drive file source.",
+      "properties": {
+        "by": {
+          "description": "Choose exactly one locator: serviceId or path.",
+          "examples": [
+            [
+              "serviceId"
+            ],
+            [
+              "path"
+            ]
+          ],
+          "maxItems": 1,
+          "minItems": 1,
+          "prefixItems": [
+            {
+              "enum": [
+                "serviceId",
+                "path"
+              ],
+              "type": "string"
+            }
+          ],
+          "title": "By",
+          "type": "array"
+        }
+      },
+      "required": [
+        "by"
+      ],
+      "title": "LocationBinding",
       "type": "object"
     },
     "Resource": {
@@ -704,7 +790,12 @@
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/Location"
+                "$ref": "#/$defs/Location",
+                "properties": {
+                  "binding": {
+                    "type": "null"
+                  }
+                }
               },
               "type": "array"
             },

@@ -5,7 +5,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 from enum import Enum
 from http import HTTPStatus
@@ -889,6 +889,28 @@ class GoogleDriveClient(GoogleBaseClient):
     @classmethod
     def parse_location(cls, location: Location) -> ResolvedLocation:
         parsed = urlparse(location.path)
+        if location.binding is not None:
+            if location.binding.by[0] == "serviceId":
+                item_id = location.service_id
+                if item_id is None and cls.recognizes_url(location.path):
+                    item_id = cls._extract_id_from_file_url(location.path)
+                if item_id is None or not item_id.strip():
+                    raise ValueError(
+                        "Google Drive ID binding requires a serviceId or a Drive file URL"
+                    )
+                return ResolvedLocation(ServiceType.GOOGLE_DRIVE, service_id=item_id)
+
+            if parsed.scheme or not (location.drive_id or location.drive or "").strip():
+                raise ValueError(
+                    "Google Drive path binding requires a relative path and drive or driveId"
+                )
+            path = relative_path(location.path)
+            if not path.strip():
+                raise ValueError(
+                    "Google Drive path binding requires a relative file path"
+                )
+            return ResolvedLocation(ServiceType.GOOGLE_DRIVE, remote_path=path)
+
         context = {
             key: value
             for key in ("drive", "drive_id")
@@ -914,8 +936,26 @@ class GoogleDriveClient(GoogleBaseClient):
         )
 
     def get_from_location(self, location: Location) -> GDriveItem:
+        if location.binding is not None:
+            resolved = self.parse_location(location)
+            if resolved.service_id is not None:
+                item = self.get_from_id(resolved.service_id)
+            else:
+                assert resolved.remote_path is not None
+                item = self._get_from_scoped_path(location, resolved.remote_path)
+            if item.is_directory:
+                raise ValueError(
+                    f"Google Drive binding requires a file: {location.path!r}"
+                )
+            return item
+
         if location.service_id:
             return self.get_from_id(location.service_id)
+        if location.drive_id or location.drive:
+            return self._get_from_scoped_path(location, location.remote_path or "")
+        return self.get_from_weburl(location.path)
+
+    def _get_from_scoped_path(self, location: Location, path: str) -> GDriveItem:
         if location.drive_id:
             root = GDriveItem(
                 client=self,
@@ -927,13 +967,21 @@ class GoogleDriveClient(GoogleBaseClient):
                 drive_id=location.drive_id,
                 container_id=location.drive_id,
             )
-            return root.get_path(location.remote_path or "")
-        if location.drive:
-            return self.get_from_path(location.drive, location.remote_path or "")
-        return self.get_from_weburl(location.path)
+            return cast(GDriveItem, root.get_path(path))
+        assert location.drive is not None
+        return self.get_from_path(location.drive, path)
 
     def resolve_location(self, location: Location) -> ResolvedLocation:
         item = self.get_from_location(location)
+        if location.binding is not None:
+            # Preserve the authored ID and drive scope for later lookup choices.
+            return ResolvedLocation(
+                ServiceType.GOOGLE_DRIVE,
+                location.remote_path,
+                item.id if location.binding.by[0] == "serviceId" else None,
+                "File",
+            )
+
         context = {
             key: value
             for key in ("drive", "drive_id")
@@ -996,7 +1044,23 @@ class GoogleDriveClient(GoogleBaseClient):
                 drive_id=drive.id,
             )
 
-        return root.get_path(path)
+        return cast(GDriveItem, root.get_path(path))
+
+    @staticmethod
+    def _extract_id_from_file_url(url: str) -> str:
+        parsed = urlparse(url)
+        match = re.match(
+            r"^/(?:u/[0-9]+/)?(?:file|document|spreadsheets|presentation)/"
+            r"(?:u/[0-9]+/)?d/([A-Za-z0-9_-]+)(?:/|$)",
+            parsed.path,
+        )
+        if match:
+            return match[1]
+        if re.fullmatch(r"/(?:u/[0-9]+/)?open/?", parsed.path):
+            ids = parse_qs(parsed.query, keep_blank_values=True).get("id", [])
+            if len(ids) == 1 and re.fullmatch(r"[A-Za-z0-9_-]+", ids[0]):
+                return ids[0]
+        raise ValueError(f"Expected an ID-bearing Google Drive file URL: {url!r}")
 
     @staticmethod
     def _extract_id_from_url(url: str) -> str:

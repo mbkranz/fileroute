@@ -466,6 +466,7 @@ Auto-generated from source signatures and docstrings.
   - `match_path_segments: bool`
   - `auth_profile: str | None`
   - `service_id: str | None`
+  - `binding: LocationBinding | None`
   - `entity_type: EntityTypeValue | None`
   - `remote_path: str | None`
   - `site: str | None`
@@ -473,6 +474,11 @@ Auto-generated from source signatures and docstrings.
   - `drive: str | None`
   - `drive_id: str | None`
   - `bucket: str | None`
+
+#### `LocationBinding`
+- Choose the authoritative locator for a Google Drive file source.
+- Fields:
+  - `by: tuple[Literal['serviceId', 'path']]`
 
 #### `CatalogLink`
 - Link to a local catalog document, relative to its containing file.
